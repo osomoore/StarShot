@@ -246,7 +246,7 @@ select {
 dl {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, auto);
+  grid-template-columns: repeat(6, auto);
   margin: 0;
 }
 

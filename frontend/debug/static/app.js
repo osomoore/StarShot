@@ -197,6 +197,8 @@ function renderPlayers(game) {
         <div><dt>Deck</dt><dd>${player.deck.length}</dd></div>
         <div><dt>Overheat</dt><dd>${player.overheat.length}</dd></div>
         <div><dt>Shields</dt><dd>${player.ship.shields}</dd></div>
+        <div><dt>Hex</dt><dd>${player.ship.q},${player.ship.r}</dd></div>
+        <div><dt>Facing</dt><dd>${player.ship.facing}</dd></div>
       </dl>
     `;
     return row;

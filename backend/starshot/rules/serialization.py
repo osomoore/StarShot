@@ -93,6 +93,9 @@ def card_from_dict(data: dict) -> Card:
 
 def ship_to_dict(ship: ShipState) -> dict:
     return {
+        "q": ship.q,
+        "r": ship.r,
+        "facing": ship.facing,
         "shields": ship.shields,
         "destroyed_components": sorted(ship.destroyed_components),
         "destroyed": ship.destroyed,
@@ -103,6 +106,9 @@ def ship_to_dict(ship: ShipState) -> dict:
 
 def ship_from_dict(data: dict) -> ShipState:
     return ShipState(
+        q=data.get("q", 0),
+        r=data.get("r", 0),
+        facing=data.get("facing", 0),
         shields=data.get("shields", 2),
         destroyed_components=set(data.get("destroyed_components", [])),
         destroyed=data.get("destroyed", False),

@@ -62,6 +62,9 @@ class OrdersSubmission:
 
 @dataclass(slots=True)
 class ShipState:
+    q: int = 0
+    r: int = 0
+    facing: int = 0
     shields: int = 2
     destroyed_components: set[str] = field(default_factory=set)
     destroyed: bool = False

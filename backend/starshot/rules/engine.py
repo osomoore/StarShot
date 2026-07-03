@@ -4,6 +4,7 @@ from copy import deepcopy
 from random import Random
 
 from starshot.rules.decks import base_card_by_id, create_base_deck
+from starshot.rules.hex import move_forward, turn_left, turn_right, u_turn
 from starshot.rules.models import (
     ActionStack,
     Card,
@@ -14,6 +15,7 @@ from starshot.rules.models import (
     OrdersSubmission,
     PlayerState,
     SealMode,
+    ShipState,
 )
 
 
@@ -36,7 +38,10 @@ def create_initial_state(config: GameConfig) -> GameState:
 
     rng = Random(config.seed)
     starting_player_id = rng.choice(player_ids)
-    players = {player_id: PlayerState(id=player_id, deck=create_base_deck()) for player_id in player_ids}
+    players = {
+        player_id: PlayerState(id=player_id, deck=create_base_deck(), ship=_starting_ship(index))
+        for index, player_id in enumerate(player_ids)
+    }
 
     state = GameState(players=players, starting_player_id=starting_player_id)
     state.event_log.append(
@@ -145,6 +150,10 @@ def _resolve_cooldown(state: GameState) -> None:
 def _resolve_action_phase(state: GameState) -> None:
     action_number = ACTION_PHASES.index(state.phase) + 1
     for player in state.players.values():
+        player.ship.movement_this_action = 0
+        player.ship.defense_bonus_this_action = 0
+
+    for player in state.players.values():
         if player.eliminated or player.prepared_orders is None:
             continue
         stack = player.prepared_orders.stacks[action_number - 1]
@@ -167,17 +176,68 @@ def _resolve_action_phase(state: GameState) -> None:
                 ],
             }
         )
+        _resolve_stack_movement(state, player, action_number, stack)
         _move_resolved_stack_cards(state, player, action_number, stack)
 
     state.event_log.append(
         {
-            "type": "action_resolution_placeholder",
+            "type": "combat_resolution_placeholder",
             "round": state.round_number,
             "action_number": action_number,
-            "message": "Movement and combat resolution are not implemented yet.",
+            "message": "Combat resolution is not implemented yet.",
         }
     )
     _change_phase(state, NEXT_PHASE[state.phase])
+
+
+def _resolve_stack_movement(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
+    movement_steps: list[dict] = []
+    for selection in stack.cards:
+        card = base_card_by_id(selection.card_id)
+        if card.family.value != "move":
+            continue
+
+        distance = card.value + (1 if stack.seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+        before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
+        move_choice = "forward" if selection.orientation == "up" else selection.orientation
+
+        if move_choice == "forward":
+            player.ship.q, player.ship.r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.movement_this_action += distance
+        elif move_choice == "turn_left":
+            player.ship.q, player.ship.r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.facing = turn_left(player.ship.facing)
+            player.ship.movement_this_action += distance
+        elif move_choice == "turn_right":
+            player.ship.q, player.ship.r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.facing = turn_right(player.ship.facing)
+            player.ship.movement_this_action += distance
+        elif move_choice == "u_turn":
+            player.ship.facing = u_turn(player.ship.facing)
+        else:
+            raise RulesError(f"Unsupported move orientation: {move_choice}")
+
+        movement_steps.append(
+            {
+                "card_id": card.id,
+                "choice": move_choice,
+                "distance": 0 if move_choice == "u_turn" else distance,
+                "before": before,
+                "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
+            }
+        )
+
+    if movement_steps:
+        state.event_log.append(
+            {
+                "type": "movement_resolved",
+                "round": state.round_number,
+                "player_id": player.id,
+                "action_number": action_number,
+                "steps": movement_steps,
+                "movement_this_action": player.ship.movement_this_action,
+            }
+        )
 
 
 def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
@@ -262,6 +322,16 @@ def _next_starting_player_id(state: GameState) -> str:
 def _change_phase(state: GameState, phase: GamePhase) -> None:
     state.phase = phase
     state.event_log.append({"type": "phase_changed", "phase": phase})
+
+
+def _starting_ship(index: int) -> ShipState:
+    starts = (
+        ShipState(q=-6, r=0, facing=0),
+        ShipState(q=6, r=0, facing=3),
+        ShipState(q=0, r=-6, facing=5),
+        ShipState(q=0, r=6, facing=2),
+    )
+    return starts[index]
 
 
 def _player(state: GameState, player_id: str) -> PlayerState:

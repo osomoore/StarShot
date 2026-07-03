@@ -23,6 +23,10 @@ class RulesEngineTests(unittest.TestCase):
         self.assertIn(state.starting_player_id, {"red", "blue"})
         self.assertEqual(len(state.players["red"].deck), 8)
         self.assertEqual(state.players["red"].ship.shields, 2)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-6, 0))
+        self.assertEqual(state.players["red"].ship.facing, 0)
+        self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (6, 0))
+        self.assertEqual(state.players["blue"].ship.facing, 3)
 
     def test_rejects_invalid_player_count(self):
         with self.assertRaises(RulesError):
@@ -80,6 +84,41 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.phase, GamePhase.GIVE_ORDERS)
         self.assertEqual(state.round_number, 2)
         self.assertIsNone(state.players["red"].prepared_orders)
+
+    def test_movement_resolves_from_move_orientation(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a", orientation="turn_right"),)),
+                ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b", orientation="u_turn"),)),
+                ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a", orientation="forward"),)),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "red", red_orders)
+        state = submit_orders(state, "blue", blue_orders)
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-5, 0))
+        self.assertEqual(state.players["red"].ship.facing, 1)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 1)
+
+        state = resolve_next_step(state)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-5, 0))
+        self.assertEqual(state.players["red"].ship.facing, 4)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 0)
+
+        state = resolve_next_step(state)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 3))
+        self.assertEqual(state.players["red"].ship.facing, 4)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
 
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
