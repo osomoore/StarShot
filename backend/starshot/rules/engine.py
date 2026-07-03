@@ -4,7 +4,7 @@ from copy import deepcopy
 from random import Random
 
 from starshot.rules.decks import base_card_by_id, create_base_deck
-from starshot.rules.hex import move_forward, turn_left, turn_right, u_turn
+from starshot.rules.hex import corner_start, move_forward, turn_left, turn_right, u_turn
 from starshot.rules.models import (
     ActionStack,
     Card,
@@ -325,13 +325,8 @@ def _change_phase(state: GameState, phase: GamePhase) -> None:
 
 
 def _starting_ship(index: int) -> ShipState:
-    starts = (
-        ShipState(q=-6, r=0, facing=0),
-        ShipState(q=6, r=0, facing=3),
-        ShipState(q=0, r=-6, facing=5),
-        ShipState(q=0, r=6, facing=2),
-    )
-    return starts[index]
+    q, r, facing = corner_start(index)
+    return ShipState(q=q, r=r, facing=facing)
 
 
 def _player(state: GameState, player_id: str) -> PlayerState:

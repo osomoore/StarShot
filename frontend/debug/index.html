@@ -29,78 +29,95 @@
         </aside>
 
         <section class="inspector" aria-label="Game inspector">
-          <div class="summary-strip">
-            <div>
-              <span class="label">Game</span>
-              <strong id="selectedGameId">None</strong>
-            </div>
-            <div>
-              <span class="label">Round</span>
-              <strong id="roundValue">-</strong>
-            </div>
-            <div>
-              <span class="label">Phase</span>
-              <strong id="phaseValue">-</strong>
-            </div>
-            <div>
-              <span class="label">Starting Player</span>
-              <strong id="startingPlayerValue">-</strong>
-            </div>
-          </div>
-
-          <div class="actions-row">
-            <button id="redOrdersButton" type="button" disabled>Submit Red Demo Orders</button>
-            <button id="blueOrdersButton" type="button" disabled>Submit Blue Demo Orders</button>
-            <button id="resolveButton" type="button" disabled>Resolve Next Step</button>
-            <label class="check-control">
-              <input id="revealOrdersToggle" type="checkbox" />
-              Reveal orders
-            </label>
-          </div>
-
-          <section class="panel orders-builder" aria-label="Orders builder">
-            <div class="panel-header">
+          <div class="control-strip">
+            <div class="summary-strip">
               <div>
-                <h2>Orders Builder</h2>
-                <p class="panel-note">Build three hidden action stacks from the selected player's available deck.</p>
+                <span class="label">Game</span>
+                <strong id="selectedGameId">None</strong>
               </div>
-              <div class="builder-controls">
-                <label>
-                  Player
-                  <select id="builderPlayerSelect"></select>
-                </label>
-                <button id="submitBuiltOrdersButton" type="button" disabled>Submit Built Orders</button>
+              <div>
+                <span class="label">Round</span>
+                <strong id="roundValue">-</strong>
+              </div>
+              <div>
+                <span class="label">Phase</span>
+                <strong id="phaseValue">-</strong>
+              </div>
+              <div>
+                <span class="label">Starting Player</span>
+                <strong id="startingPlayerValue">-</strong>
               </div>
             </div>
-            <div id="ordersBuilderView" class="order-stacks"></div>
-            <div class="builder-preview">
-              <span class="label">Generated Orders JSON</span>
-              <pre id="ordersPreview">{}</pre>
+            <div class="actions-row">
+              <button id="resolveButton" type="button" disabled>Resolve Next Step</button>
+              <button id="redOrdersButton" type="button" disabled>Red Demo</button>
+              <button id="blueOrdersButton" type="button" disabled>Blue Demo</button>
+              <label class="check-control">
+                <input id="revealOrdersToggle" type="checkbox" />
+                Reveal orders
+              </label>
             </div>
-          </section>
+          </div>
 
-          <div class="columns">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Players</h2>
-              </div>
-              <div id="playersView" class="players"></div>
+          <div class="play-layout">
+            <section class="play-main">
+              <section class="panel board-panel" aria-label="Hex board">
+                <div class="panel-header">
+                  <div>
+                    <h2>Board</h2>
+                    <p class="panel-note">Radius 12 axial hex grid. Ships start three hexes in from their corners.</p>
+                  </div>
+                </div>
+                <svg id="boardSvg" class="board-svg" role="img" aria-label="StarShot hex board"></svg>
+              </section>
+
+              <section class="panel">
+                <div class="panel-header">
+                  <h2>Ships</h2>
+                </div>
+                <div id="playersView" class="players"></div>
+              </section>
             </section>
 
-            <section class="panel">
+            <aside class="right-rail">
+              <section class="panel orders-builder" aria-label="Orders builder">
+                <div class="panel-header stacked-header">
+                  <div>
+                    <h2>Orders</h2>
+                    <p class="panel-note">Assign cards to Action 1, 2, and 3.</p>
+                  </div>
+                  <div class="builder-controls">
+                    <label>
+                      Player
+                      <select id="builderPlayerSelect"></select>
+                    </label>
+                    <button id="submitBuiltOrdersButton" type="button" disabled>Submit Orders</button>
+                  </div>
+                </div>
+                <div id="ordersBuilderView" class="order-stacks"></div>
+                <div class="builder-preview">
+                  <span class="label">Generated Orders JSON</span>
+                  <pre id="ordersPreview">{}</pre>
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <div class="lower-panels">
+            <section class="panel events-panel">
               <div class="panel-header">
                 <h2>Events</h2>
               </div>
               <ol id="eventsView" class="events"></ol>
             </section>
-          </div>
 
-          <section class="panel state-panel">
-            <div class="panel-header">
-              <h2>Raw State</h2>
-            </div>
-            <pre id="stateJson">{}</pre>
-          </section>
+            <section class="panel state-panel">
+              <div class="panel-header">
+                <h2>Raw State</h2>
+              </div>
+              <pre id="stateJson">{}</pre>
+            </section>
+          </div>
         </section>
       </section>
     </main>

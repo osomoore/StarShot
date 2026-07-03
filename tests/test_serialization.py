@@ -20,7 +20,7 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(restored.round_number, state.round_number)
         self.assertEqual(restored.phase, state.phase)
         self.assertEqual(restored.players["red"].deck[0].id, "move_1_a")
-        self.assertEqual(restored.players["red"].ship.q, -6)
+        self.assertEqual(restored.players["red"].ship.q, -9)
         self.assertEqual(restored.players["red"].ship.r, 0)
         self.assertEqual(restored.players["red"].ship.facing, 0)
 

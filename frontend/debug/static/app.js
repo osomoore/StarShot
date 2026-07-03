@@ -34,6 +34,24 @@ const blueOrders = {
   ],
 };
 
+const BOARD_RADIUS = 12;
+const HEX_SIZE = 14;
+const SQRT3 = Math.sqrt(3);
+const SHIP_COLORS = {
+  red: "#c9433f",
+  blue: "#2f6fce",
+  green: "#2d8b57",
+  yellow: "#c49b22",
+};
+const FACING_VECTORS = [
+  [1, 0],
+  [0.5, -0.866],
+  [-0.5, -0.866],
+  [-1, 0],
+  [-0.5, 0.866],
+  [0.5, 0.866],
+];
+
 const elements = {
   createButton: document.querySelector("#createButton"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -51,6 +69,7 @@ const elements = {
   ordersBuilderView: document.querySelector("#ordersBuilderView"),
   ordersPreview: document.querySelector("#ordersPreview"),
   submitBuiltOrdersButton: document.querySelector("#submitBuiltOrdersButton"),
+  boardSvg: document.querySelector("#boardSvg"),
   playersView: document.querySelector("#playersView"),
   eventsView: document.querySelector("#eventsView"),
   stateJson: document.querySelector("#stateJson"),
@@ -165,6 +184,7 @@ function renderAll() {
   elements.blueOrdersButton.disabled = !canSubmit("blue");
   elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
+  renderBoard(game);
   renderPlayers(game);
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
@@ -179,6 +199,72 @@ function canResolve(game) {
   return Boolean(game && !["give_orders", "complete"].includes(game.phase));
 }
 
+function renderBoard(game) {
+  const svg = elements.boardSvg;
+  if (!svg) return;
+  svg.replaceChildren();
+
+  const margin = HEX_SIZE * 2.5;
+  const extent = BOARD_RADIUS * HEX_SIZE * 2 + margin;
+  svg.setAttribute("viewBox", `${-extent} ${-extent} ${extent * 2} ${extent * 2}`);
+
+  for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q += 1) {
+    const rMin = Math.max(-BOARD_RADIUS, -q - BOARD_RADIUS);
+    const rMax = Math.min(BOARD_RADIUS, -q + BOARD_RADIUS);
+    for (let r = rMin; r <= rMax; r += 1) {
+      const [x, y] = axialToPixel(q, r);
+      const hex = svgEl("polygon");
+      hex.setAttribute("points", hexPoints(x, y).map((point) => point.join(",")).join(" "));
+      hex.setAttribute("class", q === 0 && r === 0 ? "board-hex center-hex" : "board-hex");
+      svg.append(hex);
+    }
+  }
+
+  Object.values(game?.players || {}).forEach((player) => {
+    const [x, y] = axialToPixel(player.ship.q, player.ship.r);
+    const group = svgEl("g");
+    group.setAttribute("class", "ship-token");
+
+    const circle = svgEl("circle");
+    circle.setAttribute("cx", x);
+    circle.setAttribute("cy", y);
+    circle.setAttribute("r", HEX_SIZE * 0.58);
+    circle.setAttribute("fill", SHIP_COLORS[player.id] || "#6f5ab8");
+
+    const [fx, fy] = FACING_VECTORS[player.ship.facing % 6];
+    const line = svgEl("line");
+    line.setAttribute("x1", x);
+    line.setAttribute("y1", y);
+    line.setAttribute("x2", x + fx * HEX_SIZE * 0.9);
+    line.setAttribute("y2", y + fy * HEX_SIZE * 0.9);
+    line.setAttribute("class", "ship-facing");
+
+    const label = svgEl("text");
+    label.setAttribute("x", x);
+    label.setAttribute("y", y + HEX_SIZE * 1.2);
+    label.setAttribute("class", "ship-label");
+    label.textContent = player.id;
+
+    group.append(circle, line, label);
+    svg.append(group);
+  });
+}
+
+function axialToPixel(q, r) {
+  return [HEX_SIZE * 1.5 * q, HEX_SIZE * SQRT3 * (r + q / 2)];
+}
+
+function hexPoints(x, y) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = (Math.PI / 180) * (60 * index);
+    return [x + HEX_SIZE * Math.cos(angle), y + HEX_SIZE * Math.sin(angle)];
+  });
+}
+
+function svgEl(name) {
+  return document.createElementNS("http://www.w3.org/2000/svg", name);
+}
+
 function renderPlayers(game) {
   if (!game) {
     elements.playersView.replaceChildren();
@@ -186,7 +272,10 @@ function renderPlayers(game) {
   }
   const rows = Object.values(game.players).map((player) => {
     const row = document.createElement("article");
-    row.className = "player-row";
+    row.className = player.has_submitted_orders ? "player-row orders-ready" : "player-row";
+    const destroyedComponents = player.ship.destroyed_components.length
+      ? player.ship.destroyed_components.join(", ")
+      : "None";
     row.innerHTML = `
       <div>
         <h3>${player.id}</h3>
@@ -194,11 +283,13 @@ function renderPlayers(game) {
       </div>
       <dl>
         <div><dt>VP</dt><dd>${player.victory_points}</dd></div>
+        <div><dt>Shields</dt><dd>${player.ship.shields}</dd></div>
         <div><dt>Deck</dt><dd>${player.deck.length}</dd></div>
         <div><dt>Overheat</dt><dd>${player.overheat.length}</dd></div>
-        <div><dt>Shields</dt><dd>${player.ship.shields}</dd></div>
-        <div><dt>Hex</dt><dd>${player.ship.q},${player.ship.r}</dd></div>
+        <div><dt>Hex</dt><dd>${player.ship.q}, ${player.ship.r}</dd></div>
         <div><dt>Facing</dt><dd>${player.ship.facing}</dd></div>
+        <div><dt>Move</dt><dd>${player.ship.movement_this_action}</dd></div>
+        <div><dt>Damage</dt><dd>${destroyedComponents}</dd></div>
       </dl>
     `;
     return row;
@@ -414,12 +505,24 @@ function updateBuilderDraftFromControl(target) {
     stack.cards[cardIndex] = target.value;
     stack.targets[cardIndex] = "";
     stack.move_choices[cardIndex] = "forward";
+    applyDefaultAttackTarget(stack, cardIndex);
   } else if (field === "move_choice" && cardIndex !== null) {
     stack.move_choices[cardIndex] = target.value;
   } else if (field === "target_player_id" && cardIndex !== null) {
     stack.targets[cardIndex] = target.value;
   }
   renderAll();
+}
+
+function applyDefaultAttackTarget(stack, cardIndex) {
+  const player = state.selectedState?.players?.[state.builderPlayerId];
+  const card = player?.deck?.find((candidate) => candidate.id === stack.cards[cardIndex]);
+  const opponents = Object.keys(state.selectedState?.players || {}).filter(
+    (playerId) => playerId !== state.builderPlayerId,
+  );
+  if (card?.family === "attack" && opponents.length === 1) {
+    stack.targets[cardIndex] = opponents[0];
+  }
 }
 
 elements.createButton.addEventListener("click", () => createGame().catch(showError));

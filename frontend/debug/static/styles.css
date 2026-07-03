@@ -76,7 +76,7 @@ select {
 
 .workspace {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   min-height: calc(100vh - 82px);
 }
 
@@ -121,7 +121,7 @@ select {
 .inspector {
   display: grid;
   gap: 16px;
-  padding: 18px;
+  padding: 14px;
 }
 
 .summary-strip,
@@ -136,6 +136,53 @@ select {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.control-strip {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.control-strip .summary-strip {
+  min-width: 0;
+}
+
+.control-strip .actions-row {
+  align-content: center;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d4d8d4;
+  border-radius: 8px;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.play-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(620px, 1fr) 390px;
+}
+
+.play-main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.right-rail {
+  display: grid;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+}
+
+.lower-panels {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
 }
 
 .label {
@@ -170,6 +217,11 @@ select {
   grid-template-columns: minmax(150px, 1fr) auto;
 }
 
+.stacked-header {
+  align-items: stretch;
+  display: grid;
+}
+
 .builder-controls label,
 .card-slot label,
 .order-stack-header label {
@@ -182,15 +234,15 @@ select {
 .order-stacks {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .order-stack {
   border: 1px solid #d8ddda;
   border-radius: 8px;
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .order-stack-header {
@@ -212,7 +264,50 @@ select {
 }
 
 .builder-preview pre {
-  max-height: 220px;
+  max-height: 170px;
+}
+
+.board-panel {
+  overflow: hidden;
+}
+
+.board-svg {
+  aspect-ratio: 1 / 1;
+  background: #f8faf8;
+  border: 1px solid #d9dedb;
+  border-radius: 8px;
+  display: block;
+  max-height: calc(100vh - 240px);
+  min-height: 560px;
+  width: 100%;
+}
+
+.board-hex {
+  fill: #ffffff;
+  stroke: #d8dedb;
+  stroke-width: 0.8;
+}
+
+.center-hex {
+  fill: #f6ead2;
+  stroke: #c79a35;
+}
+
+.ship-token {
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.25));
+}
+
+.ship-facing {
+  stroke: #ffffff;
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.ship-label {
+  fill: #182022;
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
 }
 
 .columns {
@@ -224,14 +319,21 @@ select {
 .players {
   display: grid;
   gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .player-row {
-  border-top: 1px solid #e2e5e2;
+  border: 1px solid #e2e5e2;
+  border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 1fr auto;
-  padding-top: 10px;
+  grid-template-columns: 1fr;
+  padding: 12px;
+}
+
+.player-row.orders-ready {
+  border-color: #82b899;
+  box-shadow: inset 4px 0 0 #3f9963;
 }
 
 .player-row h3,
@@ -246,7 +348,7 @@ select {
 dl {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(6, auto);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
 }
 
@@ -258,10 +360,13 @@ dt {
 dd {
   font-weight: 700;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .events {
+  max-height: 460px;
   margin: 0;
+  overflow: auto;
   padding-left: 20px;
 }
 
@@ -279,7 +384,7 @@ pre {
 }
 
 .state-panel pre {
-  max-height: 340px;
+  max-height: 460px;
 }
 
 @media (max-width: 900px) {
@@ -287,9 +392,20 @@ pre {
   .workspace,
   .columns,
   .summary-strip,
+  .control-strip,
+  .play-layout,
+  .lower-panels,
   .order-stacks,
   .builder-controls {
     display: block;
+  }
+
+  .right-rail {
+    position: static;
+  }
+
+  .board-svg {
+    min-height: 360px;
   }
 
   .sidebar,

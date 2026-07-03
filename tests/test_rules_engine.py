@@ -23,9 +23,9 @@ class RulesEngineTests(unittest.TestCase):
         self.assertIn(state.starting_player_id, {"red", "blue"})
         self.assertEqual(len(state.players["red"].deck), 8)
         self.assertEqual(state.players["red"].ship.shields, 2)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-6, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-9, 0))
         self.assertEqual(state.players["red"].ship.facing, 0)
-        self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (6, 0))
+        self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (9, 0))
         self.assertEqual(state.players["blue"].ship.facing, 3)
 
     def test_rejects_invalid_player_count(self):
@@ -106,17 +106,17 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-5, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
         self.assertEqual(state.players["red"].ship.facing, 1)
         self.assertEqual(state.players["red"].ship.movement_this_action, 1)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-5, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
         self.assertEqual(state.players["red"].ship.facing, 4)
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 3))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-11, 3))
         self.assertEqual(state.players["red"].ship.facing, 4)
         self.assertEqual(state.players["red"].ship.movement_this_action, 3)
 
