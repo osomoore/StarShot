@@ -68,7 +68,11 @@
                     <p class="panel-note">Radius 12 axial hex grid. Ships start three hexes in from their corners.</p>
                   </div>
                 </div>
-                <svg id="boardSvg" class="board-svg" role="img" aria-label="StarShot hex board"></svg>
+                <div class="board-layout-container">
+                  <div id="leftMiniBoards" class="mini-boards-column"></div>
+                  <svg id="boardSvg" class="board-svg" role="img" aria-label="StarShot hex board"></svg>
+                  <div id="rightMiniBoards" class="mini-boards-column"></div>
+                </div>
               </section>
 
               <section class="panel ship-board-panel" aria-label="Ship boards">

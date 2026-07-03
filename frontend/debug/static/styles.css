@@ -294,6 +294,80 @@ select {
   overflow: hidden;
 }
 
+.board-layout-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+}
+
+.mini-boards-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.mini-ship-board {
+  background: #ffffff;
+  border: 2px solid #d8ddda;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.mini-ship-board.inactive {
+  opacity: 0.35;
+  filter: grayscale(1) contrast(0.85);
+  background: #f5f6f5;
+  border-color: #e2e5e2 !important;
+}
+
+.mini-ship-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f0f2f0;
+  padding-bottom: 4px;
+}
+
+.mini-ship-name {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.mini-ship-shields {
+  font-size: 10px;
+  color: #66716f;
+  background: #f0f2f0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.mini-ship-svg-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #fafbfa;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.mini-ship-svg {
+  width: 100%;
+  max-width: 90px;
+  height: auto;
+  aspect-ratio: 50 / 90;
+}
+
 .board-svg {
   aspect-ratio: 1 / 1;
   background: #f8faf8;
@@ -302,7 +376,8 @@ select {
   display: block;
   max-height: calc(100vh - 240px);
   min-height: 560px;
-  width: 100%;
+  flex-grow: 1;
+  width: 0;
 }
 
 .ship-boards {

@@ -79,6 +79,8 @@ const elements = {
   ordersPreview: document.querySelector("#ordersPreview"),
   submitBuiltOrdersButton: document.querySelector("#submitBuiltOrdersButton"),
   boardSvg: document.querySelector("#boardSvg"),
+  leftMiniBoards: document.querySelector("#leftMiniBoards"),
+  rightMiniBoards: document.querySelector("#rightMiniBoards"),
   shipBoardsView: document.querySelector("#shipBoardsView"),
   playersView: document.querySelector("#playersView"),
   eventsView: document.querySelector("#eventsView"),
@@ -214,6 +216,7 @@ function renderAll() {
   elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
+  renderMiniShipBoards(game);
   renderShipBoards(game);
   renderPlayers(game);
   renderEvents(game);
@@ -944,6 +947,94 @@ function combatOverlayElement() {
 
 function hideCombatResultOverlay() {
   elements.combatOverlay?.classList.remove("visible");
+}
+
+function renderMiniShipBoards(game) {
+  if (!elements.leftMiniBoards || !elements.rightMiniBoards) return;
+  if (!game) {
+    elements.leftMiniBoards.replaceChildren();
+    elements.rightMiniBoards.replaceChildren();
+    return;
+  }
+
+  const leftColors = ["red", "green"];
+  const rightColors = ["blue", "yellow"];
+
+  elements.leftMiniBoards.replaceChildren(...leftColors.map(color => createMiniBoardCard(color, game)));
+  elements.rightMiniBoards.replaceChildren(...rightColors.map(color => createMiniBoardCard(color, game)));
+}
+
+function createMiniBoardCard(color, game) {
+  const player = game.players[color];
+  const isInactive = !player;
+
+  const card = document.createElement("div");
+  card.className = `mini-ship-board ${isInactive ? "inactive" : ""}`;
+  card.style.borderColor = SHIP_COLORS[color] || "#ccc";
+
+  const header = document.createElement("div");
+  header.className = "mini-ship-header";
+  header.innerHTML = `
+    <strong class="mini-ship-name" style="color: ${SHIP_COLORS[color] || '#555'}">${color.toUpperCase()}</strong>
+    <span class="mini-ship-shields">${player ? `${player.ship.shields} S` : "-"}</span>
+  `;
+  card.append(header);
+
+  const svgContainer = document.createElement("div");
+  svgContainer.className = "mini-ship-svg-container";
+
+  const svg = svgEl("svg");
+  svg.setAttribute("viewBox", "-25 -45 50 90");
+  svg.setAttribute("class", "mini-ship-svg");
+
+  let layout = player?.ship?.component_layout;
+  if (!layout) {
+    const anyActivePlayer = Object.values(game.players)[0];
+    layout = anyActivePlayer?.ship?.component_layout;
+  }
+
+  if (layout) {
+    const destroyedSet = new Set(player?.ship?.destroyed_components || []);
+    
+    layout.forEach(comp => {
+      const size = 7;
+      const x = size * 1.5 * comp.q;
+      const y = size * SQRT3 * (comp.r + comp.q / 2);
+
+      let stroke = "#7f8c8d";
+      if (comp.type === "engine") stroke = "#3f9963";
+      else if (comp.type === "weapon") stroke = "#c9433f";
+      else if (comp.type === "life_support") stroke = "#e38627";
+      else if (comp.type === "bridge") stroke = "#8b5a2b";
+
+      const isDestroyed = destroyedSet.has(comp.id);
+      const fill = isDestroyed ? "#c9433f" : "rgba(255, 255, 255, 0.85)";
+
+      const poly = svgEl("polygon");
+      poly.setAttribute("points", getMiniHexPoints(x, y, size).map(p => p.join(",")).join(" "));
+      poly.setAttribute("stroke", stroke);
+      poly.setAttribute("stroke-width", "1");
+      poly.setAttribute("fill", fill);
+      poly.setAttribute("class", `mini-hex-cell ${comp.type} ${isDestroyed ? "destroyed" : ""}`);
+      
+      const title = svgEl("title");
+      title.textContent = `${comp.name}${isDestroyed ? " (DESTROYED)" : ""}`;
+      poly.append(title);
+
+      svg.append(poly);
+    });
+  }
+
+  svgContainer.append(svg);
+  card.append(svgContainer);
+  return card;
+}
+
+function getMiniHexPoints(x, y, size) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const angle = (Math.PI / 180) * (60 * index);
+    return [x + size * Math.cos(angle), y + size * Math.sin(angle)];
+  });
 }
 
 refreshGames().catch(showError);
