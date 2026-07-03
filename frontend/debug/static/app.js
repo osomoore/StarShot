@@ -79,6 +79,7 @@ const elements = {
   ordersPreview: document.querySelector("#ordersPreview"),
   submitBuiltOrdersButton: document.querySelector("#submitBuiltOrdersButton"),
   boardSvg: document.querySelector("#boardSvg"),
+  shipBoardsView: document.querySelector("#shipBoardsView"),
   playersView: document.querySelector("#playersView"),
   eventsView: document.querySelector("#eventsView"),
   stateJson: document.querySelector("#stateJson"),
@@ -213,6 +214,7 @@ function renderAll() {
   elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
+  renderShipBoards(game);
   renderPlayers(game);
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
@@ -521,6 +523,49 @@ function renderPlayers(game) {
     return row;
   });
   elements.playersView.replaceChildren(...rows);
+}
+
+function renderShipBoards(game) {
+  if (!elements.shipBoardsView) return;
+  if (!game) {
+    elements.shipBoardsView.replaceChildren();
+    return;
+  }
+
+  const boards = Object.values(game.players).map((player) => {
+    const board = document.createElement("article");
+    board.className = player.ship.destroyed ? "ship-board destroyed" : "ship-board";
+    board.innerHTML = `
+      <div class="ship-board-title">
+        <strong>${player.id}</strong>
+        <span>${player.ship.destroyed ? "Destroyed" : `${player.ship.shields} shields`}</span>
+      </div>
+      <div class="ship-art-frame">
+        <img src="/resources/base_ship_0.png" alt="${player.id} ship damage board" />
+        <div class="ship-damage-layer" aria-hidden="true">
+          ${renderDestroyedComponentMarkers(player.ship.destroyed_components || [], player.ship.component_layout || [])}
+        </div>
+      </div>
+      <div class="ship-board-footer">
+        <span>${player.ship.damage_taken ?? 0} damage</span>
+        <span>${(player.ship.destroyed_components || []).length} components</span>
+      </div>
+    `;
+    return board;
+  });
+  elements.shipBoardsView.replaceChildren(...boards);
+}
+
+function renderDestroyedComponentMarkers(componentIds, layout) {
+  const componentById = Object.fromEntries(layout.map((component) => [component.id, component]));
+  return componentIds
+    .map((componentId) => {
+      const component = componentById[componentId];
+      const x = component ? component.anchor_x * 100 : 50;
+      const y = component ? component.anchor_y * 100 : 50;
+      return `<span class="component-hit-marker" style="left: ${x}%; top: ${y}%;" title="${componentId}"></span>`;
+    })
+    .join("");
 }
 
 function renderEvents(game) {
@@ -845,16 +890,33 @@ function showCombatResultOverlay(game, previousEventCount) {
     const damageText = volley.shielded
       ? `${volley.damage} blocked by shield`
       : `${volley.damage_applied} / ${volley.damage} damage`;
+    const shotText = volley.damage_shots?.length
+      ? `<span>${volley.damage_shots.map(formatDamageShot).join("; ")}</span>`
+      : "";
     item.innerHTML = `
       <strong>${volley.attacker_id} -> ${volley.target_id}</strong>
       <span>${outcome}: roll ${volley.roll} vs defense ${volley.defense_threshold}</span>
       <span>${damageText}</span>
+      ${shotText}
     `;
     list.append(item);
   });
   panel.querySelector("button").addEventListener("click", hideCombatResultOverlay);
   overlay.append(panel);
   overlay.classList.add("visible");
+}
+
+function formatDamageShot(shot) {
+  if (!shot.destroyed) return `lane ${shot.lane} -> no intact component`;
+  return `lane ${shot.lane} -> ${formatComponentId(shot.component_id)}`;
+}
+
+function formatComponentId(componentId) {
+  return (componentId || "")
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function latestCombatVolleys(game, previousEventCount) {

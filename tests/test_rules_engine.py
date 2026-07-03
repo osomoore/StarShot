@@ -159,7 +159,7 @@ class RulesEngineTests(unittest.TestCase):
             any(event["type"] == "volley_resolved" and event["shielded"] for event in state.event_log)
         )
 
-    def test_unshielded_attack_adds_damage_taken(self):
+    def test_unshielded_attack_rolls_damage_lanes_and_destroys_components(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
@@ -193,8 +193,18 @@ class RulesEngineTests(unittest.TestCase):
         state = resolve_next_step(state)
 
         self.assertEqual(state.players["red"].ship.damage_taken, 3)
+        self.assertEqual(
+            state.players["red"].ship.destroyed_components,
+            {"port_outer_engines", "port_shields", "port_life_support"},
+        )
         self.assertEqual(state.players["blue"].victory_points, 1)
         self.assertIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["damage_rolls"], [2, 5, 2])
+        self.assertEqual(
+            [shot["component_id"] for shot in volley["damage_shots"]],
+            ["port_outer_engines", "port_shields", "port_life_support"],
+        )
 
     def test_multiple_attack_cards_create_one_combined_volley(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -241,7 +251,48 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(volleys[0]["card_ids"], ["attack_1_a", "attack_2_a"])
         self.assertEqual(volleys[0]["damage"], 3)
         self.assertEqual(state.players["red"].ship.damage_taken, 3)
-        self.assertEqual(state.rng_step, 2)
+        self.assertEqual(state.rng_step, 5)
+
+    def test_bridge_damage_destroys_ship_and_awards_destroyed_ship_vp(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=2))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+        state.players["red"].ship.destroyed_components.update(
+            {"port_outer_engines", "port_life_support"}
+        )
+        state.players["red"].ship.damage_taken = 2
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        self.assertTrue(state.players["red"].ship.destroyed)
+        self.assertIn("command_bridge", state.players["red"].ship.destroyed_components)
+        self.assertEqual(state.players["blue"].victory_points, 3)
 
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

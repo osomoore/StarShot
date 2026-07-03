@@ -305,6 +305,72 @@ select {
   width: 100%;
 }
 
+.ship-boards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ship-board {
+  border: 1px solid #d8ddda;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.ship-board.destroyed {
+  background: #f6eded;
+  border-color: #d5a6a2;
+}
+
+.ship-board-title,
+.ship-board-footer {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ship-board-title span,
+.ship-board-footer {
+  color: #66716f;
+  font-size: 12px;
+}
+
+.ship-art-frame {
+  aspect-ratio: 1187 / 1325;
+  background: #f8faf8;
+  border: 1px solid #e2e5e2;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ship-art-frame img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.ship-damage-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.component-hit-marker {
+  background: rgb(201 67 63 / 0.82);
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.35);
+  height: 16px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 16px;
+}
+
 .board-hex {
   fill: #ffffff;
   stroke: #d8dedb;

@@ -13,6 +13,7 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
+from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
 
 
 def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
@@ -103,6 +104,9 @@ def ship_to_dict(ship: ShipState) -> dict:
         "shields": ship.shields,
         "damage_taken": ship.damage_taken,
         "destroyed_components": sorted(ship.destroyed_components),
+        "layout_id": BASE_SHIP_LAYOUT_ID,
+        "component_layout": components_to_dict(),
+        "damage_lanes": damage_lanes_to_dict(),
         "destroyed": ship.destroyed,
         "movement_this_action": ship.movement_this_action,
         "defense_bonus_this_action": ship.defense_bonus_this_action,

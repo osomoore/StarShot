@@ -241,6 +241,19 @@ These need confirmation or a PDF/table reference pass before coding the full rul
 - Whether bauble Fang damage rolls once globally or once per affected ship when multiple ships are in range.
 - How hidden information is represented in API responses for each player versus spectators.
 
+## Ship Board and Damage Lanes
+
+The debug UI has a ship-board panel that renders `resources/base_ship_0.png` for each player. It shows shield count, total component damage, destruction state, and destroyed-component markers from `ShipState.destroyed_components`.
+
+Damage lane implementation contract:
+
+- `backend/starshot/rules/ship_layout.py` is the canonical `base_ship_0` layout. It models component ids, component types, logical ship hex coordinates, normalized image anchors, and twelve ordered d12 damage lanes based on the lane markings in the image.
+- Each unshielded damage point rolls 1d12 and destroys the first intact component in that lane. If every component in the lane is already destroyed, that shot records no destroyed component.
+- Store destroyed component ids in `ShipState.destroyed_components`; keep `damage_taken` as a summary counter only.
+- Emit per-shot damage events in `volley_resolved.damage_shots` with `roll`, `lane`, `component_id`, `component_type`, and `destroyed` fields. Shielded hits keep the shield event details and skip lane rolls.
+- A ship is destroyed when the command bridge is destroyed, both life support components are destroyed, or every weapon and every engine is destroyed.
+- Render persistent destroyed-component markers from normalized coordinates on top of `base_ship_0.png`. Use `base_ship_0_mini.png` later for compact player summaries.
+
 ## Initial Public API Contract
 
 CLI:

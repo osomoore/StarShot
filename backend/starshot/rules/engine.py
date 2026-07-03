@@ -18,6 +18,7 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
+from starshot.rules.ship_layout import first_intact_component_for_lane, is_ship_destroyed
 
 
 class RulesError(ValueError):
@@ -336,11 +337,12 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
             event["shielded"] = True
             event["vp_awarded"] = 1
         elif hit:
-            target.ship.damage_taken += damage
-            attacker.victory_points += 1
-            event["damage_applied"] = damage
-            event["target_damage_taken"] = target.ship.damage_taken
-            event["vp_awarded"] = 1
+            damage_result = _apply_unshielded_damage(state, target, damage)
+            destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
+            vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
+            attacker.victory_points += vp_awarded
+            event.update(damage_result)
+            event["vp_awarded"] = vp_awarded
 
         state.event_log.append(event)
         resolved_any = True
@@ -373,6 +375,45 @@ def _attack_cards_for_stack(stack: ActionStack) -> list[Card]:
     return attack_cards
 
 
+def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int) -> dict:
+    shots: list[dict] = []
+    was_destroyed = target.ship.destroyed
+
+    for shot_number in range(1, damage + 1):
+        lane_roll = _roll_d12(state)
+        component = first_intact_component_for_lane(lane_roll, target.ship.destroyed_components)
+        shot = {
+            "shot_number": shot_number,
+            "roll": lane_roll,
+            "lane": lane_roll,
+            "component_id": None,
+            "component_type": None,
+            "destroyed": False,
+        }
+        if component is not None:
+            target.ship.destroyed_components.add(component.id)
+            target.ship.damage_taken += 1
+            shot.update(
+                {
+                    "component_id": component.id,
+                    "component_type": component.component_type,
+                    "destroyed": True,
+                }
+            )
+            target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
+        shots.append(shot)
+
+    return {
+        "damage_applied": sum(1 for shot in shots if shot["destroyed"]),
+        "damage_rolls": [shot["roll"] for shot in shots],
+        "damage_shots": shots,
+        "target_damage_taken": target.ship.damage_taken,
+        "target_destroyed_components": sorted(target.ship.destroyed_components),
+        "target_destroyed": target.ship.destroyed,
+        "was_destroyed": was_destroyed,
+    }
+
+
 def _roll_2d12(state: GameState) -> int:
     if state.rng_seed is None:
         state.rng_seed = 0
@@ -383,6 +424,17 @@ def _roll_2d12(state: GameState) -> int:
     second = rng.randint(1, 12)
     state.rng_step += 2
     return first + second
+
+
+def _roll_d12(state: GameState) -> int:
+    if state.rng_seed is None:
+        state.rng_seed = 0
+    rng = Random(state.rng_seed)
+    for _ in range(state.rng_step):
+        rng.randint(1, 12)
+    value = rng.randint(1, 12)
+    state.rng_step += 1
+    return value
 
 
 def _resolve_award_baubles(state: GameState) -> None:

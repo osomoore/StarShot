@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class ShipComponent:
+    id: str
+    name: str
+    component_type: str
+    q: int
+    r: int
+    anchor_x: float
+    anchor_y: float
+
+
+BASE_SHIP_LAYOUT_ID = "base_ship_0"
+
+BASE_SHIP_COMPONENTS: tuple[ShipComponent, ...] = (
+    ShipComponent("nose_hull", "Nose Hull", "hull", 0, -3, 0.500, 0.092),
+    ShipComponent("top_ion_cannon", "Top Ion Cannon", "weapon", 0, -2, 0.500, 0.245),
+    ShipComponent("port_shields", "Port Shields", "shield_generator", -1, -1, 0.355, 0.345),
+    ShipComponent("starboard_shields", "Starboard Shields", "shield_generator", 1, -1, 0.645, 0.345),
+    ShipComponent("port_ion_cannon", "Port Ion Cannon", "weapon", -2, 0, 0.190, 0.430),
+    ShipComponent("bone_room", "Bone Room", "crew", 0, -1, 0.500, 0.430),
+    ShipComponent("starboard_ion_cannon", "Starboard Ion Cannon", "weapon", 2, 0, 0.810, 0.430),
+    ShipComponent("port_inner_engines", "Port Inner Engines", "engine", -1, 0, 0.355, 0.540),
+    ShipComponent("command_bridge", "Command Bridge", "bridge", 0, 0, 0.500, 0.580),
+    ShipComponent("starboard_inner_engines", "Starboard Inner Engines", "engine", 1, 0, 0.645, 0.540),
+    ShipComponent("port_outer_engines", "Port Outer Engines", "engine", -2, 1, 0.175, 0.735),
+    ShipComponent("port_life_support", "Port Life Support", "life_support", -1, 1, 0.355, 0.690),
+    ShipComponent("docking_bay", "Docking Bay", "bay", 0, 1, 0.500, 0.742),
+    ShipComponent("starboard_life_support", "Starboard Life Support", "life_support", 1, 1, 0.645, 0.690),
+    ShipComponent("starboard_outer_engines", "Starboard Outer Engines", "engine", 2, 1, 0.825, 0.735),
+    ShipComponent("aft_engines", "Aft Engines", "engine", 0, 2, 0.500, 0.888),
+)
+
+BASE_SHIP_DAMAGE_LANES: dict[int, tuple[str, ...]] = {
+    1: ("aft_engines", "docking_bay", "command_bridge", "bone_room", "top_ion_cannon", "nose_hull"),
+    2: ("port_outer_engines", "port_life_support", "command_bridge", "starboard_shields"),
+    3: ("port_life_support", "port_inner_engines", "port_shields", "top_ion_cannon"),
+    4: ("port_ion_cannon", "port_inner_engines", "command_bridge", "starboard_inner_engines", "starboard_ion_cannon"),
+    5: ("port_shields", "bone_room", "starboard_inner_engines", "starboard_outer_engines"),
+    6: ("port_shields", "bone_room", "starboard_shields"),
+    7: ("nose_hull", "top_ion_cannon", "bone_room", "command_bridge", "docking_bay", "aft_engines"),
+    8: ("starboard_shields", "bone_room", "port_shields"),
+    9: ("starboard_shields", "bone_room", "port_inner_engines", "port_outer_engines"),
+    10: ("starboard_ion_cannon", "starboard_inner_engines", "command_bridge", "port_inner_engines", "port_ion_cannon"),
+    11: ("starboard_life_support", "starboard_inner_engines", "starboard_shields", "top_ion_cannon"),
+    12: ("starboard_outer_engines", "starboard_life_support", "command_bridge", "port_shields"),
+}
+
+BASE_SHIP_COMPONENT_BY_ID = {component.id: component for component in BASE_SHIP_COMPONENTS}
+
+
+def components_to_dict() -> list[dict]:
+    return [
+        {
+            "id": component.id,
+            "name": component.name,
+            "type": component.component_type,
+            "q": component.q,
+            "r": component.r,
+            "anchor_x": component.anchor_x,
+            "anchor_y": component.anchor_y,
+        }
+        for component in BASE_SHIP_COMPONENTS
+    ]
+
+
+def damage_lanes_to_dict() -> dict[str, list[str]]:
+    return {str(roll): list(component_ids) for roll, component_ids in BASE_SHIP_DAMAGE_LANES.items()}
+
+
+def first_intact_component_for_lane(lane_roll: int, destroyed_components: set[str]) -> ShipComponent | None:
+    for component_id in BASE_SHIP_DAMAGE_LANES[lane_roll]:
+        if component_id not in destroyed_components:
+            return BASE_SHIP_COMPONENT_BY_ID[component_id]
+    return None
+
+
+def is_ship_destroyed(destroyed_components: set[str]) -> bool:
+    if "command_bridge" in destroyed_components:
+        return True
+
+    life_support_ids = {
+        component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "life_support"
+    }
+    if life_support_ids.issubset(destroyed_components):
+        return True
+
+    weapon_ids = {component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "weapon"}
+    engine_ids = {component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "engine"}
+    return weapon_ids.issubset(destroyed_components) and engine_ids.issubset(destroyed_components)

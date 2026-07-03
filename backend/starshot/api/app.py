@@ -15,10 +15,14 @@ from starshot.rules.serialization import orders_from_dict, state_to_dict
 app = FastAPI(title="StarShot")
 ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_DIR = ROOT / "frontend" / "debug"
+RESOURCES_DIR = ROOT / "resources"
 DEFAULT_DB_PATH = ROOT / ".starshot" / "games.sqlite3"
 
 if (FRONTEND_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
+
+if RESOURCES_DIR.exists():
+    app.mount("/resources", StaticFiles(directory=RESOURCES_DIR), name="resources")
 
 
 class CreateGameRequest(BaseModel):
