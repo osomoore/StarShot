@@ -14,3 +14,8 @@ def create_base_deck() -> list[Card]:
         Card(id="attack_1_b", name="Targeted Attack 1", family=CardFamily.ATTACK, value=1),
         Card(id="attack_2_a", name="Targeted Attack 2", family=CardFamily.ATTACK, value=2),
     ]
+
+
+def base_card_by_id(card_id: str) -> Card:
+    cards = {card.id: card for card in create_base_deck()}
+    return cards[card_id]

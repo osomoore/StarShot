@@ -45,6 +45,7 @@ const elements = {
   startingPlayerValue: document.querySelector("#startingPlayerValue"),
   redOrdersButton: document.querySelector("#redOrdersButton"),
   blueOrdersButton: document.querySelector("#blueOrdersButton"),
+  resolveButton: document.querySelector("#resolveButton"),
   revealOrdersToggle: document.querySelector("#revealOrdersToggle"),
   builderPlayerSelect: document.querySelector("#builderPlayerSelect"),
   ordersBuilderView: document.querySelector("#ordersBuilderView"),
@@ -118,6 +119,13 @@ async function submitOrders(playerId, orders) {
   await refreshGames();
 }
 
+async function resolveNextStep() {
+  if (!state.selectedGameId) return;
+  const payload = await api(`/api/games/${state.selectedGameId}/resolve`, { method: "POST" });
+  state.selectedState = payload.state;
+  await refreshGames();
+}
+
 async function submitBuiltOrders() {
   if (!state.selectedGameId || !state.builderPlayerId) return;
   const validation = validateBuiltOrders();
@@ -155,6 +163,7 @@ function renderAll() {
   elements.startingPlayerValue.textContent = game?.starting_player_id ?? "-";
   elements.redOrdersButton.disabled = !canSubmit("red");
   elements.blueOrdersButton.disabled = !canSubmit("blue");
+  elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
   renderPlayers(game);
   renderEvents(game);
@@ -164,6 +173,10 @@ function renderAll() {
 function canSubmit(playerId) {
   const player = state.selectedState?.players?.[playerId];
   return Boolean(player && state.selectedState.phase === "give_orders" && !player.has_submitted_orders);
+}
+
+function canResolve(game) {
+  return Boolean(game && !["give_orders", "complete"].includes(game.phase));
 }
 
 function renderPlayers(game) {
@@ -411,6 +424,7 @@ elements.createButton.addEventListener("click", () => createGame().catch(showErr
 elements.refreshButton.addEventListener("click", () => refreshGames().catch(showError));
 elements.redOrdersButton.addEventListener("click", () => submitOrders("red", redOrders).catch(showError));
 elements.blueOrdersButton.addEventListener("click", () => submitOrders("blue", blueOrders).catch(showError));
+elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
 elements.builderPlayerSelect.addEventListener("change", (event) => {
   state.builderPlayerId = event.target.value;

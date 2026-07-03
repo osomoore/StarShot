@@ -4,6 +4,7 @@ from starshot.rules.engine import (
     create_initial_state,
     is_game_over,
     legal_actions,
+    resolve_next_step,
     submit_orders,
 )
 from starshot.rules.models import (
@@ -37,5 +38,6 @@ __all__ = [
     "create_initial_state",
     "is_game_over",
     "legal_actions",
+    "resolve_next_step",
     "submit_orders",
 ]

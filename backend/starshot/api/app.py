@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from starshot.persistence import SQLiteGameStore
-from starshot.rules import GameConfig, RulesError, create_initial_state, submit_orders
+from starshot.rules import GameConfig, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
 
 app = FastAPI(title="StarShot")
@@ -83,4 +83,18 @@ def submit_game_orders(game_id: str, request: SubmitOrdersRequest) -> dict:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (RulesError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/games/{game_id}/resolve")
+def resolve_game(game_id: str) -> dict:
+    try:
+        store = get_store()
+        state = store.load_game(game_id)
+        next_state = resolve_next_step(state)
+        store.save_game(game_id, next_state)
+        return {"game_id": game_id, "state": state_to_dict(next_state, reveal_orders=False)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RulesError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from starshot.persistence import SQLiteGameStore
-from starshot.rules import GameConfig, RulesError, create_initial_state, submit_orders
+from starshot.rules import GameConfig, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
 
 
@@ -32,6 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     orders.add_argument("player_id")
     orders.add_argument("orders_json", help="Inline orders JSON or a path to a JSON file.")
 
+    resolve = subparsers.add_parser("resolve", help="Resolve the next game phase.")
+    resolve.add_argument("game_id")
+
     args = parser.parse_args(argv)
     store = SQLiteGameStore(args.db)
 
@@ -55,6 +58,13 @@ def main(argv: list[str] | None = None) -> int:
             state = store.load_game(args.game_id)
             orders_payload = _read_json_argument(args.orders_json)
             next_state = submit_orders(state, args.player_id, orders_from_dict(orders_payload))
+            store.save_game(args.game_id, next_state)
+            print(json.dumps(public_summary(next_state), indent=2))
+            return 0
+
+        if args.command == "resolve":
+            state = store.load_game(args.game_id)
+            next_state = resolve_next_step(state)
             store.save_game(args.game_id, next_state)
             print(json.dumps(public_summary(next_state), indent=2))
             return 0
