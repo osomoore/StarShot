@@ -11,6 +11,9 @@ Desktop.ini
 *.log
 *.tmp
 *.temp
+.starshot/
+*.sqlite
+*.sqlite3
 
 # Build output
 build/
