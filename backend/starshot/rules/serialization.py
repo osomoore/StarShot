@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from starshot.rules.models import (
     ActionStack,
+    BaubleState,
     Card,
     CardFamily,
     GamePhase,
@@ -23,6 +24,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         "starting_player_id": state.starting_player_id,
         "rng_seed": state.rng_seed,
         "rng_step": state.rng_step,
+        "baubles": [bauble_to_dict(bauble) for bauble in state.baubles],
         "players": {
             player_id: player_to_dict(player, reveal_orders=reveal_orders)
             for player_id, player in state.players.items()
@@ -35,6 +37,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
 def state_from_dict(data: dict) -> GameState:
     return GameState(
         players={player_id: player_from_dict(player) for player_id, player in data["players"].items()},
+        baubles=[bauble_from_dict(bauble) for bauble in data.get("baubles", [])],
         round_number=data["round_number"],
         phase=GamePhase(data["phase"]),
         starting_player_id=data["starting_player_id"],
@@ -124,6 +127,30 @@ def ship_from_dict(data: dict) -> ShipState:
         destroyed=data.get("destroyed", False),
         movement_this_action=data.get("movement_this_action", 0),
         defense_bonus_this_action=data.get("defense_bonus_this_action", 0),
+    )
+
+
+def bauble_to_dict(bauble: BaubleState) -> dict:
+    return {
+        "id": bauble.id,
+        "number": bauble.number,
+        "q": bauble.q,
+        "r": bauble.r,
+        "victory_points": bauble.victory_points,
+        "is_fang": bauble.is_fang,
+        "claimed_by": list(bauble.claimed_by),
+    }
+
+
+def bauble_from_dict(data: dict) -> BaubleState:
+    return BaubleState(
+        id=data["id"],
+        number=data["number"],
+        q=data["q"],
+        r=data["r"],
+        victory_points=data["victory_points"],
+        is_fang=data.get("is_fang", False),
+        claimed_by=list(data.get("claimed_by", [])),
     )
 
 

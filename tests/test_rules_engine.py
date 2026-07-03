@@ -2,6 +2,7 @@ import unittest
 
 from starshot.rules import (
     ActionStack,
+    BaubleState,
     GameConfig,
     GamePhase,
     OrderCardSelection,
@@ -12,6 +13,7 @@ from starshot.rules import (
     resolve_next_step,
     submit_orders,
 )
+from starshot.rules.hex import BOARD_RADIUS, hex_distance
 
 
 class RulesEngineTests(unittest.TestCase):
@@ -23,10 +25,17 @@ class RulesEngineTests(unittest.TestCase):
         self.assertIn(state.starting_player_id, {"red", "blue"})
         self.assertEqual(len(state.players["red"].deck), 8)
         self.assertEqual(state.players["red"].ship.shields, 2)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-9, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-11, 0))
         self.assertEqual(state.players["red"].ship.facing, 0)
-        self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (9, 0))
+        self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (11, 0))
         self.assertEqual(state.players["blue"].ship.facing, 3)
+        self.assertEqual(len(state.baubles), 11)
+        self.assertEqual([bauble.number for bauble in state.baubles].count(1), 2)
+        self.assertEqual([bauble.number for bauble in state.baubles].count(5), 2)
+        self.assertEqual([bauble.number for bauble in state.baubles].count(6), 1)
+        self.assertEqual(len({(bauble.q, bauble.r) for bauble in state.baubles}), 11)
+        fang = [bauble for bauble in state.baubles if bauble.is_fang][0]
+        self.assertEqual((fang.q, fang.r), (0, 0))
 
     def test_rejects_invalid_player_count(self):
         with self.assertRaises(RulesError):
@@ -106,19 +115,121 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
         self.assertEqual(state.players["red"].ship.facing, 5)
         self.assertEqual(state.players["red"].ship.movement_this_action, 1)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
         self.assertEqual(state.players["red"].ship.facing, 2)
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, -3))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, -3))
         self.assertEqual(state.players["red"].ship.facing, 2)
         self.assertEqual(state.players["red"].ship.movement_this_action, 3)
+
+    def test_move_clamps_to_board_after_attempt_but_keeps_full_defense(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].ship.q = 13
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "red", red_orders)
+        state = submit_orders(state, "blue", blue_orders)
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (14, 0))
+        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
+        movement = [event for event in state.event_log if event["type"] == "movement_resolved"][0]
+        self.assertEqual(movement["steps"][0]["attempted"], {"q": 16, "r": 0, "facing": 0})
+        self.assertTrue(movement["steps"][0]["clamped"])
+
+    def test_baubles_are_placed_without_overlap_and_later_rounds_are_nearer_center(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "yellow"), seed=11))
+        positions = {(bauble.q, bauble.r) for bauble in state.baubles}
+        occupied_bauble_hexes = set()
+
+        self.assertEqual(len(state.baubles), 11)
+        self.assertEqual(len(positions), len(state.baubles))
+        for bauble in state.baubles:
+            footprint = self._bauble_footprint(bauble.q, bauble.r)
+            self.assertTrue(all(hex_distance(0, 0, q, r) <= BOARD_RADIUS for q, r in footprint))
+            self.assertTrue(occupied_bauble_hexes.isdisjoint(footprint))
+            occupied_bauble_hexes.update(footprint)
+
+        for number in range(1, 6):
+            numbered = [bauble for bauble in state.baubles if bauble.number == number]
+            self.assertEqual(len(numbered), 2)
+            max_distance = {1: 14, 2: 12, 3: 10, 4: 8, 5: 6}[number]
+            self.assertTrue(all(hex_distance(0, 0, bauble.q, bauble.r) <= max_distance for bauble in numbered))
+
+        for index, bauble in enumerate(state.baubles):
+            for other in state.baubles[index + 1 :]:
+                self.assertGreaterEqual(hex_distance(bauble.q, bauble.r, other.q, other.r), 4)
+
+        early_baubles = [bauble for bauble in state.baubles if bauble.number in {1, 2}]
+        for bauble in early_baubles:
+            for player in state.players.values():
+                self.assertGreater(hex_distance(bauble.q, bauble.r, player.ship.q, player.ship.r), 3)
+
+    def test_award_baubles_scores_matching_round_baubles_in_range(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.AWARD_BAUBLES
+        state.round_number = 1
+        state.baubles = [BaubleState(id="bauble_1_test", number=1, q=0, r=0, victory_points=4)]
+        state.players["red"].ship.q = 1
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 2
+        state.players["blue"].ship.r = 0
+
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.phase, GamePhase.CLEANUP)
+        self.assertEqual(state.players["red"].victory_points, 4)
+        self.assertEqual(state.players["blue"].victory_points, 0)
+        self.assertEqual(state.baubles[0].claimed_by, ["red"])
+        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]
+        self.assertEqual(award["awards"][0]["player_id"], "red")
+        self.assertTrue(award["awards"][0]["desperation_card_drawn"])
+
+    def test_fang_scores_round_six_and_deals_one_damage(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.AWARD_BAUBLES
+        state.round_number = 6
+        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=6, is_fang=True)]
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 1
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = 4
+        state.players["blue"].ship.r = 0
+
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.players["red"].victory_points, 6)
+        self.assertEqual(state.players["red"].ship.damage_taken, 1)
+        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        self.assertFalse(award["desperation_card_drawn"])
+        self.assertEqual(award["fang_damage"], 1)
+
+    def _bauble_footprint(self, q, r):
+        offsets = ((0, 0), (1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
+        return {(q + offset_q, r + offset_r) for offset_q, offset_r in offsets}
 
     def test_attack_hit_spends_shield_and_awards_vp(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

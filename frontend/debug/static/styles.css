@@ -456,6 +456,68 @@ select {
   stroke: #c79a35;
 }
 
+.bauble-token {
+  pointer-events: none;
+}
+
+.bauble-hex {
+  fill: rgb(255 176 204 / 0.24);
+  stroke: rgb(198 76 126 / 0.36);
+  stroke-width: 1;
+}
+
+.bauble-center {
+  fill: rgb(198 76 126 / 0.68);
+  stroke: #8f2d5c;
+  stroke-width: 1.5;
+}
+
+.bauble-planet-ring {
+  fill: none;
+  stroke: rgb(143 45 92 / 0.78);
+  stroke-width: 2;
+}
+
+.bauble-planet-core {
+  fill: #c64c7e;
+  stroke: #5f1739;
+  stroke-width: 1.5;
+}
+
+.bauble-token text {
+  fill: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #5f1739;
+  stroke-linejoin: round;
+  stroke-width: 2.4px;
+  text-anchor: middle;
+}
+
+.bauble-token.fang-token .bauble-hex {
+  fill: rgb(202 179 255 / 0.24);
+  stroke: rgb(111 90 184 / 0.38);
+}
+
+.bauble-token.fang-token .bauble-center {
+  fill: rgb(111 90 184 / 0.74);
+  stroke: #2f244f;
+}
+
+.bauble-token.fang-token .bauble-planet-ring {
+  stroke: rgb(47 36 79 / 0.78);
+}
+
+.bauble-token.fang-token .bauble-planet-core {
+  fill: #6f5ab8;
+  stroke: #2f244f;
+}
+
+.bauble-token.claimed {
+  opacity: 0.45;
+}
+
 .ship-token {
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.25));
 }

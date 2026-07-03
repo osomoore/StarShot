@@ -84,6 +84,17 @@ class PlayerState:
     eliminated: bool = False
 
 
+@dataclass(slots=True)
+class BaubleState:
+    id: str
+    number: int
+    q: int
+    r: int
+    victory_points: int
+    is_fang: bool = False
+    claimed_by: list[str] = field(default_factory=list)
+
+
 @dataclass(frozen=True, slots=True)
 class GameResult:
     winner_ids: tuple[str, ...]
@@ -94,6 +105,7 @@ class GameResult:
 @dataclass(slots=True)
 class GameState:
     players: dict[str, PlayerState]
+    baubles: list[BaubleState] = field(default_factory=list)
     round_number: int = 1
     phase: GamePhase = GamePhase.GIVE_ORDERS
     starting_player_id: str = ""

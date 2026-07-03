@@ -20,12 +20,16 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(restored.round_number, state.round_number)
         self.assertEqual(restored.phase, state.phase)
         self.assertEqual(restored.players["red"].deck[0].id, "move_1_a")
-        self.assertEqual(restored.players["red"].ship.q, -9)
+        self.assertEqual(restored.players["red"].ship.q, -11)
         self.assertEqual(restored.players["red"].ship.r, 0)
         self.assertEqual(restored.players["red"].ship.facing, 0)
         self.assertEqual(restored.players["red"].ship.damage_taken, 0)
         self.assertEqual(restored.rng_seed, state.rng_seed)
         self.assertEqual(restored.rng_step, state.rng_step)
+        self.assertEqual(len(restored.baubles), 11)
+        self.assertEqual(restored.baubles[0].id, state.baubles[0].id)
+        self.assertEqual((restored.baubles[-1].q, restored.baubles[-1].r), (0, 0))
+        self.assertTrue(restored.baubles[-1].is_fang)
 
         serialized_ship = state_to_dict(state)["players"]["red"]["ship"]
         self.assertEqual(serialized_ship["layout_id"], "base_ship_0")

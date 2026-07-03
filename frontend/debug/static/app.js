@@ -7,7 +7,7 @@ const state = {
   knownCards: {},
 };
 
-const BOARD_RADIUS = 12;
+const BOARD_RADIUS = 14;
 const HEX_SIZE = 14;
 const SQRT3 = Math.sqrt(3);
 const DEMO_MOVE_CHOICES = ["forward", "turn_left", "turn_right"];
@@ -282,8 +282,55 @@ function renderBoard(game) {
     }
   }
 
+  renderBaubles(svg, game);
   renderActionPreview(svg, game);
   Object.values(game?.players || {}).forEach((player) => renderShipToken(svg, player, "ship-token"));
+}
+
+function renderBaubles(svg, game) {
+  (game?.baubles || []).forEach((bauble) => {
+    const group = svgEl("g");
+    group.setAttribute("class", `bauble-token${bauble.is_fang ? " fang-token" : ""}${bauble.claimed_by?.length ? " claimed" : ""}`);
+
+    baubleFootprint(bauble.q, bauble.r).forEach(([q, r], index) => {
+      if (hexDistance(0, 0, q, r) > BOARD_RADIUS) return;
+      const [hexX, hexY] = axialToPixel(q, r);
+      const hex = svgEl("polygon");
+      hex.setAttribute("points", hexPoints(hexX, hexY).map((point) => point.join(",")).join(" "));
+      hex.setAttribute("class", index === 0 ? "bauble-hex bauble-center" : "bauble-hex");
+      group.append(hex);
+    });
+
+    const [x, y] = axialToPixel(bauble.q, bauble.r);
+    const ring = svgEl("circle");
+    ring.setAttribute("class", "bauble-planet-ring");
+    ring.setAttribute("cx", x);
+    ring.setAttribute("cy", y);
+    ring.setAttribute("r", HEX_SIZE * 2.06);
+
+    const core = svgEl("circle");
+    core.setAttribute("class", "bauble-planet-core");
+    core.setAttribute("cx", x);
+    core.setAttribute("cy", y);
+    core.setAttribute("r", HEX_SIZE * 0.62);
+
+    const label = svgEl("text");
+    label.setAttribute("x", x);
+    label.setAttribute("y", y + 3);
+    label.textContent = bauble.is_fang ? "F" : String(bauble.number);
+
+    const title = svgEl("title");
+    title.textContent = bauble.is_fang
+      ? `Fang: round 6, ${bauble.victory_points} VP`
+      : `Bauble ${bauble.number}: ${bauble.victory_points} VP`;
+
+    group.append(ring, core, label, title);
+    svg.append(group);
+  });
+}
+
+function baubleFootprint(q, r) {
+  return [[q, r], ...AXIAL_DIRECTIONS.map(([dq, dr]) => [q + dq, r + dr])];
 }
 
 function axialToPixel(q, r) {
@@ -396,6 +443,9 @@ function applyPreviewMove(preview, distance, choice) {
     const [dq, dr] = AXIAL_DIRECTIONS[preview.facing % 6];
     preview.q += dq * distance;
     preview.r += dr * distance;
+    const clamped = clampToBoard(preview.q, preview.r);
+    preview.q = clamped.q;
+    preview.r = clamped.r;
   }
   if (choice === "turn_left") {
     preview.facing = (preview.facing + 1) % 6;
@@ -404,6 +454,24 @@ function applyPreviewMove(preview, distance, choice) {
   } else if (choice === "u_turn") {
     preview.facing = (preview.facing + 3) % 6;
   }
+}
+
+function clampToBoard(q, r) {
+  if (hexDistance(0, 0, q, r) <= BOARD_RADIUS) return { q, r };
+  let best = { q: 0, r: 0 };
+  let bestDistance = Infinity;
+  for (let boardQ = -BOARD_RADIUS; boardQ <= BOARD_RADIUS; boardQ += 1) {
+    const rMin = Math.max(-BOARD_RADIUS, -boardQ - BOARD_RADIUS);
+    const rMax = Math.min(BOARD_RADIUS, -boardQ + BOARD_RADIUS);
+    for (let boardR = rMin; boardR <= rMax; boardR += 1) {
+      const distance = hexDistance(q, r, boardQ, boardR);
+      if (distance < bestDistance) {
+        best = { q: boardQ, r: boardR };
+        bestDistance = distance;
+      }
+    }
+  }
+  return best;
 }
 
 function drawMovementPathPreview(svg, before, after) {

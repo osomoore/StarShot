@@ -9,6 +9,7 @@ from starshot.rules.engine import (
 )
 from starshot.rules.models import (
     ActionStack,
+    BaubleState,
     Card,
     CardFamily,
     GameConfig,
@@ -23,6 +24,7 @@ from starshot.rules.models import (
 
 __all__ = [
     "ActionStack",
+    "BaubleState",
     "Card",
     "CardFamily",
     "GameConfig",
