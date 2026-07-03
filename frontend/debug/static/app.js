@@ -228,7 +228,7 @@ function renderBoard(game) {
     }
   }
 
-  renderActionOnePreview(svg, game);
+  renderActionPreview(svg, game);
   Object.values(game?.players || {}).forEach((player) => renderShipToken(svg, player, "ship-token"));
 }
 
@@ -276,29 +276,32 @@ function renderShipToken(svg, player, className) {
   svg.append(group);
 }
 
-function renderActionOnePreview(svg, game) {
+function renderActionPreview(svg, game) {
   const player = game?.players?.[state.builderPlayerId];
   if (!player || player.has_submitted_orders || game.phase !== "give_orders") return;
 
   const cardById = Object.fromEntries(player.deck.map((card) => [card.id, card]));
-  const stack = state.builderDraft.stacks[0];
   const preview = {
     q: player.ship.q,
     r: player.ship.r,
     facing: player.ship.facing,
   };
 
-  stack.cards.forEach((cardId, cardIndex) => {
-    if (!cardId) return;
-    const card = cardById[cardId];
-    if (!card) return;
-    if (card.family === "move") {
-      applyPreviewMove(preview, card.value + (stack.seal_mode === "overdrive" ? 1 : 0), stack.move_choices[cardIndex]);
-      drawMovePreview(svg, preview, cardIndex + 1);
-    } else if (card.family === "attack") {
-      const target = game.players[stack.targets[cardIndex]];
-      if (target) drawAttackPreview(svg, target, cardIndex + 1);
-    }
+  state.builderDraft.stacks.forEach((stack, stackIndex) => {
+    stack.cards.forEach((cardId, cardIndex) => {
+      if (!cardId) return;
+      const card = cardById[cardId];
+      if (!card) return;
+
+      const label = `A${stackIndex + 1}.${cardIndex + 1}`;
+      if (card.family === "move") {
+        applyPreviewMove(preview, card.value + (stack.seal_mode === "overdrive" ? 1 : 0), stack.move_choices[cardIndex]);
+        drawPositionPreview(svg, preview, label);
+      } else if (card.family === "attack") {
+        const target = game.players[stack.targets[cardIndex]];
+        if (target) drawAttackPreview(svg, preview, target, label);
+      }
+    });
   });
 }
 
@@ -309,47 +312,51 @@ function applyPreviewMove(preview, distance, choice) {
     preview.r += dr * distance;
   }
   if (choice === "turn_left") {
-    preview.facing = (preview.facing + 5) % 6;
-  } else if (choice === "turn_right") {
     preview.facing = (preview.facing + 1) % 6;
+  } else if (choice === "turn_right") {
+    preview.facing = (preview.facing + 5) % 6;
   } else if (choice === "u_turn") {
     preview.facing = (preview.facing + 3) % 6;
   }
 }
 
-function drawMovePreview(svg, preview, index) {
+function drawPositionPreview(svg, preview, labelText, burstColor = null) {
   const [x, y] = axialToPixel(preview.q, preview.r);
   const group = svgEl("g");
   group.setAttribute("class", "move-preview");
+
+  if (burstColor) {
+    const burst = svgEl("polygon");
+    burst.setAttribute("class", "attack-preview");
+    burst.setAttribute("fill", burstColor);
+    burst.setAttribute("points", burstPoints(x, y, HEX_SIZE * 1.18, HEX_SIZE * 0.48).map((point) => point.join(",")).join(" "));
+    group.append(burst);
+  }
 
   const circle = svgEl("circle");
   circle.setAttribute("cx", x);
   circle.setAttribute("cy", y);
   circle.setAttribute("r", HEX_SIZE * 0.48);
 
+  const [fx, fy] = FACING_VECTORS[preview.facing % 6];
+  const facing = svgEl("line");
+  facing.setAttribute("x1", x);
+  facing.setAttribute("y1", y);
+  facing.setAttribute("x2", x + fx * HEX_SIZE * 0.66);
+  facing.setAttribute("y2", y + fy * HEX_SIZE * 0.66);
+  facing.setAttribute("class", "preview-facing");
+
   const label = svgEl("text");
   label.setAttribute("x", x);
   label.setAttribute("y", y + 3);
-  label.textContent = `A1.${index}`;
+  label.textContent = labelText;
 
-  group.append(circle, label);
+  group.append(circle, facing, label);
   svg.append(group);
 }
 
-function drawAttackPreview(svg, target, index) {
-  const [x, y] = axialToPixel(target.ship.q, target.ship.r);
-  const burst = svgEl("polygon");
-  burst.setAttribute("class", "attack-preview");
-  burst.setAttribute("fill", SHIP_COLORS[target.id] || "#6f5ab8");
-  burst.setAttribute("points", burstPoints(x, y, HEX_SIZE * 0.9, HEX_SIZE * 0.45).map((point) => point.join(",")).join(" "));
-
-  const label = svgEl("text");
-  label.setAttribute("class", "attack-preview-label");
-  label.setAttribute("x", x);
-  label.setAttribute("y", y + 3);
-  label.textContent = `A1.${index}`;
-
-  svg.append(burst, label);
+function drawAttackPreview(svg, shooterPreview, target, labelText) {
+  drawPositionPreview(svg, shooterPreview, labelText, SHIP_COLORS[target.id] || "#6f5ab8");
 }
 
 function burstPoints(x, y, outerRadius, innerRadius) {

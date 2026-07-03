@@ -107,17 +107,17 @@ class RulesEngineTests(unittest.TestCase):
         state = resolve_next_step(state)
         state = resolve_next_step(state)
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
-        self.assertEqual(state.players["red"].ship.facing, 1)
+        self.assertEqual(state.players["red"].ship.facing, 5)
         self.assertEqual(state.players["red"].ship.movement_this_action, 1)
 
         state = resolve_next_step(state)
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, 0))
-        self.assertEqual(state.players["red"].ship.facing, 4)
+        self.assertEqual(state.players["red"].ship.facing, 2)
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-11, 3))
-        self.assertEqual(state.players["red"].ship.facing, 4)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, -3))
+        self.assertEqual(state.players["red"].ship.facing, 2)
         self.assertEqual(state.players["red"].ship.movement_this_action, 3)
 
     def _state_with_submitted_orders(self):

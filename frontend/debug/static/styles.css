@@ -313,14 +313,13 @@ select {
 
 .move-preview circle {
   fill: #2f6f78;
-  opacity: 0.28;
+  opacity: 0.34;
   stroke: #16464e;
   stroke-dasharray: 3 2;
   stroke-width: 1.5;
 }
 
-.move-preview text,
-.attack-preview-label {
+.move-preview text {
   fill: #182022;
   font-size: 8px;
   font-weight: 800;
@@ -328,10 +327,17 @@ select {
   text-anchor: middle;
 }
 
+.preview-facing {
+  stroke: #16464e;
+  stroke-linecap: round;
+  stroke-width: 2.2;
+}
+
 .attack-preview {
-  opacity: 0.42;
+  opacity: 0.34;
   stroke: #182022;
-  stroke-width: 1;
+  stroke-linejoin: round;
+  stroke-width: 1.2;
 }
 
 .columns {
