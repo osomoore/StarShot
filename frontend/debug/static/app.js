@@ -7,42 +7,23 @@ const state = {
   knownCards: {},
 };
 
-const redOrders = {
-  stacks: [
-    { action_number: 1, seal_mode: "sealed", cards: [{ card_id: "move_1_a" }] },
-    { action_number: 2, seal_mode: "sealed", cards: [{ card_id: "move_1_b" }] },
-    { action_number: 3, seal_mode: "overdrive", cards: [{ card_id: "move_2_a" }] },
-  ],
-};
-
-const blueOrders = {
-  stacks: [
-    {
-      action_number: 1,
-      seal_mode: "sealed",
-      cards: [{ card_id: "attack_1_a", target_player_id: "red" }],
-    },
-    {
-      action_number: 2,
-      seal_mode: "sealed",
-      cards: [{ card_id: "attack_1_b", target_player_id: "red" }],
-    },
-    {
-      action_number: 3,
-      seal_mode: "sealed",
-      cards: [{ card_id: "attack_2_a", target_player_id: "red" }],
-    },
-  ],
-};
-
 const BOARD_RADIUS = 12;
 const HEX_SIZE = 14;
 const SQRT3 = Math.sqrt(3);
+const DEMO_MOVE_CHOICES = ["forward", "turn_left", "turn_right"];
 const SHIP_COLORS = {
   red: "#c9433f",
   blue: "#2f6fce",
   green: "#2d8b57",
   yellow: "#c49b22",
+};
+const MINI_COMPONENT_FILLS = {
+  weapon: "#f2b632",
+  engine: "#3f9963",
+  life_support: "#2f8fde",
+  bridge: "#8b5a2b",
+  default: "#a8adb2",
+  destroyed: "#c9433f",
 };
 const FACING_VECTORS = [
   [0.866, 0.5],
@@ -186,6 +167,55 @@ async function submitBuiltOrders() {
   await submitOrders(state.builderPlayerId, buildOrdersPayload());
 }
 
+async function submitDemoOrders(playerId, preferredFamily) {
+  const orders = buildDemoOrders(playerId, preferredFamily);
+  if (!orders) {
+    showError(new Error(`${playerId} cannot submit demo orders right now.`));
+    return;
+  }
+  await submitOrders(playerId, orders);
+}
+
+function buildDemoOrders(playerId, preferredFamily) {
+  const game = state.selectedState;
+  const player = game?.players?.[playerId];
+  if (!game || !player || !canSubmit(playerId)) return null;
+
+  const available = [...(player.deck || [])];
+  const opponentIds = Object.keys(game.players).filter((id) => id !== playerId);
+  const attackTargetId = opponentIds.includes("red") ? "red" : opponentIds[0];
+
+  function takeCard(family) {
+    const index = available.findIndex((card) => card.family === family);
+    if (index < 0) return null;
+    return available.splice(index, 1)[0];
+  }
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber, index) => {
+      const card = takeCard(preferredFamily) || takeCard(preferredFamily === "move" ? "attack" : "move");
+      const selection = card ? demoCardSelection(card, actionNumber, attackTargetId) : null;
+      return {
+        action_number: actionNumber,
+        seal_mode: actionNumber === 3 && card ? "overdrive" : "sealed",
+        cards: selection ? [selection] : [],
+      };
+    }),
+  };
+}
+
+function demoCardSelection(card, actionNumber, attackTargetId) {
+  const selection = {
+    card_id: card.id,
+    face: "front",
+    orientation: card.family === "move" ? DEMO_MOVE_CHOICES[actionNumber - 1] : "up",
+  };
+  if (card.family === "attack") {
+    selection.target_player_id = attackTargetId;
+  }
+  return selection;
+}
+
 function renderGames() {
   elements.gameCount.textContent = state.games.length.toString();
   elements.gamesList.replaceChildren(
@@ -237,8 +267,7 @@ function renderBoard(game) {
   if (!svg) return;
   svg.replaceChildren();
 
-  const margin = HEX_SIZE * 2.5;
-  const extent = BOARD_RADIUS * HEX_SIZE * 2 + margin;
+  const extent = BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5;
   svg.setAttribute("viewBox", `${-extent} ${-extent} ${extent * 2} ${extent * 2}`);
 
   for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q += 1) {
@@ -848,8 +877,8 @@ function applyDefaultAttackTarget(stack, cardIndex) {
 
 elements.createButton.addEventListener("click", () => createGame().catch(showError));
 elements.refreshButton.addEventListener("click", () => refreshGames().catch(showError));
-elements.redOrdersButton.addEventListener("click", () => submitOrders("red", redOrders).catch(showError));
-elements.blueOrdersButton.addEventListener("click", () => submitOrders("blue", blueOrders).catch(showError));
+elements.redOrdersButton.addEventListener("click", () => submitDemoOrders("red", "move").catch(showError));
+elements.blueOrdersButton.addEventListener("click", () => submitDemoOrders("blue", "attack").catch(showError));
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
 elements.builderPlayerSelect.addEventListener("change", (event) => {
@@ -890,15 +919,19 @@ function showCombatResultOverlay(game, previousEventCount) {
     const item = document.createElement("article");
     item.className = volley.hit ? "combat-result-item hit" : "combat-result-item miss";
     const outcome = volley.hit ? "Hit" : "Miss";
+    const attackBonus = volley.attack_bonus ?? volley.aim_bonus ?? 0;
+    const rollTotal = volley.roll + attackBonus;
     const damageText = volley.shielded
       ? `${volley.damage} blocked by shield`
       : `${volley.damage_applied} / ${volley.damage} damage`;
-    const shotText = volley.damage_shots?.length
-      ? `<span>${volley.damage_shots.map(formatDamageShot).join("; ")}</span>`
-      : "";
+    const shotText = renderDamageShotLines(volley.damage_shots || []);
     item.innerHTML = `
       <strong>${volley.attacker_id} -> ${volley.target_id}</strong>
-      <span>${outcome}: roll ${volley.roll} vs defense ${volley.defense_threshold}</span>
+      <span class="combat-result-summary">${outcome}: ${attackBonus} bonus + ${volley.roll} roll = ${rollTotal} vs ${volley.defense_threshold} final defense</span>
+      <div class="combat-result-breakdown">
+        <span>Attack: ${attackBonus} bonus + ${volley.roll} roll = ${rollTotal}</span>
+        <span>Defense: ${volley.distance ?? 0} distance + ${volley.target_movement ?? 0} move bonus + ${volley.target_defense_bonus ?? 0} modifiers = ${volley.defense_threshold}</span>
+      </div>
       <span>${damageText}</span>
       ${shotText}
     `;
@@ -909,9 +942,18 @@ function showCombatResultOverlay(game, previousEventCount) {
   overlay.classList.add("visible");
 }
 
+function renderDamageShotLines(shots) {
+  if (shots.length === 0) return "";
+  return `
+    <div class="damage-shot-list">
+      ${shots.map(formatDamageShot).join("")}
+    </div>
+  `;
+}
+
 function formatDamageShot(shot) {
-  if (!shot.destroyed) return `lane ${shot.lane} -> no intact component`;
-  return `lane ${shot.lane} -> ${formatComponentId(shot.component_id)}`;
+  const result = shot.destroyed ? formatComponentId(shot.component_id) : "No intact component";
+  return `<span>Lane ${shot.lane}: ${result}</span>`;
 }
 
 function formatComponentId(componentId) {
@@ -976,7 +1018,7 @@ function createMiniBoardCard(color, game) {
   header.className = "mini-ship-header";
   header.innerHTML = `
     <strong class="mini-ship-name" style="color: ${SHIP_COLORS[color] || '#555'}">${color.toUpperCase()}</strong>
-    <span class="mini-ship-shields">${player ? `${player.ship.shields} S` : "-"}</span>
+    <span class="mini-ship-shields">${player ? `${player.ship.shields} shields` : "-"}</span>
   `;
   card.append(header);
 
@@ -984,7 +1026,7 @@ function createMiniBoardCard(color, game) {
   svgContainer.className = "mini-ship-svg-container";
 
   const svg = svgEl("svg");
-  svg.setAttribute("viewBox", "-25 -45 50 90");
+  svg.setAttribute("viewBox", "-34 -35 68 70");
   svg.setAttribute("class", "mini-ship-svg");
 
   let layout = player?.ship?.component_layout;
@@ -995,24 +1037,21 @@ function createMiniBoardCard(color, game) {
 
   if (layout) {
     const destroyedSet = new Set(player?.ship?.destroyed_components || []);
+    renderMiniShieldRings(svg, player?.ship?.shields || 0);
     
     layout.forEach(comp => {
       const size = 7;
       const x = size * 1.5 * comp.q;
       const y = size * SQRT3 * (comp.r + comp.q / 2);
 
-      let stroke = "#7f8c8d";
-      if (comp.type === "engine") stroke = "#3f9963";
-      else if (comp.type === "weapon") stroke = "#c9433f";
-      else if (comp.type === "life_support") stroke = "#e38627";
-      else if (comp.type === "bridge") stroke = "#8b5a2b";
-
       const isDestroyed = destroyedSet.has(comp.id);
-      const fill = isDestroyed ? "#c9433f" : "rgba(255, 255, 255, 0.85)";
+      const fill = isDestroyed
+        ? MINI_COMPONENT_FILLS.destroyed
+        : MINI_COMPONENT_FILLS[comp.type] || MINI_COMPONENT_FILLS.default;
 
       const poly = svgEl("polygon");
       poly.setAttribute("points", getMiniHexPoints(x, y, size).map(p => p.join(",")).join(" "));
-      poly.setAttribute("stroke", stroke);
+      poly.setAttribute("stroke", "#000000");
       poly.setAttribute("stroke-width", "1");
       poly.setAttribute("fill", fill);
       poly.setAttribute("class", `mini-hex-cell ${comp.type} ${isDestroyed ? "destroyed" : ""}`);
@@ -1028,6 +1067,22 @@ function createMiniBoardCard(color, game) {
   svgContainer.append(svg);
   card.append(svgContainer);
   return card;
+}
+
+function renderMiniShieldRings(svg, shieldCount) {
+  [0, 1].forEach((index) => {
+    const ring = svgEl("circle");
+    const isActive = shieldCount > index;
+    ring.setAttribute("cx", "0");
+    ring.setAttribute("cy", "0");
+    ring.setAttribute("r", String(32 - index * 3));
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", isActive ? "#2f8fde" : "#c8cfcc");
+    ring.setAttribute("stroke-width", isActive ? "1.6" : "1.2");
+    ring.setAttribute("stroke-dasharray", isActive ? "" : "3 3");
+    ring.setAttribute("opacity", isActive ? "0.95" : "0.5");
+    svg.append(ring);
+  });
 }
 
 function getMiniHexPoints(x, y, size) {
