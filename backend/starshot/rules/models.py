@@ -66,6 +66,7 @@ class ShipState:
     r: int = 0
     facing: int = 0
     shields: int = 2
+    damage_taken: int = 0
     destroyed_components: set[str] = field(default_factory=set)
     destroyed: bool = False
     movement_this_action: int = 0
@@ -96,6 +97,8 @@ class GameState:
     round_number: int = 1
     phase: GamePhase = GamePhase.GIVE_ORDERS
     starting_player_id: str = ""
+    rng_seed: int | None = None
+    rng_step: int = 0
     event_log: list[dict] = field(default_factory=list)
     result: GameResult | None = None
 

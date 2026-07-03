@@ -4,10 +4,11 @@ from copy import deepcopy
 from random import Random
 
 from starshot.rules.decks import base_card_by_id, create_base_deck
-from starshot.rules.hex import corner_start, move_forward, turn_left, turn_right, u_turn
+from starshot.rules.hex import corner_start, hex_distance, move_forward, turn_left, turn_right, u_turn
 from starshot.rules.models import (
     ActionStack,
     Card,
+    CardFamily,
     GameConfig,
     GamePhase,
     GameResult,
@@ -36,14 +37,15 @@ def create_initial_state(config: GameConfig) -> GameState:
     if len(player_ids) < 2 or len(player_ids) > 4:
         raise RulesError("StarShot requires 2 to 4 unique players.")
 
-    rng = Random(config.seed)
-    starting_player_id = rng.choice(player_ids)
+    setup_rng = Random(config.seed)
+    starting_player_id = setup_rng.choice(player_ids)
+    rng_seed = config.seed if config.seed is not None else setup_rng.randrange(1, 2**31)
     players = {
         player_id: PlayerState(id=player_id, deck=create_base_deck(), ship=_starting_ship(index))
         for index, player_id in enumerate(player_ids)
     }
 
-    state = GameState(players=players, starting_player_id=starting_player_id)
+    state = GameState(players=players, starting_player_id=starting_player_id, rng_seed=rng_seed)
     state.event_log.append(
         {
             "type": "game_created",
@@ -71,7 +73,7 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
 
     next_state = deepcopy(state)
     player = _player(next_state, player_id)
-    _validate_orders(player, orders)
+    _validate_orders(next_state, player, orders)
     player.prepared_orders = orders
     _remove_ordered_cards_from_deck(player, orders)
     next_state.event_log.append(
@@ -149,6 +151,7 @@ def _resolve_cooldown(state: GameState) -> None:
 
 def _resolve_action_phase(state: GameState) -> None:
     action_number = ACTION_PHASES.index(state.phase) + 1
+    revealed_stacks: dict[str, ActionStack] = {}
     for player in state.players.values():
         player.ship.movement_this_action = 0
         player.ship.defense_bonus_this_action = 0
@@ -157,6 +160,7 @@ def _resolve_action_phase(state: GameState) -> None:
         if player.eliminated or player.prepared_orders is None:
             continue
         stack = player.prepared_orders.stacks[action_number - 1]
+        revealed_stacks[player.id] = stack
         state.event_log.append(
             {
                 "type": "action_revealed",
@@ -177,16 +181,15 @@ def _resolve_action_phase(state: GameState) -> None:
             }
         )
         _resolve_stack_movement(state, player, action_number, stack)
-        _move_resolved_stack_cards(state, player, action_number, stack)
 
-    state.event_log.append(
-        {
-            "type": "combat_resolution_placeholder",
-            "round": state.round_number,
-            "action_number": action_number,
-            "message": "Combat resolution is not implemented yet.",
-        }
-    )
+    _resolve_combat(state, action_number, revealed_stacks)
+
+    for player_id in _player_order_from_starting_player(state):
+        player = state.players[player_id]
+        stack = revealed_stacks.get(player_id)
+        if stack is not None:
+            _move_resolved_stack_cards(state, player, action_number, stack)
+
     _change_phase(state, NEXT_PHASE[state.phase])
 
 
@@ -265,6 +268,123 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
         )
 
 
+def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[str, ActionStack]) -> None:
+    shielded_target_ids: set[str] = set()
+    resolved_any = False
+    for attacker_id in _player_order_from_starting_player(state):
+        attacker = state.players[attacker_id]
+        if attacker.eliminated:
+            continue
+        stack = revealed_stacks.get(attacker_id)
+        if stack is None:
+            continue
+
+        attack_cards = _attack_cards_for_stack(stack)
+        if not attack_cards:
+            continue
+
+        target_id = _target_player_id_for_attack(stack)
+        if target_id is None:
+            continue
+        target = _player(state, target_id)
+        if target.eliminated or target.ship.destroyed:
+            state.event_log.append(
+                {
+                    "type": "volley_skipped",
+                    "round": state.round_number,
+                    "action_number": action_number,
+                    "attacker_id": attacker_id,
+                    "target_id": target_id,
+                    "reason": "target_not_active",
+                }
+            )
+            resolved_any = True
+            continue
+
+        damage = sum(
+            card.value + (1 if stack.seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+            for card in attack_cards
+        )
+        distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
+        defense_threshold = distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
+        roll = _roll_2d12(state)
+        hit = roll >= defense_threshold
+        event = {
+            "type": "volley_resolved",
+            "round": state.round_number,
+            "action_number": action_number,
+            "attacker_id": attacker_id,
+            "target_id": target_id,
+            "card_ids": [card.id for card in attack_cards],
+            "damage": damage,
+            "distance": distance,
+            "target_movement": target.ship.movement_this_action,
+            "target_defense_bonus": target.ship.defense_bonus_this_action,
+            "defense_threshold": defense_threshold,
+            "roll": roll,
+            "hit": hit,
+            "shielded": False,
+            "damage_applied": 0,
+            "vp_awarded": 0,
+        }
+
+        if hit and (target.ship.shields > 0 or target_id in shielded_target_ids):
+            if target_id not in shielded_target_ids:
+                target.ship.shields -= 1
+                shielded_target_ids.add(target_id)
+            attacker.victory_points += 1
+            event["shielded"] = True
+            event["vp_awarded"] = 1
+        elif hit:
+            target.ship.damage_taken += damage
+            attacker.victory_points += 1
+            event["damage_applied"] = damage
+            event["target_damage_taken"] = target.ship.damage_taken
+            event["vp_awarded"] = 1
+
+        state.event_log.append(event)
+        resolved_any = True
+
+    if not resolved_any:
+        state.event_log.append(
+            {
+                "type": "combat_resolved",
+                "round": state.round_number,
+                "action_number": action_number,
+                "message": "No attacks were resolved.",
+            }
+        )
+
+
+def _target_player_id_for_attack(stack: ActionStack) -> str | None:
+    for selection in stack.cards:
+        card = base_card_by_id(selection.card_id)
+        if card.family == CardFamily.ATTACK:
+            return selection.target_player_id
+    return None
+
+
+def _attack_cards_for_stack(stack: ActionStack) -> list[Card]:
+    attack_cards: list[Card] = []
+    for selection in stack.cards:
+        card = base_card_by_id(selection.card_id)
+        if card.family == CardFamily.ATTACK:
+            attack_cards.append(card)
+    return attack_cards
+
+
+def _roll_2d12(state: GameState) -> int:
+    if state.rng_seed is None:
+        state.rng_seed = 0
+    rng = Random(state.rng_seed)
+    for _ in range(state.rng_step):
+        rng.randint(1, 12)
+    first = rng.randint(1, 12)
+    second = rng.randint(1, 12)
+    state.rng_step += 2
+    return first + second
+
+
 def _resolve_award_baubles(state: GameState) -> None:
     state.event_log.append(
         {
@@ -319,6 +439,12 @@ def _next_starting_player_id(state: GameState) -> str:
     return player_ids[(current_index + 1) % len(player_ids)]
 
 
+def _player_order_from_starting_player(state: GameState) -> tuple[str, ...]:
+    player_ids = tuple(state.players)
+    current_index = player_ids.index(state.starting_player_id)
+    return player_ids[current_index:] + player_ids[:current_index]
+
+
 def _change_phase(state: GameState, phase: GamePhase) -> None:
     state.phase = phase
     state.event_log.append({"type": "phase_changed", "phase": phase})
@@ -336,7 +462,7 @@ def _player(state: GameState, player_id: str) -> PlayerState:
         raise RulesError(f"Unknown player: {player_id}") from exc
 
 
-def _validate_orders(player: PlayerState, orders: OrdersSubmission) -> None:
+def _validate_orders(state: GameState, player: PlayerState, orders: OrdersSubmission) -> None:
     if len(orders.stacks) != 3:
         raise RulesError("Exactly three action stacks are required.")
 
@@ -348,10 +474,16 @@ def _validate_orders(player: PlayerState, orders: OrdersSubmission) -> None:
     available = {card.id: card for card in player.deck}
     used_card_ids: set[str] = set()
     for stack in orders.stacks:
-        _validate_stack(stack, available, used_card_ids)
+        _validate_stack(state, player, stack, available, used_card_ids)
 
 
-def _validate_stack(stack: ActionStack, available: dict[str, Card], used_card_ids: set[str]) -> None:
+def _validate_stack(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    available: dict[str, Card],
+    used_card_ids: set[str],
+) -> None:
     if len(stack.cards) > 2:
         raise RulesError("An action stack may contain at most two command cards.")
 
@@ -368,6 +500,12 @@ def _validate_stack(stack: ActionStack, available: dict[str, Card], used_card_id
         if card.family.value == "attack":
             if not selection.target_player_id:
                 raise RulesError("Attack cards require a target player.")
+            if selection.target_player_id == "":
+                raise RulesError("Attack cards require a target player.")
+            if selection.target_player_id == player.id:
+                raise RulesError("Attack cards must target an enemy player.")
+            if selection.target_player_id not in state.players:
+                raise RulesError(f"Unknown attack target: {selection.target_player_id}")
             target_player_ids.add(selection.target_player_id)
 
     if len(families) > 1:

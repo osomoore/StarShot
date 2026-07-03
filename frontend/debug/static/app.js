@@ -4,6 +4,7 @@ const state = {
   selectedState: null,
   builderPlayerId: "red",
   builderDraft: createEmptyDraft(),
+  knownCards: {},
 };
 
 const redOrders = {
@@ -81,6 +82,7 @@ const elements = {
   playersView: document.querySelector("#playersView"),
   eventsView: document.querySelector("#eventsView"),
   stateJson: document.querySelector("#stateJson"),
+  combatOverlay: null,
 };
 
 function createEmptyDraft() {
@@ -124,14 +126,25 @@ async function createGame() {
     body: JSON.stringify({ player_ids: ["red", "blue"], seed: 3 }),
   });
   state.selectedGameId = payload.game_id;
+  state.builderDraft = createEmptyDraft();
+  state.knownCards = {};
   await refreshGames();
 }
 
 async function selectGame(gameId) {
+  const previousGameId = state.selectedGameId;
+  const previousPhase = state.selectedState?.phase;
   const revealOrders = elements.revealOrdersToggle.checked;
   const payload = await api(`/api/games/${gameId}?reveal_orders=${revealOrders}`);
   state.selectedGameId = gameId;
   state.selectedState = payload.state;
+  if (previousGameId !== gameId) {
+    state.builderDraft = createEmptyDraft();
+    state.knownCards = {};
+  } else if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
+    state.builderDraft = createEmptyDraft();
+  }
+  rememberVisibleCards(payload.state);
   syncBuilderPlayer();
   renderAll();
 }
@@ -148,8 +161,15 @@ async function submitOrders(playerId, orders) {
 
 async function resolveNextStep() {
   if (!state.selectedGameId) return;
+  const previousPhase = state.selectedState?.phase;
+  const previousEventCount = state.selectedState?.event_log?.length ?? 0;
   const payload = await api(`/api/games/${state.selectedGameId}/resolve`, { method: "POST" });
   state.selectedState = payload.state;
+  rememberVisibleCards(payload.state);
+  if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
+    state.builderDraft = createEmptyDraft();
+  }
+  showCombatResultOverlay(payload.state, previousEventCount);
   await refreshGames();
 }
 
@@ -278,31 +298,63 @@ function renderShipToken(svg, player, className) {
 
 function renderActionPreview(svg, game) {
   const player = game?.players?.[state.builderPlayerId];
-  if (!player || player.has_submitted_orders || game.phase !== "give_orders") return;
+  if (!player || !shouldShowBuilderDraft(game, player)) return;
 
-  const cardById = Object.fromEntries(player.deck.map((card) => [card.id, card]));
+  const cardById = cardLookupForPlayer(player);
   const preview = {
     q: player.ship.q,
     r: player.ship.r,
     facing: player.ship.facing,
   };
 
+  const firstUnresolvedStack = firstUnresolvedStackIndex(game.phase);
   state.builderDraft.stacks.forEach((stack, stackIndex) => {
-    stack.cards.forEach((cardId, cardIndex) => {
-      if (!cardId) return;
-      const card = cardById[cardId];
-      if (!card) return;
+    if (stackIndex < firstUnresolvedStack) return;
 
-      const label = `A${stackIndex + 1}.${cardIndex + 1}`;
-      if (card.family === "move") {
-        applyPreviewMove(preview, card.value + (stack.seal_mode === "overdrive" ? 1 : 0), stack.move_choices[cardIndex]);
-        drawPositionPreview(svg, preview, label);
-      } else if (card.family === "attack") {
-        const target = game.players[stack.targets[cardIndex]];
-        if (target) drawAttackPreview(svg, preview, target, label);
+    const selections = stack.cards
+      .map((cardId, cardIndex) => ({ card: cardById[cardId], cardIndex }))
+      .filter((selection) => selection.card);
+    const family = selections[0]?.card.family;
+    if (family === "move") {
+      selections.forEach(({ card, cardIndex }) => {
+        const before = { ...preview };
+        applyPreviewMove(
+          preview,
+          previewCardValue(card, stack.seal_mode),
+          stack.move_choices[cardIndex],
+        );
+        drawMovementPathPreview(svg, before, preview);
+        drawPositionPreview(svg, preview, `A${stackIndex + 1}.${cardIndex + 1}`);
+      });
+    } else if (family === "attack") {
+      const firstAttack = selections.find(({ card }) => card.family === "attack");
+      const target = game.players[stack.targets[firstAttack.cardIndex]];
+      if (target) {
+        const damage = selections
+          .filter(({ card }) => card.family === "attack")
+          .reduce((total, { card }) => total + previewCardValue(card, stack.seal_mode), 0);
+        drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, damage);
       }
-    });
+    }
   });
+}
+
+function shouldShowBuilderDraft(game, player) {
+  const hasDraftCards = state.builderDraft.stacks.some((stack) => stack.cards.some(Boolean));
+  if (!hasDraftCards) return false;
+  if (game.phase === "give_orders") return !player.has_submitted_orders || hasDraftCards;
+  return game.phase !== "complete";
+}
+
+function firstUnresolvedStackIndex(phase) {
+  if (phase === "action_2") return 1;
+  if (phase === "action_3") return 2;
+  if (phase === "award_baubles" || phase === "cleanup") return 3;
+  return 0;
+}
+
+function previewCardValue(card, sealMode) {
+  return card.value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
 }
 
 function applyPreviewMove(preview, distance, choice) {
@@ -318,6 +370,30 @@ function applyPreviewMove(preview, distance, choice) {
   } else if (choice === "u_turn") {
     preview.facing = (preview.facing + 3) % 6;
   }
+}
+
+function drawMovementPathPreview(svg, before, after) {
+  if (before.q === after.q && before.r === after.r) return;
+  const [x1, y1] = axialToPixel(before.q, before.r);
+  const [x2, y2] = axialToPixel(after.q, after.r);
+  const group = svgEl("g");
+  group.setAttribute("class", "move-path-preview");
+
+  const shadow = svgEl("line");
+  shadow.setAttribute("class", "move-path-shadow");
+  shadow.setAttribute("x1", x1);
+  shadow.setAttribute("y1", y1);
+  shadow.setAttribute("x2", x2);
+  shadow.setAttribute("y2", y2);
+
+  const path = svgEl("line");
+  path.setAttribute("x1", x1);
+  path.setAttribute("y1", y1);
+  path.setAttribute("x2", x2);
+  path.setAttribute("y2", y2);
+
+  group.append(shadow, path);
+  svg.append(group);
 }
 
 function drawPositionPreview(svg, preview, labelText, burstColor = null) {
@@ -355,8 +431,34 @@ function drawPositionPreview(svg, preview, labelText, burstColor = null) {
   svg.append(group);
 }
 
-function drawAttackPreview(svg, shooterPreview, target, labelText) {
-  drawPositionPreview(svg, shooterPreview, labelText, SHIP_COLORS[target.id] || "#6f5ab8");
+function drawAttackPreview(svg, shooterPreview, target, labelText, damage) {
+  const [sourceX, sourceY] = axialToPixel(shooterPreview.q, shooterPreview.r);
+  const [targetX, targetY] = axialToPixel(target.ship.q, target.ship.r);
+  const color = SHIP_COLORS[target.id] || "#6f5ab8";
+  const defense = hexDistance(shooterPreview.q, shooterPreview.r, target.ship.q, target.ship.r);
+  const group = svgEl("g");
+  group.setAttribute("class", "volley-preview");
+
+  const line = svgEl("line");
+  line.setAttribute("x1", sourceX);
+  line.setAttribute("y1", sourceY);
+  line.setAttribute("x2", targetX);
+  line.setAttribute("y2", targetY);
+  line.setAttribute("stroke", color);
+
+  const arrow = svgEl("polygon");
+  arrow.setAttribute("class", "volley-arrowhead");
+  arrow.setAttribute("fill", color);
+  arrow.setAttribute("points", arrowheadPoints(sourceX, sourceY, targetX, targetY).map((point) => point.join(",")).join(" "));
+
+  const label = svgEl("text");
+  label.setAttribute("x", (sourceX + targetX) / 2);
+  label.setAttribute("y", (sourceY + targetY) / 2 - HEX_SIZE * 0.45);
+  label.textContent = `${labelText} DEF ${defense} DMG ${damage}`;
+
+  group.append(line, arrow, label);
+  svg.append(group);
+  drawPositionPreview(svg, shooterPreview, labelText);
 }
 
 function burstPoints(x, y, outerRadius, innerRadius) {
@@ -367,6 +469,31 @@ function burstPoints(x, y, outerRadius, innerRadius) {
   });
 }
 
+function arrowheadPoints(sourceX, sourceY, targetX, targetY) {
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const tipX = targetX - ux * HEX_SIZE * 0.74;
+  const tipY = targetY - uy * HEX_SIZE * 0.74;
+  const baseX = tipX - ux * HEX_SIZE * 0.72;
+  const baseY = tipY - uy * HEX_SIZE * 0.72;
+  const perpX = -uy * HEX_SIZE * 0.35;
+  const perpY = ux * HEX_SIZE * 0.35;
+  return [
+    [tipX, tipY],
+    [baseX + perpX, baseY + perpY],
+    [baseX - perpX, baseY - perpY],
+  ];
+}
+
+function hexDistance(aQ, aR, bQ, bR) {
+  const aS = -aQ - aR;
+  const bS = -bQ - bR;
+  return Math.max(Math.abs(aQ - bQ), Math.abs(aR - bR), Math.abs(aS - bS));
+}
+
 function renderPlayers(game) {
   if (!game) {
     elements.playersView.replaceChildren();
@@ -375,9 +502,6 @@ function renderPlayers(game) {
   const rows = Object.values(game.players).map((player) => {
     const row = document.createElement("article");
     row.className = player.has_submitted_orders ? "player-row orders-ready" : "player-row";
-    const destroyedComponents = player.ship.destroyed_components.length
-      ? player.ship.destroyed_components.join(", ")
-      : "None";
     row.innerHTML = `
       <div>
         <h3>${player.id}</h3>
@@ -391,7 +515,7 @@ function renderPlayers(game) {
         <div><dt>Hex</dt><dd>${player.ship.q}, ${player.ship.r}</dd></div>
         <div><dt>Facing</dt><dd>${player.ship.facing}</dd></div>
         <div><dt>Move</dt><dd>${player.ship.movement_this_action}</dd></div>
-        <div><dt>Damage</dt><dd>${destroyedComponents}</dd></div>
+        <div><dt>Damage</dt><dd>${player.ship.damage_taken ?? 0}</dd></div>
       </dl>
     `;
     return row;
@@ -418,6 +542,46 @@ function syncBuilderPlayer() {
   }
 }
 
+function rememberVisibleCards(game) {
+  Object.values(game?.players || {}).forEach((player) => {
+    [...(player.deck || []), ...(player.overheat || [])].forEach((card) => {
+      state.knownCards[card.id] = card;
+    });
+    player.prepared_orders?.stacks?.forEach((stack) => {
+      stack.cards.forEach((selection) => {
+        const card = state.knownCards[selection.card_id];
+        if (card) return;
+        state.knownCards[selection.card_id] = inferCardFromId(selection.card_id);
+      });
+    });
+  });
+}
+
+function cardLookupForPlayer(player) {
+  const visibleCards = Object.fromEntries([...(player?.deck || []), ...(player?.overheat || [])].map((card) => [card.id, card]));
+  return { ...state.knownCards, ...visibleCards };
+}
+
+function cardsForBuilder(player) {
+  const byId = cardLookupForPlayer(player);
+  const cards = [...(player?.deck || [])];
+  state.builderDraft.stacks.forEach((stack) => {
+    stack.cards.forEach((cardId) => {
+      if (cardId && byId[cardId] && !cards.some((card) => card.id === cardId)) {
+        cards.push(byId[cardId]);
+      }
+    });
+  });
+  return cards;
+}
+
+function inferCardFromId(cardId) {
+  const family = cardId.startsWith("attack") ? "attack" : "move";
+  const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
+  const name = family === "attack" ? `Targeted Attack ${value}` : `Controlled Move ${value}`;
+  return { id: cardId, name, family, value, is_base: true };
+}
+
 function renderOrdersBuilder(game) {
   renderBuilderPlayerSelect(game);
   elements.ordersBuilderView.replaceChildren();
@@ -428,10 +592,11 @@ function renderOrdersBuilder(game) {
   }
 
   const player = game.players[state.builderPlayerId];
-  const availableCards = player?.deck || [];
+  const availableCards = cardsForBuilder(player);
   const validation = validateBuiltOrders();
+  const readOnly = !canSubmit(state.builderPlayerId);
   const stacks = state.builderDraft.stacks.map((stack, index) =>
-    renderActionStack(stack, index, availableCards, game),
+    renderActionStack(stack, index, availableCards, game, readOnly),
   );
   elements.ordersBuilderView.replaceChildren(...stacks);
   elements.ordersPreview.textContent = JSON.stringify(buildOrdersPayload(), null, 2);
@@ -453,10 +618,10 @@ function renderBuilderPlayerSelect(game) {
   elements.builderPlayerSelect.disabled = players.length === 0;
 }
 
-function renderActionStack(stack, stackIndex, availableCards, game) {
+function renderActionStack(stack, stackIndex, availableCards, game, readOnly) {
   const cardById = Object.fromEntries(availableCards.map((card) => [card.id, card]));
   const section = document.createElement("section");
-  section.className = "order-stack";
+  section.className = readOnly ? "order-stack readonly" : "order-stack";
 
   const header = document.createElement("div");
   header.className = "order-stack-header";
@@ -464,7 +629,7 @@ function renderActionStack(stack, stackIndex, availableCards, game) {
     <h3>Action ${stack.action_number}</h3>
     <label>
       Seal
-      <select data-stack="${stackIndex}" data-field="seal_mode">
+      <select data-stack="${stackIndex}" data-field="seal_mode"${readOnly ? " disabled" : ""}>
         <option value="sealed"${stack.seal_mode === "sealed" ? " selected" : ""}>Sealed</option>
         <option value="overdrive"${stack.seal_mode === "overdrive" ? " selected" : ""}>Overdrive</option>
       </select>
@@ -473,12 +638,12 @@ function renderActionStack(stack, stackIndex, availableCards, game) {
   section.append(header);
 
   for (let cardIndex = 0; cardIndex < 2; cardIndex += 1) {
-    section.append(renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game));
+    section.append(renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game, readOnly));
   }
   return section;
 }
 
-function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game) {
+function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game, readOnly) {
   const slot = document.createElement("div");
   slot.className = "card-slot";
   const selectedCard = cardById[stack.cards[cardIndex]];
@@ -509,7 +674,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
       ? `
         <label class="slot-secondary-control">
           Target
-          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id">
+          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id"${readOnly ? " disabled" : ""}>
             ${targetOptions}
           </select>
         </label>
@@ -518,7 +683,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
         <label class="slot-secondary-control">
           Direction
           <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="move_choice"${
-            selectedCard?.family === "move" ? "" : " disabled"
+            selectedCard?.family === "move" && !readOnly ? "" : " disabled"
           }>
             <option value="forward"${stack.move_choices[cardIndex] === "forward" ? " selected" : ""}>Forward</option>
             <option value="turn_left"${stack.move_choices[cardIndex] === "turn_left" ? " selected" : ""}>Turn Left</option>
@@ -531,7 +696,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   slot.innerHTML = `
     <label class="slot-card-control">
       Card ${cardIndex + 1}
-      <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="card_id">
+      <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="card_id"${readOnly ? " disabled" : ""}>
         ${cardOptions}
       </select>
     </label>
@@ -542,7 +707,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
 
 function buildOrdersPayload() {
   const player = state.selectedState?.players?.[state.builderPlayerId];
-  const cardById = Object.fromEntries((player?.deck || []).map((card) => [card.id, card]));
+  const cardById = cardLookupForPlayer(player);
   return {
     stacks: state.builderDraft.stacks.map((stack) => ({
       action_number: stack.action_number,
@@ -624,7 +789,7 @@ function updateBuilderDraftFromControl(target) {
 
 function applyDefaultAttackTarget(stack, cardIndex) {
   const player = state.selectedState?.players?.[state.builderPlayerId];
-  const card = player?.deck?.find((candidate) => candidate.id === stack.cards[cardIndex]);
+  const card = cardLookupForPlayer(player)[stack.cards[cardIndex]];
   const opponents = Object.keys(state.selectedState?.players || {}).filter(
     (playerId) => playerId !== state.builderPlayerId,
   );
@@ -653,6 +818,70 @@ elements.revealOrdersToggle.addEventListener("change", () => {
 
 function showError(error) {
   alert(error.message);
+}
+
+function showCombatResultOverlay(game, previousEventCount) {
+  const volleys = latestCombatVolleys(game, previousEventCount);
+  if (volleys.length === 0) return;
+
+  const overlay = combatOverlayElement();
+  const actionNumber = volleys[0].action_number;
+  overlay.replaceChildren();
+
+  const panel = document.createElement("section");
+  panel.className = "combat-result-panel";
+  panel.innerHTML = `
+    <div class="combat-result-header">
+      <span>Action ${actionNumber}</span>
+      <button type="button" aria-label="Dismiss combat result">&times;</button>
+    </div>
+    <div class="combat-result-list"></div>
+  `;
+  const list = panel.querySelector(".combat-result-list");
+  volleys.forEach((volley) => {
+    const item = document.createElement("article");
+    item.className = volley.hit ? "combat-result-item hit" : "combat-result-item miss";
+    const outcome = volley.hit ? "Hit" : "Miss";
+    const damageText = volley.shielded
+      ? `${volley.damage} blocked by shield`
+      : `${volley.damage_applied} / ${volley.damage} damage`;
+    item.innerHTML = `
+      <strong>${volley.attacker_id} -> ${volley.target_id}</strong>
+      <span>${outcome}: roll ${volley.roll} vs defense ${volley.defense_threshold}</span>
+      <span>${damageText}</span>
+    `;
+    list.append(item);
+  });
+  panel.querySelector("button").addEventListener("click", hideCombatResultOverlay);
+  overlay.append(panel);
+  overlay.classList.add("visible");
+}
+
+function latestCombatVolleys(game, previousEventCount) {
+  const volleys = (game?.event_log || [])
+    .slice(previousEventCount)
+    .filter((event) => event.type === "volley_resolved");
+  const latest = volleys.at(-1);
+  if (!latest) return [];
+  return volleys.filter(
+    (event) => event.round === latest.round && event.action_number === latest.action_number,
+  );
+}
+
+function combatOverlayElement() {
+  if (elements.combatOverlay) return elements.combatOverlay;
+  const overlay = document.createElement("div");
+  overlay.className = "combat-result-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) hideCombatResultOverlay();
+  });
+  document.body.append(overlay);
+  elements.combatOverlay = overlay;
+  return overlay;
+}
+
+function hideCombatResultOverlay() {
+  elements.combatOverlay?.classList.remove("visible");
 }
 
 refreshGames().catch(showError);

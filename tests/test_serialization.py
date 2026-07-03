@@ -23,6 +23,9 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(restored.players["red"].ship.q, -9)
         self.assertEqual(restored.players["red"].ship.r, 0)
         self.assertEqual(restored.players["red"].ship.facing, 0)
+        self.assertEqual(restored.players["red"].ship.damage_taken, 0)
+        self.assertEqual(restored.rng_seed, state.rng_seed)
+        self.assertEqual(restored.rng_step, state.rng_step)
 
     def test_hidden_orders_can_be_suppressed(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=5))

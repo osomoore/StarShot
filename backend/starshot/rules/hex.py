@@ -20,6 +20,12 @@ def move_forward(q: int, r: int, facing: int, distance: int) -> tuple[int, int]:
     return q + dq * distance, r + dr * distance
 
 
+def hex_distance(a_q: int, a_r: int, b_q: int, b_r: int) -> int:
+    a_s = -a_q - a_r
+    b_s = -b_q - b_r
+    return max(abs(a_q - b_q), abs(a_r - b_r), abs(a_s - b_s))
+
+
 def turn_left(facing: int) -> int:
     return (facing + 1) % 6
 

@@ -20,6 +20,8 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         "round_number": state.round_number,
         "phase": state.phase.value,
         "starting_player_id": state.starting_player_id,
+        "rng_seed": state.rng_seed,
+        "rng_step": state.rng_step,
         "players": {
             player_id: player_to_dict(player, reveal_orders=reveal_orders)
             for player_id, player in state.players.items()
@@ -35,6 +37,8 @@ def state_from_dict(data: dict) -> GameState:
         round_number=data["round_number"],
         phase=GamePhase(data["phase"]),
         starting_player_id=data["starting_player_id"],
+        rng_seed=data.get("rng_seed"),
+        rng_step=data.get("rng_step", 0),
         event_log=list(data.get("event_log", [])),
         result=result_from_dict(data["result"]) if data.get("result") else None,
     )
@@ -97,6 +101,7 @@ def ship_to_dict(ship: ShipState) -> dict:
         "r": ship.r,
         "facing": ship.facing,
         "shields": ship.shields,
+        "damage_taken": ship.damage_taken,
         "destroyed_components": sorted(ship.destroyed_components),
         "destroyed": ship.destroyed,
         "movement_this_action": ship.movement_this_action,
@@ -110,6 +115,7 @@ def ship_from_dict(data: dict) -> ShipState:
         r=data.get("r", 0),
         facing=data.get("facing", 0),
         shields=data.get("shields", 2),
+        damage_taken=data.get("damage_taken", 0),
         destroyed_components=set(data.get("destroyed_components", [])),
         destroyed=data.get("destroyed", False),
         movement_this_action=data.get("movement_this_action", 0),
