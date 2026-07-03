@@ -31,6 +31,16 @@ button:disabled {
   cursor: not-allowed;
 }
 
+select {
+  border: 1px solid #b8c2be;
+  border-radius: 6px;
+  color: #182022;
+  font: inherit;
+  min-height: 36px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -143,6 +153,68 @@ button:disabled {
   min-height: 38px;
 }
 
+.panel-note {
+  color: #66716f;
+  margin: 4px 0 0;
+}
+
+.orders-builder {
+  display: grid;
+  gap: 12px;
+}
+
+.builder-controls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(150px, 1fr) auto;
+}
+
+.builder-controls label,
+.card-slot label,
+.order-stack-header label {
+  color: #66716f;
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.order-stacks {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.order-stack {
+  border: 1px solid #d8ddda;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.order-stack-header {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr minmax(120px, 150px);
+}
+
+.order-stack h3 {
+  margin: 0;
+}
+
+.card-slot {
+  border-top: 1px solid #e6e9e6;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.builder-preview pre {
+  max-height: 220px;
+}
+
 .columns {
   display: grid;
   gap: 16px;
@@ -214,7 +286,9 @@ pre {
   .topbar,
   .workspace,
   .columns,
-  .summary-strip {
+  .summary-strip,
+  .order-stacks,
+  .builder-controls {
     display: block;
   }
 

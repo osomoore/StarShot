@@ -57,6 +57,27 @@
             </label>
           </div>
 
+          <section class="panel orders-builder" aria-label="Orders builder">
+            <div class="panel-header">
+              <div>
+                <h2>Orders Builder</h2>
+                <p class="panel-note">Build three hidden action stacks from the selected player's available deck.</p>
+              </div>
+              <div class="builder-controls">
+                <label>
+                  Player
+                  <select id="builderPlayerSelect"></select>
+                </label>
+                <button id="submitBuiltOrdersButton" type="button" disabled>Submit Built Orders</button>
+              </div>
+            </div>
+            <div id="ordersBuilderView" class="order-stacks"></div>
+            <div class="builder-preview">
+              <span class="label">Generated Orders JSON</span>
+              <pre id="ordersPreview">{}</pre>
+            </div>
+          </section>
+
           <div class="columns">
             <section class="panel">
               <div class="panel-header">
