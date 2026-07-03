@@ -21,6 +21,10 @@ obj/
 
 # Dependency folders
 node_modules/
+.venv/
+.tmp_pdf_extract/
+__pycache__/
+*.py[cod]
 
 # Environment files
 .env

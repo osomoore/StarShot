@@ -1,0 +1,507 @@
+StarShot rules text extraction
+Source: docs/rules/rules_0.1.pdf
+Extractor: pdfplumber 0.11.10
+
+
+===== PAGE 1 =====
+StarShot Prototype
+1. Game Overview............................................................................................................................................... 2
+2. Components.................................................................................................................................................... 2
+3. Setup................................................................................................................................................................ 2
+4. Round Structure.............................................................................................................................................. 3
+Give Orders..................................................................................................................................................... 3
+Cooldown........................................................................................................................................................ 4
+Resolve Actions...............................................................................................................................................4
+Award Baubles................................................................................................................................................ 4
+Cleanup........................................................................................................................................................... 4
+5. Ending the Game.............................................................................................................................................4
+6. Cards................................................................................................................................................................ 5
+Command Cards............................................................................................................................................. 5
+Base Deck Cards............................................................................................................................................ 5
+Targeted Attack..........................................................................................................................................5
+Desperate Targeted Attacks................................................................................................................ 5
+Controlled Move........................................................................................................................................ 5
+Desperation Deck Cards................................................................................................................................. 6
+Drawing a Desperation Card..................................................................................................................... 6
+Desperation Cards Types and Appearance...............................................................................................6
+Desperation Card’s Basic Faces............................................................................................................... 6
+Basic Moves........................................................................................................................................ 6
+Basic Attack......................................................................................................................................... 6
+Desperation Card’s Desperate Faces....................................................................................................... 7
+Desperate Attack Mod......................................................................................................................... 7
+Desperate Move.................................................................................................................................. 7
+Especially Desperate...........................................................................................................................7
+Sealed / Overdrive Cards................................................................................................................................ 7
+7. Combat Stage.................................................................................................................................................. 8
+Determine the Volley................................................................................................................................. 8
+Attack Roll................................................................................................................................................. 8
+Shields and Damage................................................................................................................................. 8
+Unshielded Hits......................................................................................................................................... 9
+Gaining Desperation Under Attack............................................................................................................ 9
+Damage Location...................................................................................................................................... 9
+Ship Diagram....................................................................................................................................... 9
+Ship Destruction...................................................................................................................................... 10
+8. Baubles...........................................................................................................................................................11
+9. Victory Points................................................................................................................................................ 11
+10. Card Listing..................................................................................................................................................11
+Base Orders Decks....................................................................................................................................... 12
+Desperation Deck..........................................................................................................................................12
+11. Expansions.................................................................................................................................................. 13
+StarCommand............................................................................................................................................... 14
+
+===== PAGE 2 =====
+Sunjammer Captains............................................................................................................................... 14
+Starfall Events......................................................................................................................................... 14
+1. Game Overview
+In the distant future pirate crews sail the solar winds in Sunjammers, roaming between cryptic treasure worlds.
+They scrap for ancient weapons and dogfight in the void. But only one can earn the title of Bosa Sennen, the
+most feared pirate in the system.
+StarShot is a competitive tactical space combat game for 2–4 players. Each round, players secretly prepare
+three Action stacks for their ship, then reveal and execute those Actions to maneuver their ships, attack
+opponents, and collect treasure.
+The game is played over six rounds, or until only one ship remains. After round six, if more than one player is
+still alive, the player with the most Victory Points (VP) wins. Players may play on teams, with each player
+piloting their own ship and sharing common Victory Points with their team.
+2. Components
+Common game pieces:
+● 1 Hex-based Space board approximately 12 hexes in radius
+● 10 Bauble round number tokens
+● 1 Round and Bauble Track
+● 1 Desperation card deck
+● 30 One Victory Point tokens
+● 15 Five Victory Point tokens
+● 60 Ship damage/shield charge markers
+Per-player game pieces:
+● 1 Starship token
+● 1 Orders deck
+● 1 Set of 3 Sealed Orders cards in their color
+● 1 Starship layout board with Deck, Overheat, and Victory Point areas
+● 2 Twelve-sided dice
+3. Setup
+1. Place the Space board in reach of all players, and place each player’s ship token in its matching color
+starting tile, facing the center of the board.
+2. Shuffle the Bauble Round tokens and place them randomly on the 10 red Baubles scattered around the
+Space board, number side up. Do not place a Round token on The Fang, which is the central Bauble.
+3. Set the Round and Bauble track to Round 1 and place it in view of all players.
+4. Set the Victory Point tokens in reach of all players.
+5. Shuffle the Desperation deck, and place it next to the Space board with the Desperately Reshuffle card
+on top. Desperation cards are drawn from the bottom of the deck.
+
+===== PAGE 3 =====
+6. Distribute to each player the color-matched set of 3 Sealed Orders cards, Starship board, and two
+twelve-sided dice (“d12” dice) matching their token.
+7. Distribute an Orders deck to each player. It should consist of 5 Move cards and 3 Attack cards. Note
+the Orders deck does not have the distinctive Desperation markings on its Attack cards.
+8. Choose the starting player by rolling d12’s. The player with the highest roll is the starting player.
+Orders Deck
+Quantity Card Type
+2 Move 1
+3 Move 2
+2 Targeted Attack 1
+1 Targeted Attack 2
+4. Round Structure
+StarShot is played over a series of rounds. Each round follows the same sequence:
+1. Give Orders
+2. Cooldown
+3. Action 1
+4. Action 2
+5. Action 3
+6. Award Baubles
+7. Cleanup
+Once Cleanup is complete, advance the Round Tracker, rotate the Starting Player designation clockwise, and
+begin the next round.
+Give Orders
+Each player secretly prepares three Action stacks - Action 1, Action 2, and Action 3. These will be executed
+in sequence, with each player performing each Action step before advancing to the next.
+To create each of the three Action stacks:
+1. Choose up to two Command cards from your deck with the same type (Move or Attack).
+2. The Face (Front or Back) and Orientation (Up or Down) are important and cannot be changed after
+Orders are issued.
+3. Cover the stack with the matching Sealed card corresponding to the Action number, placing the Sealed
+card either “Sealed” face up or “Overdrive” face up.
+After all three Action stacks have been prepared, return all unused Command cards to your Deck. When every
+player has finished giving orders and Sealed their Action stacks, the round begins.
+
+----- TABLES DETECTED ON PAGE 3 -----
+[Table 3.1]
+Quantity | Card Type
+2 | Move 1
+3 | Move 2
+2 | Targeted Attack 1
+1 | Targeted Attack 2
+
+
+===== PAGE 4 =====
+Cooldown
+After Orders are sealed, return every card in your Overheated stack to your Deck. These cards are now
+available to use when resolving this round's Actions.
+Resolve Actions
+The three Action stacks are resolved one at a time, beginning with Action 1 and ending with Action 3.
+For each Action:
+1. Every player reveals their matching Action stack.
+2. All Movement cards are resolved simultaneously. Moves execute in their stacked order.
+3. The Combat stage takes place, beginning with the starting player and continuing clockwise.
+4. After the Action is complete, place the executed cards into the appropriate area:
+a. Normally Sealed Command cards return to the player’s Deck
+b. Overdriven Command cards go to the player’s Overheat stack
+c. Desperation cards played with their Desperate face return to the common Desperation deck
+After Action 3 has been completed, proceed to Awarding Baubles.
+Award Baubles
+If a player's ship is in a red Bauble circle on the Space board corresponding to the current round or within The
+Fang’s circle in the center, award them the appropriate Victory Points and/or Desperation cards.
+Cleanup
+Complete the following steps in order:
+1. Resolve any effects that occur during Cleanup.
+2. Advance the Round Tracker.
+Then begin the next round.
+5. Ending the Game
+At the completion of a Round, if only one player’s ship is not destroyed, that player wins the game. If all ships
+are destroyed, the game is a tie.
+Otherwise, at the completion of Round 6 the game ends, and the player with the most Victory Points wins. In
+case of a tie, the player with the most destroyed ship components wins. If it is still a tie, talk like a pirate for the
+next game.
+Variant Rule: The Void Beckons
+If a player’s ship is destroyed before round 6, they may rejoin the game at the beginning of the next round with
+no VP and their original deck and intact ship, as though they had just begun the game. Alternatively, they may
+
+===== PAGE 5 =====
+choose to remain eliminated and keep their VP. In this variant, the winner is determined solely by Victory
+Points, and not by last-ship-standing.
+6. Cards
+There are two types of cards: Command Cards and Sealed Cards.
+Command Cards
+Command cards represent the standard activities of the captain and the crew, as they move about the system
+and attack their foes.
+Each player begins with 8 Base Command Cards in their deck. Additionally, players may gain Desperation
+Command Cards (aka Desperation Cards) from the Desperation deck throughout the course of the game.
+Regardless, all Command Cards are used to generate Action stacks during the Give Orders step of a round.
+Recall that Action stacks may only contain 1 or 2 cards, and those cards must be of the same type - either
+Attack or Move.
+Base Deck Cards
+Targeted Attack
+A Targeted Attack features the red text “Target <X>” where X is a number, written on both faces. Additionally,
+these cards have 4 colored arrows, 1 in each orientation on each face.
+To play this card, place it in an Action stack when giving orders, and choose a face and orientation so that your
+attack target’s color is facing upwards on the top face of the card.
+A Targeted Attack’s effect can be enhanced by playing it in conjunction with another Targeted Attack or a
+Desperate Attack to create a Volley - one attack which targets one enemy player but deals additional damage.
+If combined with a second Targeted Attack, both cards must target the same opponent. If two Targeted Attacks
+are combined this way, their resulting Volley’s damage is equal to their sum.
+<Targeted Attack Card image>
+<Volley definition / diagram>
+Desperate Targeted Attacks
+Note that in addition to the base deck’s Targeted Attacks, the Desperation card deck contains additional
+Targeted Attacks, although its cards are marked with the distinctive Desperation markings to distinguish them
+from base deck cards. Unlike the base deck Targeted Attacks, cards from the Desperation deck do not benefit
+from Overdrive.
+Controlled Move
+A Controlled Move features green text “Move <X>” where X is a number, written on both faces. Additionally,
+these cards have 4 different arrows, 1 in each orientation on each face.
+To play this card, place it in an Action stack and choose a face and orientation so that your desired direction is
+facing upwards on the top face of the card. The face and orientation provides the following options:
+● Move forward <X> hexes
+● U-Turn (face the opposite direction)
+● Move forward <X> hexes and then rotate right one hex face (1/6 turn)
+
+===== PAGE 6 =====
+● Move forward <X> hexes and then rotate left one hex face (1/6 turn)
+A Controlled Move’s effect can be chained by playing it in conjunction with another Controlled Move. If
+combined with a second Move Card, the Action will result in first carrying out the Move of the top card, and
+then the move of the second card.
+<For example: Movement card following diagram>
+Desperation Deck Cards
+Desperation cards represent the heroism of the captain and crew in the stress of battle. While the ship may be
+operating at reduced functionality, in moments of pressure they can accomplish incredible feats.
+Drawing a Desperation Card
+Desperation cards are gained when specified by other mechanics. When you gain a Desperation card, draw
+from the bottom of the Desperation deck so you cannot see either face before drawing it. When you discard a
+Desperation card, place it on top of the Desperation deck. If you draw the “Shuffle Desperately” card, that
+indicates the deck has been entirely drawn and needs to be reshuffled, with the “Shuffle Desperately” card
+returned to the top afterwards.
+Desperation Cards Types and Appearance
+The Desperation Deck cards have distinctive dash marks at the corners. There are a few Desperate Targeted
+Attack cards. However the majority of Desperation cards have two faces, a Basic face and a Desperate face,
+showing the reduced ship functionality and insane genius under fire.
+Desperation Card’s Basic Faces
+The Basic face has either “Move 1”, or both “Attack 1” and “Move 1” in up and down orientations. Thus Basic
+card faces may be a Basic Move in one orientation and a Basic Attack card face in the other orientation.
+<Figure of the two Desperation card faces>
+Basic Moves
+The Basic Move face has the green “Move” text followed by a number. A Basic Move has no Turn or U-turn
+arrows, so it only moves the player ship forwards. Like a Controlled Move, it can be combined with another
+Move card to move the ship multiple times with the same action. It can be used without a Controlled Move,
+either alone or with any other type of Move. Moves are carried out in the order the cards are stacked in the
+action.
+Basic Attack
+The Basic Attack has the red “Attack” text followed by a number. Unlike a Targeted Attack, a Basic Attack card
+has no targeting arrows that would allow it to designate a target, so it must be combined with a Targeted
+Attack. When combined this way, the Volley’s damage is the sum of the Targeted Attack card and Basic
+Attack card.
+Desperation Card’s Desperate Faces
+The Desperate face of each Desperation card represents a heroic feat of skill and engineering by the captain
+and his crew, and it pushes the ship beyond its limits. Normally, when a Command card’s actions are
+
+===== PAGE 7 =====
+complete, it is placed back into the deck for next turn, or the Overdrive stack if so ordered. However when a
+Desperate ability is used, the Desperation card is returned to the Desperation deck instead of the player’s deck
+or Overheat stack - pushing your ship and crew this far has a cost.
+The Desperate face is identified by an underlined skill name in the center, and will be a red Desperate Attack
+Mod, a green Desperate Move, or an orange Especially Desperate Ability.
+Desperate Attack Mod
+A Desperate Attack Mod, is similar to a Basic Attack - it is untargeted and must be combined with a Targeted
+Attack to take effect. Desperate Attack Mods use several terms:
+● “+X Aim” or “+X to Hit”: After making your Volley’s attack roll, add X to your roll to aid in hitting the
+enemy.
+● “+X Damage”: If the Volley hits, it deals an additional X damage to the enemy.
+<Steady Shot: +2 Aim, +1 Damage>
+Desperate Move
+A Desperate Move can be played on its own or in the same Action as another Move card. Desperate Move
+cards use several terms:
+● “+X Defense”: Increase the Hit threshold of attackers against you during this Action by X.
+● “Warp”: Move your ship to the designated tile. Do not change facing, and do not apply the Warp
+distance as movement for the purposes of attacks against you this Action.
+<Homeward Bound: Warp to Home, +5 Defense>
+Especially Desperate
+Especially Desperate card faces are neither Attacks nor Moves, and are not placed in Action stacks like normal
+Commands. After using the Especially Desperate face, return the card to the Desperation Deck. They are
+played directly from your deck, and cannot be played if they somehow become Overheated.
+Currently there are 2 types:
+● “Restore X Components”: Choose X tiles of your ship that have been destroyed, where each is
+adjacent to an intact tile. Restore the chosen tiles to an undamaged state.
+These are played directly from your deck during the Cleanup step
+● “Overdrive 3, Bonus +2”: Use this instead of your normally “Overdrive 3” card to Seal your 3rd Action.
+When sealed with this card, that Action stack gains a bonus of +2 instead of the normal +1.
+Play this directly from your deck when Sealing orders.
+<Hull Repair: Restore 1 Component>
+Sealed / Overdrive Cards
+Each player has 3 cards featuring the text “Sealed X” on one face and “Overdrive X” on the other face, for X’s
+values 1, 2, and 3. These cards are used to Seal their orders, indicating they are prepared to begin the round.
+When an Action stack is Sealed with the “Sealed” side, that Action stack functions normally.
+However if an Action stack is Sealed with the “Overdrive” side, the effects of base deck cards in the stack are
+enhanced, but at a cost.
+When the base deck’s Move or Attack cards are Sealed with an “Overdrive” card, increase their effects by 1.
+Thus a Move 2 becomes a Move 3, an Attack 1 becomes an Attack 2, etc. Turning and U-turning are not
+
+===== PAGE 8 =====
+affected. When a card is boosted by Overdrive, the ship’s systems become depleted. At the end of that Action
+step, move the Overdriven cards into the Overheat pile instead of into your deck, they will need 1 round to cool
+off before being available again.
+Overdrive does not apply to Desperation Cards. Their values are not increased and they are not placed in the
+Overheat deck if their pile is Overheated.
+7. Combat Stage
+In the Action step after all moves have been executed, if there are any Attacks being played, each attacker
+executes their Volley of Attack cards by performing the Attack Roll, and then potentially a Shield Check and
+Damage Roll. The Starting Player completes these, followed by each other attacker in clockwise order. Each
+player makes only 1 attack in an Action, targeting the ship designated by the Targeted Attack card(s) in the
+orders.
+Determine the Volley
+A Volley is an attempt to hit the enemy for one or more damage, and is formed when giving Orders by placing
+one or more Attack cards in the stack. For example, a base deck’s Attack 2 card forms a Volley with no Aim
+bonus and 2 damage. When multiple Attack cards are combined, the Volley potentially gains Aim bonus
+and/or additional damage. Add together all Aim bonuses and sum all damage to find the final Aim bonus and
+total damage that could be dealt. Note that multiple Attack cards, even Targeted Attacks, do not create more
+than one Volley or more than one Attack Roll.
+<Example figure of a one-card Volley and a two-card Volley>
+Attack Roll
+Start by identifying the target of the Attack. Measure the distance in hexes from the attacker to their target
+starting with the first empty hex adjacent to the attacker and ending on the target’s hex. Take that distance and
+add the total movement executed by the target earlier this action. If the defender has a Defense bonus, add it
+to that total. The result is the Final Defense value you need to hit.
+Then roll 2d12 (2 twelve-sided dice) and add any Aim bonuses. If the result is equal or greater than the Final
+Defense, the Volley attack is a Hit!
+<Figure for Distance + Move = Target Roll>
+Shields and Damage
+If a ship would be hit by a Volley, it can be blocked by Shields. Ships begin with 2 shield charges. If the ship
+would take damage while shield charges remain, the Shield generator activates, protecting the ship from all
+incoming damage for the rest of that step (ie. against all attackers' Volleys), and expending one shield charge.
+One Shield generator activation prevents all damage across that entire Action step, regardless of source or
+amount. Striking an active Shield generates one VP for the attacker regardless of the size of the Volley, or
+whether the player triggered the Shield activation or hit the triggered Shield later in that Action step.
+Unshielded Hits
+Once all shield charges are expended, hits damage the ship structure itself, with every shot of the volley
+potentially causing destruction. When a player hits an unshielded enemy ship, the attacker gains one Victory
+Point if at least one component is destroyed, or three if the Volley results in total ship destruction. Note that it
+
+===== PAGE 9 =====
+is possible to score a hit but not strike any components if the ship is sufficiently damaged that the shot passes
+through it, resulting in no VP being awarded. Destroying multiple components in the same Volley does not
+grant additional VP’s.
+Gaining Desperation Under Attack
+When the hits start coming the defender’s ship loses capability but the crew gains that edge of desperation.
+The first time a ship component is destroyed by a given Volley, the defender must choose one of the following:
+1. Move a card from their Deck to their Overheat stack
+2. Remove a Base deck card in their Deck from the game, and place a random Desperation card in their
+deck.
+3. Remove a Base deck card in their Overheat stack from the game, and place a random Desperation
+card in their Overheat stack.
+Note that you cannot replace a Desperation card with another Desperation card.
+If a player has somehow reached the position where all cards in their deck and Overheat stack are gone or are
+Desperation cards, that player loses 1 VP instead.
+Damage Location
+For each shot within the Volley, roll 1d12 to determine the lane where the hit occurs. Once the incoming shot’s
+lane is chosen, it destroys the first component in the lane, passing through tiles where components are already
+destroyed. Consequently, damage can reach the Bridge by after components blocking access are destroyed.
+Ship Diagram
+
+===== PAGE 10 =====
+Ship Destruction
+If a ship suffers enough damage, it can be destroyed. Losing any of the following groups is lethal.
+1. The Bridge
+2. Both Life Supports
+3. All Coilguns and All Ion Engines
+If an attacker eliminates the ship entirely, such as by destroying the Bridge, the attacker gains 3 VP instead of
+the normal 1 for the Volley. Note that any attacks in the current Action ordered by a ship before it was
+eliminated still take effect - all ships had a chance to fire their weapons before shots began to hit.
+
+===== PAGE 11 =====
+8. Baubles
+Scattered across the Congregation are Baubles, small worlds veiled in a shield of glimmering energy. But very
+rarely, the shield dissipates for mere hours, and a timely crew can find ancient treasures. Across the map are
+11 baubles, two each randomly numbered 1 through 5 and a final Bauble for round 6 named The Fang. At the
+end of each round, the matching numbered Baubles open, and any crew that is within 1 tile of it may reap the
+rewards.
+During the Award Baubles step, if you are within 1 tile of the Bauble that matches the round number, you gain
+Victory Points points as shown on the Bauble track, and you draw a card from the Desperation deck.
+The final Bauble is The Fang. Its riches are legendary but deadly. During the Award Baubles step if you are
+within 1 tile of the The Fang, gain 1 VP and take 1 damage (roll one time for all ships). This damage can be
+absorbed by a shield activation, and never triggers Overheating cards or gaining Desperation cards. Round 6
+rewards 6 VP and deals 1 damage.
+Bauble Round Point Progression
+Round 1 2 3 4 5 6
+Point Value 4 3 3 4 4 6
+9. Victory Points
+Victory Points (VP) are the primary mark of success for a captain. They are gained in the following methods:
+1. Attacking an enemy ship and hitting their Shields with a Volley (1 VP).
+2. Destroying at least one ship component with a Volley (1 VP).
+3. Getting the kill shot on an enemy ship (3 VP instead of 1 from the Volley).
+4. Breaching a Bauble on the round it is open (Varies per Bauble).
+10. Card Listing
+
+----- TABLES DETECTED ON PAGE 11 -----
+[Table 11.1]
+Round | 1 | 2 | 3 | 4 | 5 | 6
+Point Value | 4 | 3 | 3 | 4 | 4 | 6
+
+
+===== PAGE 12 =====
+Base Orders Decks
+# Type Details
+2 Controlled Move 1 Has Straight, Turn, and U-Turn arrows
+3 Controlled Move 2 Has Straight, Turn, and U-Turn arrows
+2 Targeted Attack 1 Has Targeting colors
+1 Targeted Attack 2 Has Targeting colors
+Desperation Deck
+When your ship starts to fall apart, you are at your best! Desperation cards represent the ingenuity of the
+captain and his crew in the heat of battle. Each Desperation card has a low power reusable face and a high
+power single-use face.
+When used on their single-use side (indicated by an underlined title) they are returned to the Desperation deck.
+When used on their low power side, they return to your deck as normal.
+Desperation cards may not be Overdriven on either face.
+Desperation cards come in 3 types:
+1. Move 1 Front Face / Desperate Back Face: The move is a Move 1 without a turn
+2. Attack 1, Move 1 Front Face / Desperate Back Face: The move is a Move 1 without a turn, and the
+Attack 1 is a bonus to damage. The Attack 1 orientation has no Targeting and thus must be combined
+with a normal targeted Attack 1 card to function.
+3. Desperate Targeted Attack 1: A duplicate of the normal Attack 1 card with targets in the Base Orders
+deck, except this one cannot be Overdriven.
+The Desperate Targeted Attack cards serve to replenish your deck’s ability to target an attack if you are
+low on normal Attack cards.
+# Desperate Face Type Normal Face Details
+2 Thrust Ions Move Move 1 Move 5
+1 Turbo Ions Move Move 1 Move 10
+1 Homeward Bound Move Move 1 Warp Home (+5 Defense)
+1 Treasure Hound Move Move 1 Warp Bauble (+5 Defense)
+1 Evasive Action Move Move 1 +10 Defense, Can’t Move
+2 Ace Shot Attack Attack 1 / Move 1 +5 to Hit
+1 Deadeye Attack Attack 1 / Move 1 An Attack always hits
+1 Nightjammer Attack Attack 1 / Move 1 Warp Leader (+5 Defense)
+1 Self Destruct Attack Attack 1 / Move 1 Range 2, Damage 4, Keep VP
+1 Death Blossom Attack Attack 1 / Move 1 Attack All with Defense 10
+
+----- TABLES DETECTED ON PAGE 12 -----
+[Table 12.1]
+# | Type | Details
+2 | Controlled Move 1 | Has Straight, Turn, and U-Turn arrows
+3 | Controlled Move 2 | Has Straight, Turn, and U-Turn arrows
+2 | Targeted Attack 1 | Has Targeting colors
+1 | Targeted Attack 2 | Has Targeting colors
+
+[Table 12.2]
+# | Desperate Face | Type | Normal Face | Details
+2 | Thrust Ions | Move | Move 1 | Move 5
+1 | Turbo Ions | Move | Move 1 | Move 10
+1 | Homeward Bound | Move | Move 1 | Warp Home (+5 Defense)
+1 | Treasure Hound | Move | Move 1 | Warp Bauble (+5 Defense)
+1 | Evasive Action | Move | Move 1 | +10 Defense, Can’t Move
+2 | Ace Shot | Attack | Attack 1 / Move 1 | +5 to Hit
+1 | Deadeye | Attack | Attack 1 / Move 1 | An Attack always hits
+1 | Nightjammer | Attack | Attack 1 / Move 1 | Warp Leader (+5 Defense)
+1 | Self Destruct | Attack | Attack 1 / Move 1 | Range 2, Damage 4, Keep VP
+1 | Death Blossom | Attack | Attack 1 / Move 1 | Attack All with Defense 10
+
+
+===== PAGE 13 =====
+2 Steady Shot Attack Attack 1 / Move 1 +2 Aim, +1 Damage
+1 Hull Repair* Turn End Move 1 Restore 1 Component
+1 Advanced Repair* Turn End Move 1 Restore 2 Components
+4 Attack 1 Targeted Attack Attack 1 Targeted Supplements normal Attack 1 cards
+which may be missing from your deck.
+1 All She’s Got Overdrive 3 Move 1 Use in place of your Action 3
+Overdrive 3 Sealed/Overdrive card. Grants +2
+Bonus +1 bonus instead of the usual +1 of an
+Overdrive.
+11. Expansions
+Two expansions that add complexity to the game but shouldn’t be base include:
+1. StarCommand: Adds Pilots/Ships and Starfall events. These modify each player’s basic abilities and
+generate random effects at the start of each round.
+2. StarTech: Adds Engineering cards, a 3rd type. Engineering cards often have ongoing effects that aren't
+directly moving or damage.
+
+----- TABLES DETECTED ON PAGE 13 -----
+[Table 13.1]
+2 | Steady Shot | Attack | Attack 1 / Move 1 | +2 Aim, +1 Damage
+1 | Hull Repair* | Turn End | Move 1 | Restore 1 Component
+1 | Advanced Repair* | Turn End | Move 1 | Restore 2 Components
+4 | Attack 1 Targeted | Attack | Attack 1 Targeted | Supplements normal Attack 1 cards which may be missing from your deck.
+1 | All She’s Got Overdrive 3 Bonus +1 | Overdrive 3 | Move 1 | Use in place of your Action 3 Sealed/Overdrive card. Grants +2 bonus instead of the usual +1 of an Overdrive.
+ |  |  |  | 
+
+
+===== PAGE 14 =====
+StarCommand
+The “StarCommand” expansion adds unique Sunjammer Captains and random Starfall system-wide events.
+Sunjammer Captains
+At the beginning of the game, each player chooses a Captain, which modifies their ship’s operation. Randomly
+assign the ships, or allow players to choose their favorite. These are printed in 4 cards, with a/b on card 1, c/d
+on card 2, etc.
+Captain List
+a. Malcolm “Sarge” Manderly: Malcolm has +2 to all Attack Rolls
+b. Anya “Fura” Andrews: Anya deals +1 damage but has no Shields
+c. Riley “Turbo” Rounder: Riley has +1 Move from Move cards, but no bonus defense from movement
+d. Danny “Drifter” Davos: Danny moves 2 tiles forward at the beginning of the Cleanup step
+e. Carlos “Danger” Connor: Carlos gains 1 VP whenever he loses a ship component
+f. Knute “Rocky” Knuckle: Knute’s Bridge and Life Support components take 2 hits to destroy.
+g. Beto “Golden” Briego: Beto gains 1 additional VP and 1 additional Desperation card from Baubles
+h. Illyria “Boney” Landow: When the first Starfall event of the round is revealed, if Illyria’s Bone Room is
+intact she chooses to either gain 1 VP or place the Starfall event on the bottom of the Starfall deck so
+the next event happens instead.
+Starfall Events
+Solar storms and cosmic disasters plague the vast expanses of space, causing unpredictable mayhem for all
+crews alike. Before issuing orders, draw a new Starfall card. Its effect applies immediately to all players and
+persists through the end of this round’s Cleanup step.
+When a Starfall event deals damage, no cards are discarded nor Desperation cards drawn (except by Captain
+abilities). Shields may absorb the damage unless specified otherwise.
+Starfall Deck
+a. Solar Storm: Roll a single damage die. It applies to all players and penetrates shields.
+b. Gravity Burst: Move all ships 2 tiles towards The Fang (the center Bauble).
+c. Clear Skies: All ships roll 3d12 for attacks instead of 2d12 this round.
+d. Stars Align: Roll a d12 and halve the result (round down). The matching round’s Bauble(s) open this
+round.
+e. Take Cover: At the end of this round, roll 2 damage dice. This damage hits all players outside of a
+Bauble’s range. Any Bauble provides protection, even if it is not open.
+f. Golden Bounty: This turn, when you hit an enemy ship for the first time during an Action (including
+hitting Shields), gain 1 additional VP.
+g. Most Dangerous Game: All Baubles open at the end of this turn. Roll 2 damage dice at end of turn,
+and each player in a Bauble takes that damage.
+h. Sudden Chill: Each player returns 1 Overheated card to their deck before Orders are given. If they
+can’t, they gain 1 VP. (Cannot be chosen for Round 1’s Starfall event.)
