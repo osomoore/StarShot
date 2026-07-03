@@ -259,9 +259,20 @@ select {
 .card-slot {
   border-top: 1px solid #e6e9e6;
   display: grid;
-  gap: 8px;
-  grid-template-columns: 1fr;
+  gap: 8px 10px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(92px, 0.85fr);
   padding-top: 10px;
+}
+
+.slot-card-control,
+.slot-secondary-control {
+  min-width: 0;
+}
+
+.slot-card-control select,
+.slot-secondary-control select {
+  min-width: 0;
+  width: 100%;
 }
 
 .builder-preview pre {
@@ -436,6 +447,10 @@ pre {
 
   .board-svg {
     min-height: 360px;
+  }
+
+  .card-slot {
+    grid-template-columns: 1fr;
   }
 
   .sidebar,

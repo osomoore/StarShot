@@ -507,7 +507,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   const secondaryControl =
     selectedCard?.family === "attack"
       ? `
-        <label>
+        <label class="slot-secondary-control">
           Target
           <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id">
             ${targetOptions}
@@ -515,7 +515,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
         </label>
       `
       : `
-        <label>
+        <label class="slot-secondary-control">
           Direction
           <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="move_choice"${
             selectedCard?.family === "move" ? "" : " disabled"
@@ -529,7 +529,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
       `;
 
   slot.innerHTML = `
-    <label>
+    <label class="slot-card-control">
       Card ${cardIndex + 1}
       <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="card_id">
         ${cardOptions}
