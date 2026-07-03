@@ -18,6 +18,8 @@ The project has a rules extraction workflow, a first implementation spec, and an
 - Canonical PDF: `docs/rules/rules_0.1.pdf`
 - Extracted text: `docs/rules/rules_0.1.txt`
 - Implementation notes: `docs/rules/rules_implementation.md`
+- Future-chat handoff notes: `docs/context/ai_handoff.md`
+- Current implementation status: `docs/context/implementation_status.md`
 
 Regenerate extracted text after PDF changes:
 
