@@ -51,6 +51,14 @@ const FACING_VECTORS = [
   [-0.866, 0.5],
   [0, 1],
 ];
+const AXIAL_DIRECTIONS = [
+  [1, 0],
+  [1, -1],
+  [0, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, 1],
+];
 
 const elements = {
   createButton: document.querySelector("#createButton"),
@@ -220,34 +228,8 @@ function renderBoard(game) {
     }
   }
 
-  Object.values(game?.players || {}).forEach((player) => {
-    const [x, y] = axialToPixel(player.ship.q, player.ship.r);
-    const group = svgEl("g");
-    group.setAttribute("class", "ship-token");
-
-    const circle = svgEl("circle");
-    circle.setAttribute("cx", x);
-    circle.setAttribute("cy", y);
-    circle.setAttribute("r", HEX_SIZE * 0.58);
-    circle.setAttribute("fill", SHIP_COLORS[player.id] || "#6f5ab8");
-
-    const [fx, fy] = FACING_VECTORS[player.ship.facing % 6];
-    const line = svgEl("line");
-    line.setAttribute("x1", x);
-    line.setAttribute("y1", y);
-    line.setAttribute("x2", x + fx * HEX_SIZE * 0.9);
-    line.setAttribute("y2", y + fy * HEX_SIZE * 0.9);
-    line.setAttribute("class", "ship-facing");
-
-    const label = svgEl("text");
-    label.setAttribute("x", x);
-    label.setAttribute("y", y + HEX_SIZE * 1.2);
-    label.setAttribute("class", "ship-label");
-    label.textContent = player.id;
-
-    group.append(circle, line, label);
-    svg.append(group);
-  });
+  renderActionOnePreview(svg, game);
+  Object.values(game?.players || {}).forEach((player) => renderShipToken(svg, player, "ship-token"));
 }
 
 function axialToPixel(q, r) {
@@ -263,6 +245,119 @@ function hexPoints(x, y) {
 
 function svgEl(name) {
   return document.createElementNS("http://www.w3.org/2000/svg", name);
+}
+
+function renderShipToken(svg, player, className) {
+  const [x, y] = axialToPixel(player.ship.q, player.ship.r);
+  const group = svgEl("g");
+  group.setAttribute("class", className);
+
+  const circle = svgEl("circle");
+  circle.setAttribute("cx", x);
+  circle.setAttribute("cy", y);
+  circle.setAttribute("r", HEX_SIZE * 0.58);
+  circle.setAttribute("fill", SHIP_COLORS[player.id] || "#6f5ab8");
+
+  const [fx, fy] = FACING_VECTORS[player.ship.facing % 6];
+  const line = svgEl("line");
+  line.setAttribute("x1", x);
+  line.setAttribute("y1", y);
+  line.setAttribute("x2", x + fx * HEX_SIZE * 0.9);
+  line.setAttribute("y2", y + fy * HEX_SIZE * 0.9);
+  line.setAttribute("class", "ship-facing");
+
+  const label = svgEl("text");
+  label.setAttribute("x", x);
+  label.setAttribute("y", y + HEX_SIZE * 1.2);
+  label.setAttribute("class", "ship-label");
+  label.textContent = player.id;
+
+  group.append(circle, line, label);
+  svg.append(group);
+}
+
+function renderActionOnePreview(svg, game) {
+  const player = game?.players?.[state.builderPlayerId];
+  if (!player || player.has_submitted_orders || game.phase !== "give_orders") return;
+
+  const cardById = Object.fromEntries(player.deck.map((card) => [card.id, card]));
+  const stack = state.builderDraft.stacks[0];
+  const preview = {
+    q: player.ship.q,
+    r: player.ship.r,
+    facing: player.ship.facing,
+  };
+
+  stack.cards.forEach((cardId, cardIndex) => {
+    if (!cardId) return;
+    const card = cardById[cardId];
+    if (!card) return;
+    if (card.family === "move") {
+      applyPreviewMove(preview, card.value + (stack.seal_mode === "overdrive" ? 1 : 0), stack.move_choices[cardIndex]);
+      drawMovePreview(svg, preview, cardIndex + 1);
+    } else if (card.family === "attack") {
+      const target = game.players[stack.targets[cardIndex]];
+      if (target) drawAttackPreview(svg, target, cardIndex + 1);
+    }
+  });
+}
+
+function applyPreviewMove(preview, distance, choice) {
+  if (choice !== "u_turn") {
+    const [dq, dr] = AXIAL_DIRECTIONS[preview.facing % 6];
+    preview.q += dq * distance;
+    preview.r += dr * distance;
+  }
+  if (choice === "turn_left") {
+    preview.facing = (preview.facing + 5) % 6;
+  } else if (choice === "turn_right") {
+    preview.facing = (preview.facing + 1) % 6;
+  } else if (choice === "u_turn") {
+    preview.facing = (preview.facing + 3) % 6;
+  }
+}
+
+function drawMovePreview(svg, preview, index) {
+  const [x, y] = axialToPixel(preview.q, preview.r);
+  const group = svgEl("g");
+  group.setAttribute("class", "move-preview");
+
+  const circle = svgEl("circle");
+  circle.setAttribute("cx", x);
+  circle.setAttribute("cy", y);
+  circle.setAttribute("r", HEX_SIZE * 0.48);
+
+  const label = svgEl("text");
+  label.setAttribute("x", x);
+  label.setAttribute("y", y + 3);
+  label.textContent = `A1.${index}`;
+
+  group.append(circle, label);
+  svg.append(group);
+}
+
+function drawAttackPreview(svg, target, index) {
+  const [x, y] = axialToPixel(target.ship.q, target.ship.r);
+  const burst = svgEl("polygon");
+  burst.setAttribute("class", "attack-preview");
+  burst.setAttribute("fill", SHIP_COLORS[target.id] || "#6f5ab8");
+  burst.setAttribute("points", burstPoints(x, y, HEX_SIZE * 0.9, HEX_SIZE * 0.45).map((point) => point.join(",")).join(" "));
+
+  const label = svgEl("text");
+  label.setAttribute("class", "attack-preview-label");
+  label.setAttribute("x", x);
+  label.setAttribute("y", y + 3);
+  label.textContent = `A1.${index}`;
+
+  svg.append(burst, label);
+}
+
+function burstPoints(x, y, outerRadius, innerRadius) {
+  return Array.from({ length: 12 }, (_, index) => {
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    const angle = (Math.PI / 180) * (index * 30 - 90);
+    return [x + radius * Math.cos(angle), y + radius * Math.sin(angle)];
+  });
 }
 
 function renderPlayers(game) {
@@ -402,6 +497,30 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
     ),
   ].join("");
 
+  const secondaryControl =
+    selectedCard?.family === "attack"
+      ? `
+        <label>
+          Target
+          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id">
+            ${targetOptions}
+          </select>
+        </label>
+      `
+      : `
+        <label>
+          Direction
+          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="move_choice"${
+            selectedCard?.family === "move" ? "" : " disabled"
+          }>
+            <option value="forward"${stack.move_choices[cardIndex] === "forward" ? " selected" : ""}>Forward</option>
+            <option value="turn_left"${stack.move_choices[cardIndex] === "turn_left" ? " selected" : ""}>Turn Left</option>
+            <option value="turn_right"${stack.move_choices[cardIndex] === "turn_right" ? " selected" : ""}>Turn Right</option>
+            <option value="u_turn"${stack.move_choices[cardIndex] === "u_turn" ? " selected" : ""}>U-Turn</option>
+          </select>
+        </label>
+      `;
+
   slot.innerHTML = `
     <label>
       Card ${cardIndex + 1}
@@ -409,25 +528,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
         ${cardOptions}
       </select>
     </label>
-    <label>
-      Move
-      <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="move_choice"${
-        selectedCard?.family === "move" ? "" : " disabled"
-      }>
-        <option value="forward"${stack.move_choices[cardIndex] === "forward" ? " selected" : ""}>Forward</option>
-        <option value="turn_left"${stack.move_choices[cardIndex] === "turn_left" ? " selected" : ""}>Turn Left</option>
-        <option value="turn_right"${stack.move_choices[cardIndex] === "turn_right" ? " selected" : ""}>Turn Right</option>
-        <option value="u_turn"${stack.move_choices[cardIndex] === "u_turn" ? " selected" : ""}>U-Turn</option>
-      </select>
-    </label>
-    <label>
-      Target
-      <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id"${
-        selectedCard?.family === "attack" ? "" : " disabled"
-      }>
-        ${targetOptions}
-      </select>
-    </label>
+    ${secondaryControl}
   `;
   return slot;
 }

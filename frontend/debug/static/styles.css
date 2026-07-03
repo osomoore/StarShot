@@ -163,7 +163,7 @@ select {
   align-items: start;
   display: grid;
   gap: 16px;
-  grid-template-columns: minmax(620px, 1fr) 390px;
+  grid-template-columns: minmax(680px, 1fr) 320px;
 }
 
 .play-main {
@@ -214,7 +214,7 @@ select {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(150px, 1fr) auto;
+  grid-template-columns: 1fr;
 }
 
 .stacked-header {
@@ -249,7 +249,7 @@ select {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: 1fr minmax(120px, 150px);
+  grid-template-columns: 1fr 120px;
 }
 
 .order-stack h3 {
@@ -260,6 +260,7 @@ select {
   border-top: 1px solid #e6e9e6;
   display: grid;
   gap: 8px;
+  grid-template-columns: 1fr;
   padding-top: 10px;
 }
 
@@ -308,6 +309,29 @@ select {
   font-size: 10px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+.move-preview circle {
+  fill: #2f6f78;
+  opacity: 0.28;
+  stroke: #16464e;
+  stroke-dasharray: 3 2;
+  stroke-width: 1.5;
+}
+
+.move-preview text,
+.attack-preview-label {
+  fill: #182022;
+  font-size: 8px;
+  font-weight: 800;
+  pointer-events: none;
+  text-anchor: middle;
+}
+
+.attack-preview {
+  opacity: 0.42;
+  stroke: #182022;
+  stroke-width: 1;
 }
 
 .columns {
