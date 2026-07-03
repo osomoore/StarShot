@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+
+class GamePhase(StrEnum):
+    GIVE_ORDERS = "give_orders"
+    COOLDOWN = "cooldown"
+    ACTION_1 = "action_1"
+    ACTION_2 = "action_2"
+    ACTION_3 = "action_3"
+    AWARD_BAUBLES = "award_baubles"
+    CLEANUP = "cleanup"
+    COMPLETE = "complete"
+
+
+class CardFamily(StrEnum):
+    MOVE = "move"
+    ATTACK = "attack"
+
+
+class SealMode(StrEnum):
+    SEALED = "sealed"
+    OVERDRIVE = "overdrive"
+
+
+@dataclass(frozen=True, slots=True)
+class GameConfig:
+    player_ids: tuple[str, ...]
+    seed: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Card:
+    id: str
+    name: str
+    family: CardFamily
+    value: int
+    is_base: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class OrderCardSelection:
+    card_id: str
+    face: str = "front"
+    orientation: str = "up"
+    target_player_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ActionStack:
+    action_number: int
+    seal_mode: SealMode
+    cards: tuple[OrderCardSelection, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class OrdersSubmission:
+    stacks: tuple[ActionStack, ActionStack, ActionStack]
+
+
+@dataclass(slots=True)
+class ShipState:
+    shields: int = 2
+    destroyed_components: set[str] = field(default_factory=set)
+    destroyed: bool = False
+    movement_this_action: int = 0
+    defense_bonus_this_action: int = 0
+
+
+@dataclass(slots=True)
+class PlayerState:
+    id: str
+    deck: list[Card]
+    overheat: list[Card] = field(default_factory=list)
+    prepared_orders: OrdersSubmission | None = None
+    victory_points: int = 0
+    ship: ShipState = field(default_factory=ShipState)
+    eliminated: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GameResult:
+    winner_ids: tuple[str, ...]
+    reason: str
+    is_tie: bool = False
+
+
+@dataclass(slots=True)
+class GameState:
+    players: dict[str, PlayerState]
+    round_number: int = 1
+    phase: GamePhase = GamePhase.GIVE_ORDERS
+    starting_player_id: str = ""
+    event_log: list[dict] = field(default_factory=list)
+    result: GameResult | None = None
+
+    @property
+    def active_player_ids(self) -> tuple[str, ...]:
+        return tuple(player_id for player_id, player in self.players.items() if not player.eliminated)

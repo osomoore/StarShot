@@ -1,0 +1,279 @@
+# StarShot Rules Implementation Notes
+
+Source files:
+
+- Canonical rules PDF: `docs/rules/rules_0.1.pdf`
+- Extracted implementation text: `docs/rules/rules_0.1.txt`
+
+This document converts the prototype rules into an implementation baseline. It is not a replacement for the PDF; it is the contract the first server-side rules engine should follow.
+
+## Core Game
+
+StarShot is a competitive tactical space combat game for 2 to 4 players. Each player pilots one ship. The default game ends after six rounds, or earlier if only one ship remains undestroyed at the completion of a round.
+
+The server must be authoritative for:
+
+- Game setup.
+- Deck, hand, action stack, overheat, and discard/desperation state.
+- Hidden order submission.
+- Round and phase progression.
+- Movement, targeting, attack rolls, shields, damage, VP, and ship destruction.
+- Randomness, including starting player, dice rolls, bauble placement, desperation draws, and damage lanes.
+
+The browser client may display state and collect player intent, but it must not decide legality or outcomes.
+
+## Initial Entities
+
+Implement these entities first:
+
+- `GameState`: players, round number, phase, starting player, board, baubles, action index, event log, and winner/result.
+- `PlayerState`: player id, color, team id if teams are enabled later, ship, deck, overheat pile, prepared action stacks, VP, eliminated flag.
+- `ShipState`: hex position, facing, shield charges, component damage, movement executed during the current action, defense bonus for the current action.
+- `Card`: id, source deck, card type, value/effects, whether it is a base card or desperation card.
+- `ActionStack`: action number 1 to 3, sealed mode, ordered cards, chosen face/orientation, derived target or movement instruction.
+- `BaubleState`: hex position, round number or Fang, VP reward.
+- `GameEvent`: append-only accepted event with timestamp/order, actor, event type, payload, and resulting public summary.
+
+Keep the first implementation deterministic except for explicit injected RNG. Rules tests should be able to pass a seeded RNG or fixed dice results.
+
+## Round Flow
+
+Each round follows this sequence:
+
+1. `give_orders`
+2. `cooldown`
+3. `action_1`
+4. `action_2`
+5. `action_3`
+6. `award_baubles`
+7. `cleanup`
+
+At cleanup completion:
+
+- Check end-of-game conditions.
+- If the game continues, advance the round tracker.
+- Rotate starting player clockwise.
+- Clear per-action movement/defense state.
+- Begin the next `give_orders` phase.
+
+### Give Orders
+
+Each player secretly prepares three action stacks. For each stack:
+
+- Choose up to two command cards from the player's available deck.
+- All cards in a stack must be the same action family: `move` or `attack`.
+- Choose each card's face and orientation.
+- Seal the stack with the matching sealed card for action 1, 2, or 3.
+- Sealed mode is either normal `sealed` or `overdrive`.
+
+Do not reveal a player's prepared stack to other players until that action resolves.
+
+### Cooldown
+
+After all orders are submitted and before action 1 resolves, every card in each player's overheat pile returns to that player's deck.
+
+### Resolve Each Action
+
+For action 1, action 2, and action 3:
+
+- Reveal the matching action stack for every active player.
+- Resolve all movement before combat.
+- Movement is simultaneous at the action stage, but each player's stacked move cards execute in that player's card order.
+- Resolve combat in starting-player order, rotating clockwise.
+- Each player can make at most one volley per action.
+- After the action resolves, move cards to their destination:
+  - Normally sealed base command cards return to the player's deck.
+  - Overdriven base command cards move to the player's overheat pile.
+  - Desperation cards used on a desperate face return to the desperation deck.
+  - Desperation cards are not boosted by overdrive and do not overheat.
+
+### Award Baubles
+
+At the end of each round, award baubles:
+
+- Numbered baubles open on their matching round.
+- A ship within 1 tile of the matching bauble gains that round's VP reward and draws one desperation card.
+- The Fang can reward ships within 1 tile; it grants 1 VP and deals 1 damage.
+- Round 6 rewards 6 VP and deals 1 damage.
+
+VP by round:
+
+| Round | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| VP | 4 | 3 | 3 | 4 | 4 | 6 |
+
+## Cards
+
+### Base Orders Deck
+
+Each player starts with this base deck:
+
+| Quantity | Card |
+| --- | --- |
+| 2 | Controlled Move 1 |
+| 3 | Controlled Move 2 |
+| 2 | Targeted Attack 1 |
+| 1 | Targeted Attack 2 |
+
+### Move Cards
+
+Controlled moves can be oriented to produce one of:
+
+- Move forward X hexes.
+- U-turn.
+- Move forward X hexes, then rotate right one hex face.
+- Move forward X hexes, then rotate left one hex face.
+
+Multiple move cards in a stack are executed in stack order.
+
+Basic desperation moves move forward only and can be combined with other move cards.
+
+### Attack Cards and Volleys
+
+Targeted attacks identify one enemy target through card face/orientation. Multiple attack cards in the same stack create one volley, not multiple attacks.
+
+Volley calculation:
+
+- Target must be supplied by at least one targeted attack.
+- Damage is the sum of attack damage values plus damage modifiers.
+- Aim bonus is the sum of aim modifiers.
+- Multiple targeted attacks in one stack must target the same enemy.
+
+Attack roll:
+
+- Compute defense threshold as distance from attacker to target, plus target movement during this action, plus any target defense bonus.
+- Roll 2d12 and add aim bonuses.
+- Hit if roll total is greater than or equal to defense threshold.
+
+### Overdrive
+
+If a stack is sealed with overdrive:
+
+- Base deck move and attack numeric effects increase by 1.
+- Turning and U-turn effects are not boosted.
+- Boosted base cards move to overheat after the action.
+- Desperation cards are not boosted and do not overheat.
+
+## Combat, Shields, and Damage
+
+Ships begin with 2 shield charges.
+
+When a volley would hit a ship with shield charges remaining:
+
+- The shield activates.
+- One shield charge is spent.
+- The shield blocks all incoming damage for the rest of that action step.
+- Each attacker who hits an active shield with a volley gains 1 VP.
+
+When a volley hits an unshielded ship:
+
+- Roll 1d12 for each shot/damage point to choose the incoming lane.
+- Each shot destroys the first intact component in that lane.
+- If at least one component is destroyed, the attacker gains 1 VP.
+- If the volley destroys the ship, the attacker gains 3 VP instead of 1 VP for that volley.
+
+Ship destruction occurs when any of these are true:
+
+- Bridge destroyed.
+- Both life support components destroyed.
+- All coilguns and all ion engines destroyed.
+
+When the first component is destroyed by a volley, the defender must choose one desperation consequence:
+
+- Move a card from deck to overheat.
+- Remove a base card from deck and add a random desperation card to deck.
+- Remove a base card from overheat and add a random desperation card to overheat.
+- If no valid base card replacement exists, lose 1 VP instead.
+
+## Game End
+
+At completion of a round:
+
+- If only one ship remains undestroyed, that player wins.
+- If all ships are destroyed, the game is a tie.
+- Otherwise, after round 6, highest VP wins.
+- VP tie-breaker: most destroyed enemy ship components.
+- If still tied, record an unresolved tie.
+
+The "Void Beckons" destroyed-ship rejoin variant is out of scope for the first implementation.
+
+## First Playable Slice
+
+Implement the first rules engine around these capabilities:
+
+- 2 to 4 players.
+- Base game only; no StarCommand or StarTech expansion.
+- Hex board coordinates, ship position, and facing.
+- Random bauble placement for numbered baubles and fixed Fang.
+- Base deck cards only.
+- Three hidden action stacks per round.
+- Cooldown and overheat for base cards.
+- Movement cards with forward, left-turn, right-turn, and U-turn outcomes.
+- Targeted attack volleys.
+- 2d12 attack rolls.
+- Shields, VP for shield hits, unshielded damage, and ship destruction.
+- Bauble VP and desperation-card draw events.
+- Six-round ending and last-ship-standing ending.
+
+Defer these until the base loop is working:
+
+- Desperation card desperate faces.
+- Especially Desperate abilities.
+- Team play.
+- Void Beckons variant.
+- StarCommand captains.
+- Starfall events.
+- StarTech engineering cards.
+- Browser visualization of hidden card orientation art.
+
+## Open Implementation Questions
+
+These need confirmation or a PDF/table reference pass before coding the full rules:
+
+- Exact hex coordinates for starting tiles, baubles, and The Fang.
+- Exact ship component layout and which d12 lane maps to which component path.
+- Exact color/target mapping on each targeted attack card face/orientation.
+- Exact movement face/orientation mapping on each controlled move card.
+- Whether ships can collide, overlap, pass through each other, or leave the board.
+- Whether distance uses axial/cube hex distance and whether blocked/occupied hexes matter.
+- How simultaneous movement conflicts are resolved.
+- Whether all attackers hitting an already-activated shield gain VP, or only attackers whose roll hits the shielded defender.
+- Whether bauble Fang damage rolls once globally or once per affected ship when multiple ships are in range.
+- How hidden information is represented in API responses for each player versus spectators.
+
+## Initial Public API Contract
+
+CLI:
+
+- `starshot new-game --players PLAYER_ID ...`
+- `starshot show GAME_ID`
+- `starshot orders GAME_ID PLAYER_ID ORDERS_JSON`
+- `starshot resolve GAME_ID`
+
+HTTP:
+
+- `POST /api/games`
+- `GET /api/games/{game_id}`
+- `POST /api/games/{game_id}/join`
+- `POST /api/games/{game_id}/orders`
+- `POST /api/games/{game_id}/resolve`
+
+The `actions` endpoint from the original plan should be named `orders` for this game because players submit hidden action stacks, not individual immediate actions.
+
+## Testing Baseline
+
+Rules tests should cover:
+
+- Setup creates correct player count, decks, shields, round, and phase.
+- Players cannot submit orders with unavailable cards.
+- Players cannot mix move and attack cards in one stack.
+- Cooldown returns overheated cards to deck.
+- Overdrive boosts base card values and overheats base cards.
+- Desperation cards are not overdriven.
+- Movement changes position/facing as expected.
+- Attack rolls compare against distance plus target movement and defense bonus.
+- Shield hit spends one charge, prevents damage for the action, and grants VP.
+- Unshielded hit destroys components and grants VP.
+- Ship destruction conditions end the game at round completion.
+- Round 6 VP comparison determines the winner.
+- Hidden orders are not exposed in public game state before reveal.
