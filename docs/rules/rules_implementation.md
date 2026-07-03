@@ -93,14 +93,15 @@ At the end of each round, award baubles:
 
 - Numbered baubles open on their matching round.
 - A ship within 1 tile of the matching bauble gains that round's VP reward and draws one desperation card.
-- The Fang can reward ships within 1 tile; it grants 1 VP and deals 1 damage.
-- Round 6 rewards 6 VP and deals 1 damage.
+- The Fang is active every round during Award Baubles.
+- A ship within 1 tile of The Fang gains 1 VP, or 6 VP at the end of round 6, and takes 1 shieldable damage.
+- Fang damage does not draw desperation cards and does not overheat cards.
 
 VP by round:
 
-| Round | 1 | 2 | 3 | 4 | 5 | 6 |
-| --- | --- | --- | --- | --- | --- | --- |
-| VP | 4 | 3 | 3 | 4 | 4 | 6 |
+| Numbered bauble | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| VP | 4 | 3 | 3 | 4 | 4 |
 
 ## Cards
 

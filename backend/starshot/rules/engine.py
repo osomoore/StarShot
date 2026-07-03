@@ -3,13 +3,18 @@ from __future__ import annotations
 from copy import deepcopy
 from random import Random
 
+from starshot.rules.baubles import (
+    BaublePlacementError,
+    bauble_event_payload,
+    create_baubles,
+    fang_vp_for_round,
+    ship_inside_bauble,
+)
 from starshot.rules.decks import base_card_by_id, create_base_deck
 from starshot.rules.hex import (
     clamp_to_board,
     corner_start,
     hex_distance,
-    is_within_board,
-    iter_board_hexes,
     move_forward,
     turn_left,
     turn_right,
@@ -17,7 +22,6 @@ from starshot.rules.hex import (
 )
 from starshot.rules.models import (
     ActionStack,
-    BaubleState,
     Card,
     CardFamily,
     GameConfig,
@@ -42,11 +46,6 @@ NEXT_PHASE = {
     GamePhase.ACTION_2: GamePhase.ACTION_3,
     GamePhase.ACTION_3: GamePhase.AWARD_BAUBLES,
 }
-BAUBLE_VP_BY_NUMBER = {1: 4, 2: 3, 3: 3, 4: 4, 5: 4, 6: 6}
-BAUBLE_MAX_CENTER_DISTANCE = {1: 14, 2: 12, 3: 10, 4: 8, 5: 6}
-BAUBLE_RADIUS = 1
-BAUBLE_SPACING_BUFFER_RADIUS = 2
-EARLY_BAUBLE_PLAYER_BUFFER = 3
 
 
 def create_initial_state(config: GameConfig) -> GameState:
@@ -62,7 +61,10 @@ def create_initial_state(config: GameConfig) -> GameState:
         for index, player_id in enumerate(player_ids)
     }
 
-    baubles = _place_baubles(setup_rng, players)
+    try:
+        baubles = create_baubles(setup_rng, players)
+    except BaublePlacementError as exc:
+        raise RulesError(str(exc)) from exc
     state = GameState(players=players, baubles=baubles, starting_player_id=starting_player_id, rng_seed=rng_seed)
     state.event_log.append(
         {
@@ -71,7 +73,7 @@ def create_initial_state(config: GameConfig) -> GameState:
             "phase": state.phase,
             "players": list(player_ids),
             "starting_player_id": starting_player_id,
-            "baubles": [_bauble_event_payload(bauble) for bauble in baubles],
+            "baubles": [bauble_event_payload(bauble) for bauble in baubles],
         }
     )
     return state
@@ -468,35 +470,28 @@ def _roll_d12(state: GameState) -> int:
 def _resolve_award_baubles(state: GameState) -> None:
     awarded_any = False
     for bauble in state.baubles:
-        if bauble.number != state.round_number:
+        if not bauble.is_fang and bauble.number != state.round_number:
             continue
         awards: list[dict] = []
         for player in state.players.values():
             if player.eliminated or player.ship.destroyed:
                 continue
             distance = hex_distance(player.ship.q, player.ship.r, bauble.q, bauble.r)
-            if not _is_ship_inside_bauble(player.ship, bauble):
+            if not ship_inside_bauble(player.ship, bauble):
                 continue
 
-            player.victory_points += bauble.victory_points
+            vp_awarded = fang_vp_for_round(state.round_number) if bauble.is_fang else bauble.victory_points
+            player.victory_points += vp_awarded
             if player.id not in bauble.claimed_by:
                 bauble.claimed_by.append(player.id)
             award = {
                 "player_id": player.id,
                 "distance": distance,
-                "vp_awarded": bauble.victory_points,
+                "vp_awarded": vp_awarded,
                 "desperation_card_drawn": not bauble.is_fang,
             }
             if bauble.is_fang:
-                damage_result = _apply_unshielded_damage(state, player, 1)
-                award.update(
-                    {
-                        "fang_damage": 1,
-                        "damage_applied": damage_result["damage_applied"],
-                        "damage_shots": damage_result["damage_shots"],
-                        "target_destroyed": damage_result["target_destroyed"],
-                    }
-                )
+                award.update(_apply_fang_damage(state, player))
             awards.append(award)
 
         if awards:
@@ -505,7 +500,7 @@ def _resolve_award_baubles(state: GameState) -> None:
                 {
                     "type": "bauble_awarded",
                     "round": state.round_number,
-                    "bauble": _bauble_event_payload(bauble),
+                    "bauble": bauble_event_payload(bauble),
                     "awards": awards,
                 }
             )
@@ -519,6 +514,27 @@ def _resolve_award_baubles(state: GameState) -> None:
             }
         )
     _change_phase(state, GamePhase.CLEANUP)
+
+
+def _apply_fang_damage(state: GameState, player: PlayerState) -> dict:
+    if player.ship.shields > 0:
+        player.ship.shields -= 1
+        return {
+            "fang_damage": 1,
+            "shielded": True,
+            "damage_applied": 0,
+            "damage_shots": [],
+            "target_destroyed": player.ship.destroyed,
+        }
+
+    damage_result = _apply_unshielded_damage(state, player, 1)
+    return {
+        "fang_damage": 1,
+        "shielded": False,
+        "damage_applied": damage_result["damage_applied"],
+        "damage_shots": damage_result["damage_shots"],
+        "target_destroyed": damage_result["target_destroyed"],
+    }
 
 
 def _resolve_cleanup(state: GameState) -> None:
@@ -578,98 +594,6 @@ def _change_phase(state: GameState, phase: GamePhase) -> None:
 def _starting_ship(index: int) -> ShipState:
     q, r, facing = corner_start(index)
     return ShipState(q=q, r=r, facing=facing)
-
-
-def _place_baubles(rng: Random, players: dict[str, PlayerState]) -> list[BaubleState]:
-    occupied: set[tuple[int, int]] = set(_bauble_buffer_hexes(0, 0))
-    baubles: list[BaubleState] = []
-    player_hexes = tuple((player.ship.q, player.ship.r) for player in players.values() if not player.eliminated)
-
-    for number in range(1, 6):
-        for copy_number in range(1, 3):
-            q, r = _choose_bauble_hex(rng, number, occupied, player_hexes)
-            occupied.update(_bauble_buffer_hexes(q, r))
-            baubles.append(
-                BaubleState(
-                    id=f"bauble_{number}_{copy_number}",
-                    number=number,
-                    q=q,
-                    r=r,
-                    victory_points=BAUBLE_VP_BY_NUMBER[number],
-                )
-            )
-
-    baubles.append(BaubleState(id="fang", number=6, q=0, r=0, victory_points=BAUBLE_VP_BY_NUMBER[6], is_fang=True))
-    return baubles
-
-
-def _choose_bauble_hex(
-    rng: Random,
-    number: int,
-    occupied: set[tuple[int, int]],
-    player_hexes: tuple[tuple[int, int], ...],
-) -> tuple[int, int]:
-    max_center_distance = BAUBLE_MAX_CENTER_DISTANCE[number]
-    candidates = [
-        (q, r)
-        for q, r in iter_board_hexes()
-        if _is_bauble_footprint_available(q, r, occupied)
-        and hex_distance(0, 0, q, r) <= max_center_distance
-        and _is_bauble_far_enough_from_players(number, q, r, player_hexes)
-    ]
-    if not candidates:
-        raise RulesError(f"Could not place bauble {number}; no valid board hexes remain.")
-    return rng.choice(candidates)
-
-
-def _is_bauble_footprint_available(q: int, r: int, occupied: set[tuple[int, int]]) -> bool:
-    footprint = _bauble_hexes(q, r)
-    return all(is_within_board(hex_q, hex_r) and (hex_q, hex_r) not in occupied for hex_q, hex_r in footprint)
-
-
-def _bauble_hexes(q: int, r: int) -> tuple[tuple[int, int], ...]:
-    return _hex_disk(q, r, BAUBLE_RADIUS)
-
-
-def _bauble_buffer_hexes(q: int, r: int) -> tuple[tuple[int, int], ...]:
-    return _hex_disk(q, r, BAUBLE_SPACING_BUFFER_RADIUS)
-
-
-def _hex_disk(q: int, r: int, radius: int) -> tuple[tuple[int, int], ...]:
-    hexes: list[tuple[int, int]] = []
-    for dq in range(-radius, radius + 1):
-        dr_min = max(-radius, -dq - radius)
-        dr_max = min(radius, -dq + radius)
-        for dr in range(dr_min, dr_max + 1):
-            hexes.append((q + dq, r + dr))
-    return tuple(hexes)
-
-
-def _is_ship_inside_bauble(ship: ShipState, bauble: BaubleState) -> bool:
-    return hex_distance(ship.q, ship.r, bauble.q, bauble.r) <= BAUBLE_RADIUS
-
-
-def _is_bauble_far_enough_from_players(
-    number: int,
-    q: int,
-    r: int,
-    player_hexes: tuple[tuple[int, int], ...],
-) -> bool:
-    if number > 2:
-        return True
-    return all(hex_distance(q, r, player_q, player_r) > EARLY_BAUBLE_PLAYER_BUFFER for player_q, player_r in player_hexes)
-
-
-def _bauble_event_payload(bauble: BaubleState) -> dict:
-    return {
-        "id": bauble.id,
-        "number": bauble.number,
-        "q": bauble.q,
-        "r": bauble.r,
-        "victory_points": bauble.victory_points,
-        "is_fang": bauble.is_fang,
-        "claimed_by": list(bauble.claimed_by),
-    }
 
 
 def _player(state: GameState, player_id: str) -> PlayerState:

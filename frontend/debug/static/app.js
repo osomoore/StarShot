@@ -306,7 +306,7 @@ function renderBaubles(svg, game) {
     ring.setAttribute("class", "bauble-planet-ring");
     ring.setAttribute("cx", x);
     ring.setAttribute("cy", y);
-    ring.setAttribute("r", HEX_SIZE * 2.06);
+    ring.setAttribute("r", HEX_SIZE * 2.5);
 
     const core = svgEl("circle");
     core.setAttribute("class", "bauble-planet-core");
@@ -321,7 +321,7 @@ function renderBaubles(svg, game) {
 
     const title = svgEl("title");
     title.textContent = bauble.is_fang
-      ? `Fang: round 6, ${bauble.victory_points} VP`
+      ? "Fang: 1 VP each round, 6 VP on round 6, and 1 shieldable damage"
       : `Bauble ${bauble.number}: ${bauble.victory_points} VP`;
 
     group.append(ring, core, label, title);

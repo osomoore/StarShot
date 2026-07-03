@@ -13,6 +13,7 @@ from starshot.rules import (
     resolve_next_step,
     submit_orders,
 )
+from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, bauble_hexes
 from starshot.rules.hex import BOARD_RADIUS, hex_distance
 
 
@@ -168,7 +169,7 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(len(state.baubles), 11)
         self.assertEqual(len(positions), len(state.baubles))
         for bauble in state.baubles:
-            footprint = self._bauble_footprint(bauble.q, bauble.r)
+            footprint = set(bauble_hexes(bauble.q, bauble.r))
             self.assertTrue(all(hex_distance(0, 0, q, r) <= BOARD_RADIUS for q, r in footprint))
             self.assertTrue(occupied_bauble_hexes.isdisjoint(footprint))
             occupied_bauble_hexes.update(footprint)
@@ -176,7 +177,7 @@ class RulesEngineTests(unittest.TestCase):
         for number in range(1, 6):
             numbered = [bauble for bauble in state.baubles if bauble.number == number]
             self.assertEqual(len(numbered), 2)
-            max_distance = {1: 14, 2: 12, 3: 10, 4: 8, 5: 6}[number]
+            max_distance = BAUBLE_MAX_CENTER_DISTANCE[number]
             self.assertTrue(all(hex_distance(0, 0, bauble.q, bauble.r) <= max_distance for bauble in numbered))
 
         for index, bauble in enumerate(state.baubles):
@@ -208,11 +209,34 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(award["awards"][0]["player_id"], "red")
         self.assertTrue(award["awards"][0]["desperation_card_drawn"])
 
-    def test_fang_scores_round_six_and_deals_one_damage(self):
+    def test_fang_scores_every_round_and_shields_block_damage(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.phase = GamePhase.AWARD_BAUBLES
-        state.round_number = 6
-        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=6, is_fang=True)]
+        state.round_number = 2
+        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 1
+        state.players["red"].ship.shields = 1
+        state.players["blue"].ship.q = 4
+        state.players["blue"].ship.r = 0
+
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.players["red"].victory_points, 1)
+        self.assertEqual(state.players["red"].ship.shields, 0)
+        self.assertEqual(state.players["red"].ship.damage_taken, 0)
+        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        self.assertFalse(award["desperation_card_drawn"])
+        self.assertEqual(award["fang_damage"], 1)
+        self.assertTrue(award["shielded"])
+        self.assertEqual(award["damage_applied"], 0)
+        self.assertEqual(award["damage_shots"], [])
+
+    def test_fang_unshielded_damage_rolls_one_lane(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.AWARD_BAUBLES
+        state.round_number = 3
+        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 1
         state.players["red"].ship.shields = 0
@@ -221,15 +245,30 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
 
-        self.assertEqual(state.players["red"].victory_points, 6)
+        self.assertEqual(state.players["red"].victory_points, 1)
         self.assertEqual(state.players["red"].ship.damage_taken, 1)
         award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
-        self.assertFalse(award["desperation_card_drawn"])
-        self.assertEqual(award["fang_damage"], 1)
+        self.assertFalse(award["shielded"])
+        self.assertEqual(award["damage_applied"], 1)
+        self.assertEqual(len(award["damage_shots"]), 1)
 
-    def _bauble_footprint(self, q, r):
-        offsets = ((0, 0), (1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
-        return {(q + offset_q, r + offset_r) for offset_q, offset_r in offsets}
+    def test_fang_awards_six_vp_on_round_six(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.AWARD_BAUBLES
+        state.round_number = 6
+        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 1
+        state.players["red"].ship.shields = 1
+        state.players["blue"].ship.q = 4
+        state.players["blue"].ship.r = 0
+
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.players["red"].victory_points, 6)
+        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        self.assertEqual(award["vp_awarded"], 6)
+        self.assertTrue(award["shielded"])
 
     def test_attack_hit_spends_shield_and_awards_vp(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
