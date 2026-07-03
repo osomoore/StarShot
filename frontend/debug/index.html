@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StarShot Debug</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>StarShot Debug</h1>
+          <p>Local server-authoritative state inspector</p>
+        </div>
+        <div class="toolbar">
+          <button id="refreshButton" type="button">Refresh</button>
+          <button id="createButton" type="button">New Red/Blue Game</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar" aria-label="Saved games">
+          <div class="panel-header">
+            <h2>Games</h2>
+            <span id="gameCount">0</span>
+          </div>
+          <div id="gamesList" class="games-list"></div>
+        </aside>
+
+        <section class="inspector" aria-label="Game inspector">
+          <div class="summary-strip">
+            <div>
+              <span class="label">Game</span>
+              <strong id="selectedGameId">None</strong>
+            </div>
+            <div>
+              <span class="label">Round</span>
+              <strong id="roundValue">-</strong>
+            </div>
+            <div>
+              <span class="label">Phase</span>
+              <strong id="phaseValue">-</strong>
+            </div>
+            <div>
+              <span class="label">Starting Player</span>
+              <strong id="startingPlayerValue">-</strong>
+            </div>
+          </div>
+
+          <div class="actions-row">
+            <button id="redOrdersButton" type="button" disabled>Submit Red Demo Orders</button>
+            <button id="blueOrdersButton" type="button" disabled>Submit Blue Demo Orders</button>
+            <label class="check-control">
+              <input id="revealOrdersToggle" type="checkbox" />
+              Reveal orders
+            </label>
+          </div>
+
+          <div class="columns">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Players</h2>
+              </div>
+              <div id="playersView" class="players"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Events</h2>
+              </div>
+              <ol id="eventsView" class="events"></ol>
+            </section>
+          </div>
+
+          <section class="panel state-panel">
+            <div class="panel-header">
+              <h2>Raw State</h2>
+            </div>
+            <pre id="stateJson">{}</pre>
+          </section>
+        </section>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

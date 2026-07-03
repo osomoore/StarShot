@@ -55,7 +55,15 @@ Start, check, or stop the local server:
 .\stop_server.bat
 ```
 
-The server runs at `http://127.0.0.1:8000` and writes logs to `.starshot\server.log`.
+The server runs at `http://127.0.0.1:8000` and writes logs to `.starshot\server.log`. Open that URL in a browser to use the debug UI.
+
+The debug UI can:
+
+- Create a red/blue test game.
+- List saved games from `.starshot\games.sqlite3`.
+- Show round, phase, players, events, and raw state.
+- Submit canned red and blue orders.
+- Toggle hidden order reveal for debugging.
 
 ### Manual Commands
 
@@ -113,3 +121,12 @@ When ready to run the FastAPI app, install the project dependencies:
 python -m pip install -e .[dev]
 uvicorn starshot.api.app:app --app-dir backend --reload
 ```
+
+Useful local endpoints:
+
+- `GET /`
+- `GET /api/health`
+- `GET /api/games`
+- `POST /api/games`
+- `GET /api/games/{game_id}`
+- `POST /api/games/{game_id}/orders`
