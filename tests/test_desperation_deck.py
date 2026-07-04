@@ -109,6 +109,34 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         for player in state.players.values():
             self.assertTrue(any(card.id == "desp_ace_shot_a" for card in player.deck))
 
+    def test_debug_startup_can_split_desperation_types_between_players(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("red", "blue"),
+                seed=1,
+                debug_start_with_split_desperation_cards=True,
+            )
+        )
+
+        red_desperation_names = {card.name for card in state.players["red"].deck if not card.is_base}
+        blue_desperation_names = {card.name for card in state.players["blue"].deck if not card.is_base}
+
+        self.assertEqual(
+            red_desperation_names,
+            {"Ace Shot", "Deadeye", "Nightjammer", "Self Destruct", "Death Blossom", "Steady Shot"},
+        )
+        self.assertEqual(
+            blue_desperation_names,
+            {
+                "Thrust Ions",
+                "Turbo Ions",
+                "Homeward Bound",
+                "Treasure Hound",
+                "Evasive Action",
+                "Desperation Attack 1",
+            },
+        )
+
     def test_bauble_award_draws_desperation_card_into_player_deck(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.phase = GamePhase.AWARD_BAUBLES

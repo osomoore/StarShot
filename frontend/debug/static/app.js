@@ -169,7 +169,7 @@ async function createGame() {
     body: JSON.stringify({
       player_ids: ["red", "blue"],
       seed: 3,
-      debug_start_with_attack_desperation_card: true,
+      debug_start_with_split_desperation_cards: true,
     }),
   });
   state.selectedGameId = payload.game_id;
@@ -474,13 +474,14 @@ function renderActionPreview(svg, game) {
       selections.forEach(({ card, cardIndex, family }) => {
         if (family !== "move") return;
         const before = { ...preview };
+        const distance = previewSelectionMoveDistance(card, stack, cardIndex);
         applyPreviewMove(
           preview,
-          previewSelectionValue(card, stack, cardIndex),
+          distance,
           stack.move_choices[cardIndex],
         );
         drawMovementPathPreview(svg, before, preview);
-        drawPositionPreview(svg, preview, `A${stackIndex + 1}.${cardIndex + 1}`);
+        drawPositionPreview(svg, preview, previewMoveLabel(stackIndex, cardIndex, distance));
       });
     } else if (family === "attack") {
       const firstAttack = selections.find(({ card, cardIndex, family }) => (
@@ -490,8 +491,14 @@ function renderActionPreview(svg, game) {
       if (target) {
         const damage = selections
           .filter((selection) => selection.family === "attack")
-          .reduce((total, { card, cardIndex }) => total + previewSelectionValue(card, stack, cardIndex), 0);
-        drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, damage);
+          .reduce((total, { card, cardIndex }) => total + previewSelectionAttackDamage(card, stack, cardIndex), 0);
+        const aimBonus = selections
+          .filter((selection) => selection.family === "attack")
+          .reduce((total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex), 0);
+        const alwaysHits = selections.some(({ card, cardIndex, family }) => (
+          family === "attack" && previewSelectionAlwaysHits(card, stack, cardIndex)
+        ));
+        drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
       }
     }
   });
@@ -515,11 +522,34 @@ function previewCardValue(card, sealMode) {
   return card.value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
 }
 
-function previewSelectionValue(card, stack, cardIndex) {
+function previewSelectionMoveDistance(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
     return card.desperate_face.movement_disabled ? 0 : card.desperate_face.value;
   }
   return previewCardValue(card, stack.seal_mode);
+}
+
+function previewSelectionAttackDamage(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.value + (card.desperate_face.damage_bonus || 0);
+  }
+  return previewCardValue(card, stack.seal_mode);
+}
+
+function previewSelectionAimBonus(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.aim_bonus || 0;
+  }
+  return 0;
+}
+
+function previewSelectionAlwaysHits(card, stack, cardIndex) {
+  return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.always_hits);
+}
+
+function previewMoveLabel(stackIndex, cardIndex, distance) {
+  const base = `A${stackIndex + 1}.${cardIndex + 1}`;
+  return distance > 0 ? `${base} M${distance}` : base;
 }
 
 function applyPreviewMove(preview, distance, choice) {
@@ -617,13 +647,21 @@ function drawPositionPreview(svg, preview, labelText, burstColor = null) {
   svg.append(group);
 }
 
-function drawAttackPreview(svg, shooterPreview, target, labelText, damage) {
+function drawAttackPreview(svg, shooterPreview, target, labelText, attackPreview) {
   const [sourceX, sourceY] = axialToPixel(shooterPreview.q, shooterPreview.r);
   const [targetX, targetY] = axialToPixel(target.ship.q, target.ship.r);
   const color = SHIP_COLORS[target.id] || "#6f5ab8";
   const defense = hexDistance(shooterPreview.q, shooterPreview.r, target.ship.q, target.ship.r);
+  const damage = attackPreview.damage || 0;
+  const aimBonus = attackPreview.aimBonus || 0;
+  const targetRoll = Math.max(0, defense - aimBonus);
+  const targetText = attackPreview.alwaysHits
+    ? "HIT"
+    : aimBonus
+      ? `${targetRoll}+ (+${aimBonus} Aim)`
+      : `${targetRoll}+`;
   const group = svgEl("g");
-  group.setAttribute("class", "volley-preview");
+  group.setAttribute("class", aimBonus || attackPreview.alwaysHits ? "volley-preview bonus-preview" : "volley-preview");
 
   const line = svgEl("line");
   line.setAttribute("x1", sourceX);
@@ -640,7 +678,7 @@ function drawAttackPreview(svg, shooterPreview, target, labelText, damage) {
   const label = svgEl("text");
   label.setAttribute("x", (sourceX + targetX) / 2);
   label.setAttribute("y", (sourceY + targetY) / 2 - HEX_SIZE * 0.45);
-  label.textContent = `${labelText} DEF ${defense} DMG ${damage}`;
+  label.textContent = `${labelText} ROLL ${targetText} DMG ${damage}`;
 
   group.append(line, arrow, label);
   svg.append(group);
@@ -893,7 +931,14 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   const selectedCard = cardById[stack.cards[cardIndex]];
   const face = selectedFace(selectedCard, stack, cardIndex);
   const family = effectiveCardFamily(selectedCard, stack, cardIndex);
-  const cardTone = selectedCard?.is_hybrid && face !== "desperate" ? "hybrid-card" : family === "attack" ? "attack-card" : family === "move" ? "move-card" : "";
+  const desperateTone = face === "desperate" ? `desperate-card desperate-${family}-card` : "";
+  const cardTone = face === "desperate"
+    ? desperateTone
+    : selectedCard?.is_hybrid && face !== "desperate"
+      ? "hybrid-card"
+      : family === "attack"
+        ? "attack-card"
+        : family === "move" ? "move-card" : "";
   const detail = selectedCard
     ? face === "desperate"
       ? desperateFaceLabel(selectedCard)
@@ -914,7 +959,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
       <strong>${selectedCard ? selectedCard.name : "Empty"}</strong>
       <span>${selectedCard ? selectedCard.id : detail}</span>
     </button>
-    <button class="hex-choice-summary" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
+    <button class="hex-choice-summary ${desperateTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
       readOnly ? " disabled" : ""
     }>
       ${detail}
@@ -1004,6 +1049,8 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       label: `${card.name} Desperate`,
       mark: family === "attack" ? "D" : "M",
       fill: family === "attack" ? "#c9433f" : "#3f9963",
+      isDesperate: true,
+      desperateFamily: family,
       disabled: !familyAllowed(family) || (needsTargetedPartner && !hasTargetedPartner),
     });
   }
@@ -1131,8 +1178,8 @@ function showCardPicker(stackIndex, cardIndex) {
       <div class="picker-column attack-column">
         <h3>Attack</h3>
       </div>
-      <div class="picker-column hybrid-column">
-        <h3>Hybrid</h3>
+      <div class="picker-column desperation-column">
+        <h3>Desperation</h3>
       </div>
     </div>
   `;
@@ -1145,13 +1192,13 @@ function showCardPicker(stackIndex, cardIndex) {
   const columns = {
     move: panel.querySelector(".move-column"),
     attack: panel.querySelector(".attack-column"),
-    hybrid: panel.querySelector(".hybrid-column"),
+    desperation: panel.querySelector(".desperation-column"),
   };
 
-  ["move", "attack", "hybrid"].forEach((family) => {
+  ["move", "attack", "desperation"].forEach((family) => {
     const cards = availableCards.filter((card) => {
-      if (family === "hybrid") return Boolean(card.is_hybrid);
-      return !card.is_hybrid && card.family === family;
+      if (family === "desperation") return card.is_base === false;
+      return card.is_base !== false && card.family === family;
     });
     if (cards.length === 0) {
       const empty = document.createElement("p");
@@ -1165,7 +1212,7 @@ function showCardPicker(stackIndex, cardIndex) {
       const hasLegalChoice = choices.some((choice) => !choice.disabled);
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `picker-card ${family === "move" ? "move-card" : family === "hybrid" ? "hybrid-card" : "attack-card"}`;
+      button.className = `picker-card ${family === "move" ? "move-card" : family === "desperation" ? "hybrid-card" : "attack-card"}`;
       button.disabled = isUsedElsewhere || !hasLegalChoice;
       button.innerHTML = `
         <strong>${card.name}</strong>
@@ -1250,7 +1297,7 @@ function showCardUseChoicePanel(stackIndex, cardIndex, cardId) {
   cardUseChoices(card, stack, cardById, cardIndex).forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `hex-choice ${choice.disabled ? "disabled-choice" : ""}`;
+    button.className = `hex-choice ${choice.isDesperate ? `desperate-choice desperate-${choice.desperateFamily}-choice` : ""} ${choice.disabled ? "disabled-choice" : ""}`;
     button.disabled = Boolean(choice.disabled);
     button.style.setProperty("--choice-fill", choice.fill);
     button.innerHTML = `

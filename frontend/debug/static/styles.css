@@ -414,6 +414,47 @@ select {
   border-color: #7fb6e6;
 }
 
+.front-card.desperate-card,
+.hex-choice-summary.desperate-card {
+  background: #10d463;
+  border-color: #062c18;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.48),
+    0 0 0 2px rgb(16 212 99 / 0.24),
+    0 8px 18px rgb(5 69 34 / 0.24);
+  color: #06140c;
+  text-shadow: none;
+}
+
+.front-card.desperate-attack-card,
+.hex-choice-summary.desperate-attack-card {
+  background: #ff8a00;
+  border-color: #552200;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.45),
+    0 0 0 2px rgb(255 138 0 / 0.28),
+    0 8px 18px rgb(100 43 0 / 0.25);
+  color: #1e0b00;
+}
+
+.front-card.desperate-card span,
+.hex-choice-summary.desperate-card {
+  color: #06140c;
+}
+
+.front-card.desperate-attack-card span,
+.hex-choice-summary.desperate-attack-card {
+  color: #1e0b00;
+}
+
+.front-card.desperate-card .card-slot-label {
+  color: #073f20;
+}
+
+.front-card.desperate-attack-card .card-slot-label {
+  color: #5c2400;
+}
+
 .card-slot-label {
   color: #66716f;
   font-size: 11px;
@@ -776,6 +817,11 @@ select {
   text-anchor: middle;
 }
 
+.volley-preview.bonus-preview text {
+  fill: #7a3f00;
+  stroke: #fff6df;
+}
+
 .volley-arrowhead {
   opacity: 0.88;
   stroke: #182022;
@@ -1012,6 +1058,34 @@ select {
   gap: 8px;
   justify-items: center;
   min-height: 128px;
+}
+
+.hex-choice.desperate-choice {
+  background: #10d463;
+  border-color: #062c18;
+  color: #06140c;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.48),
+    0 0 0 2px rgb(16 212 99 / 0.24);
+}
+
+.hex-choice.desperate-attack-choice {
+  background: #ff8a00;
+  border-color: #552200;
+  color: #1e0b00;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.45),
+    0 0 0 2px rgb(255 138 0 / 0.28);
+}
+
+.hex-choice.desperate-choice .choice-hex {
+  background: #06140c;
+  color: #10d463;
+}
+
+.hex-choice.desperate-attack-choice .choice-hex {
+  background: #1e0b00;
+  color: #ffb545;
 }
 
 .choice-hex {

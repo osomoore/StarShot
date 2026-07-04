@@ -44,6 +44,7 @@ class GameConfig:
     player_ids: tuple[str, ...]
     seed: int | None = None
     debug_start_with_attack_desperation_card: bool = False
+    debug_start_with_split_desperation_cards: bool = False
 
 
 @dataclass(frozen=True, slots=True)

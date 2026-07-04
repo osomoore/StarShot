@@ -11,6 +11,7 @@ from starshot.rules.baubles import (
     ship_inside_bauble,
 )
 from starshot.rules.decks import (
+    all_desperation_cards,
     card_by_id,
     create_base_deck,
     create_desperation_deck,
@@ -72,6 +73,8 @@ def create_initial_state(config: GameConfig) -> GameState:
 
         for player in players.values():
             player.deck.append(desperation_card_by_id("desp_ace_shot_a"))
+    if config.debug_start_with_split_desperation_cards:
+        _seed_split_debug_desperation_cards(players, player_ids)
 
     try:
         baubles = create_baubles(setup_rng, players)
@@ -97,6 +100,27 @@ def create_initial_state(config: GameConfig) -> GameState:
         }
     )
     return state
+
+
+def _seed_split_debug_desperation_cards(players: dict[str, PlayerState], player_ids: tuple[str, ...]) -> None:
+    if len(player_ids) < 2:
+        return
+
+    hybrid_cards = _first_card_of_each_name(card for card in all_desperation_cards() if card.is_hybrid)
+    non_hybrid_cards = _first_card_of_each_name(card for card in all_desperation_cards() if not card.is_hybrid)
+    players[player_ids[0]].deck.extend(hybrid_cards)
+    players[player_ids[1]].deck.extend(non_hybrid_cards)
+
+
+def _first_card_of_each_name(cards) -> list[Card]:
+    seen_names: set[str] = set()
+    unique_cards: list[Card] = []
+    for card in cards:
+        if card.name in seen_names:
+            continue
+        seen_names.add(card.name)
+        unique_cards.append(card)
+    return unique_cards
 
 
 def legal_actions(state: GameState, player_id: str) -> list[str]:
