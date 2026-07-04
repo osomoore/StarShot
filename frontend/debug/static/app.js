@@ -11,6 +11,13 @@ const BOARD_RADIUS = 14;
 const HEX_SIZE = 14;
 const SQRT3 = Math.sqrt(3);
 const DEMO_MOVE_CHOICES = ["forward", "turn_left", "turn_right"];
+const MOVE_CHOICES = [
+  { value: "forward", label: "Forward", mark: "F" },
+  { value: "turn_left", label: "Turn Left", mark: "L" },
+  { value: "turn_right", label: "Turn Right", mark: "R" },
+  { value: "u_turn", label: "U-Turn", mark: "U" },
+];
+const PLAYER_ORDER = ["red", "blue", "green", "yellow"];
 const SHIP_COLORS = {
   red: "#c9433f",
   blue: "#2f6fce",
@@ -67,6 +74,7 @@ const elements = {
   eventsView: document.querySelector("#eventsView"),
   stateJson: document.querySelector("#stateJson"),
   combatOverlay: null,
+  cardPickerOverlay: null,
 };
 
 function createEmptyDraft() {
@@ -597,6 +605,7 @@ function hexDistance(aQ, aR, bQ, bR) {
 }
 
 function renderPlayers(game) {
+  if (!elements.playersView) return;
   if (!game) {
     elements.playersView.replaceChildren();
     return;
@@ -767,18 +776,23 @@ function renderActionStack(stack, stackIndex, availableCards, game, readOnly) {
   const cardById = Object.fromEntries(availableCards.map((card) => [card.id, card]));
   const section = document.createElement("section");
   section.className = readOnly ? "order-stack readonly" : "order-stack";
+  section.style.setProperty("--action-accent", stack.seal_mode === "overdrive" ? "#c9433f" : "#2f6f78");
 
   const header = document.createElement("div");
   header.className = "order-stack-header";
   header.innerHTML = `
     <h3>Action ${stack.action_number}</h3>
-    <label>
-      Seal
-      <select data-stack="${stackIndex}" data-field="seal_mode"${readOnly ? " disabled" : ""}>
-        <option value="sealed"${stack.seal_mode === "sealed" ? " selected" : ""}>Sealed</option>
-        <option value="overdrive"${stack.seal_mode === "overdrive" ? " selected" : ""}>Overdrive</option>
-      </select>
-    </label>
+    <div class="order-stack-actions">
+      <button class="seal-toggle ${stack.seal_mode}" type="button" data-stack="${stackIndex}" data-field="seal_mode"${
+        readOnly ? " disabled" : ""
+      }>
+        <span class="seal-current">${stack.seal_mode === "overdrive" ? "Overdrive" : "Sealed"}</span>
+        <span class="seal-hover">${stack.seal_mode === "overdrive" ? "Sealed" : "Overdrive"}</span>
+      </button>
+      <button class="stack-clear-button" type="button" data-stack="${stackIndex}"${readOnly ? " disabled" : ""}>
+        Clear
+      </button>
+    </div>
   `;
   section.append(header);
 
@@ -792,62 +806,217 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   const slot = document.createElement("div");
   slot.className = "card-slot";
   const selectedCard = cardById[stack.cards[cardIndex]];
-  const opponents = Object.keys(game.players).filter((playerId) => playerId !== state.builderPlayerId);
-  const selectedIds = selectedBuilderCardIds();
-
-  const cardOptions = [
-    `<option value="">Empty slot</option>`,
-    ...availableCards.map((card) => {
-      const isUsedElsewhere = selectedIds.includes(card.id) && stack.cards[cardIndex] !== card.id;
-      const label = `${card.name} (${card.id})`;
-      return `<option value="${card.id}"${stack.cards[cardIndex] === card.id ? " selected" : ""}${
-        isUsedElsewhere ? " disabled" : ""
-      }>${label}</option>`;
-    }),
-  ].join("");
-
-  const targetOptions = [
-    `<option value="">Choose target</option>`,
-    ...opponents.map(
-      (playerId) =>
-        `<option value="${playerId}"${stack.targets[cardIndex] === playerId ? " selected" : ""}>${playerId}</option>`,
-    ),
-  ].join("");
-
-  const secondaryControl =
-    selectedCard?.family === "attack"
-      ? `
-        <label class="slot-secondary-control">
-          Target
-          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="target_player_id"${readOnly ? " disabled" : ""}>
-            ${targetOptions}
-          </select>
-        </label>
-      `
-      : `
-        <label class="slot-secondary-control">
-          Direction
-          <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="move_choice"${
-            selectedCard?.family === "move" && !readOnly ? "" : " disabled"
-          }>
-            <option value="forward"${stack.move_choices[cardIndex] === "forward" ? " selected" : ""}>Forward</option>
-            <option value="turn_left"${stack.move_choices[cardIndex] === "turn_left" ? " selected" : ""}>Turn Left</option>
-            <option value="turn_right"${stack.move_choices[cardIndex] === "turn_right" ? " selected" : ""}>Turn Right</option>
-            <option value="u_turn"${stack.move_choices[cardIndex] === "u_turn" ? " selected" : ""}>U-Turn</option>
-          </select>
-        </label>
-      `;
+  const cardTone = selectedCard?.family === "attack" ? "attack-card" : selectedCard?.family === "move" ? "move-card" : "";
+  const detail = selectedCard
+    ? selectedCard.family === "attack"
+      ? targetChoiceLabel(stack.targets[cardIndex])
+      : moveChoiceLabel(stack.move_choices[cardIndex])
+    : "No card";
 
   slot.innerHTML = `
-    <label class="slot-card-control">
-      Card ${cardIndex + 1}
-      <select data-stack="${stackIndex}" data-card="${cardIndex}" data-field="card_id"${readOnly ? " disabled" : ""}>
-        ${cardOptions}
-      </select>
-    </label>
-    ${secondaryControl}
+    <button class="front-card ${cardTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
+      readOnly ? " disabled" : ""
+    }>
+      <span class="card-slot-label">Card ${cardIndex + 1}</span>
+      <strong>${selectedCard ? selectedCard.name : "Empty"}</strong>
+      <span>${selectedCard ? selectedCard.id : detail}</span>
+    </button>
+    <button class="hex-choice-summary" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
+      readOnly ? " disabled" : ""
+    }>
+      ${detail}
+    </button>
   `;
   return slot;
+}
+
+function moveChoiceLabel(value) {
+  return MOVE_CHOICES.find((choice) => choice.value === value)?.label || "Choose move";
+}
+
+function targetChoiceLabel(playerId) {
+  return playerId ? `Player ${titleCase(playerId)}` : "Choose target";
+}
+
+function titleCase(value) {
+  return String(value || "").charAt(0).toUpperCase() + String(value || "").slice(1);
+}
+
+function cardPickerOverlayElement() {
+  if (elements.cardPickerOverlay) return elements.cardPickerOverlay;
+  const overlay = document.createElement("div");
+  overlay.className = "card-picker-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) hideCardPickerOverlay();
+  });
+  document.body.append(overlay);
+  elements.cardPickerOverlay = overlay;
+  return overlay;
+}
+
+function hideCardPickerOverlay() {
+  elements.cardPickerOverlay?.classList.remove("visible");
+}
+
+function showCardPicker(stackIndex, cardIndex) {
+  const game = state.selectedState;
+  const player = game?.players?.[state.builderPlayerId];
+  if (!game || !player || !canSubmit(state.builderPlayerId)) return;
+
+  const overlay = cardPickerOverlayElement();
+  const availableCards = cardsForBuilder(player);
+  const selectedIds = selectedBuilderCardIds();
+  const stack = state.builderDraft.stacks[stackIndex];
+  const cardById = cardLookupForPlayer(player);
+  const lockedFamily = stack.cards
+    .map((cardId, index) => (index === cardIndex ? null : cardById[cardId]?.family))
+    .find(Boolean);
+  overlay.replaceChildren();
+
+  const panel = document.createElement("section");
+  panel.className = "card-picker-panel";
+  panel.innerHTML = `
+    <div class="card-picker-header">
+      <span>Action ${stack.action_number} Card ${cardIndex + 1}</span>
+      <div class="card-picker-actions">
+        <button class="picker-clear-action" type="button">Clear action</button>
+        <button type="button" aria-label="Dismiss card picker">&times;</button>
+      </div>
+    </div>
+    <div class="card-picker-columns">
+      <div class="picker-column move-column">
+        <h3>Move</h3>
+      </div>
+      <div class="picker-column attack-column">
+        <h3>Attack</h3>
+      </div>
+    </div>
+  `;
+  panel.querySelector(".card-picker-header button[aria-label]").addEventListener("click", hideCardPickerOverlay);
+  panel.querySelector(".picker-clear-action").addEventListener("click", () => {
+    clearActionStack(stackIndex);
+    hideCardPickerOverlay();
+  });
+
+  const columns = {
+    move: panel.querySelector(".move-column"),
+    attack: panel.querySelector(".attack-column"),
+  };
+
+  ["move", "attack"].forEach((family) => {
+    const cards = availableCards.filter((card) => card.family === family);
+    if (cards.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "picker-empty";
+      empty.textContent = "No cards";
+      columns[family].append(empty);
+    }
+    cards.forEach((card) => {
+      const isUsedElsewhere = selectedIds.includes(card.id) && stack.cards[cardIndex] !== card.id;
+      const isWrongFamily = Boolean(lockedFamily && card.family !== lockedFamily);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `picker-card ${family === "move" ? "move-card" : "attack-card"}`;
+      button.disabled = isUsedElsewhere || isWrongFamily;
+      button.innerHTML = `
+        <strong>${card.name}</strong>
+        <span>${card.id}</span>
+        <b>${card.value}</b>
+      `;
+      button.addEventListener("click", () => {
+        selectBuilderCard(stackIndex, cardIndex, card.id);
+        hideCardPickerOverlay();
+        showHexChoicePanel(stackIndex, cardIndex);
+      });
+      columns[family].append(button);
+    });
+  });
+
+  overlay.append(panel);
+  overlay.classList.add("visible");
+}
+
+function selectBuilderCard(stackIndex, cardIndex, cardId) {
+  const stack = state.builderDraft.stacks[stackIndex];
+  if (!stack) return;
+  stack.cards[cardIndex] = cardId;
+  stack.targets[cardIndex] = "";
+  stack.move_choices[cardIndex] = "forward";
+  applyDefaultAttackTarget(stack, cardIndex);
+  renderAll();
+}
+
+function clearActionStack(stackIndex) {
+  const stack = state.builderDraft.stacks[stackIndex];
+  if (!stack) return;
+  stack.seal_mode = "sealed";
+  stack.cards = ["", ""];
+  stack.targets = ["", ""];
+  stack.move_choices = ["forward", "forward"];
+  renderAll();
+}
+
+function showHexChoicePanel(stackIndex, cardIndex) {
+  const game = state.selectedState;
+  const player = game?.players?.[state.builderPlayerId];
+  const stack = state.builderDraft.stacks[stackIndex];
+  const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
+  if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
+
+  const overlay = cardPickerOverlayElement();
+  overlay.replaceChildren();
+
+  const panel = document.createElement("section");
+  panel.className = "hex-choice-panel";
+  panel.innerHTML = `
+    <div class="card-picker-header">
+      <span>${card.family === "attack" ? "Choose Target" : "Choose Move"}</span>
+      <button type="button" aria-label="Dismiss choice panel">&times;</button>
+    </div>
+    <div class="hex-choice-grid"></div>
+  `;
+  panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
+  const grid = panel.querySelector(".hex-choice-grid");
+
+  const choices = card.family === "attack" ? attackHexChoices(game) : MOVE_CHOICES;
+  choices.forEach((choice) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `hex-choice ${choice.disabled ? "disabled-choice" : ""}`;
+    button.disabled = Boolean(choice.disabled);
+    button.style.setProperty("--choice-fill", choice.fill || "#3f9963");
+    button.innerHTML = `
+      <span class="choice-hex">${choice.mark || ""}</span>
+      <strong>${choice.label}</strong>
+    `;
+    button.addEventListener("click", () => {
+      if (card.family === "attack") {
+        stack.targets[cardIndex] = choice.value;
+      } else {
+        stack.move_choices[cardIndex] = choice.value;
+      }
+      hideCardPickerOverlay();
+      renderAll();
+    });
+    grid.append(button);
+  });
+
+  overlay.append(panel);
+  overlay.classList.add("visible");
+}
+
+function attackHexChoices(game) {
+  return PLAYER_ORDER.map((playerId) => {
+    const isSelf = playerId === state.builderPlayerId;
+    const isActive = Boolean(game.players[playerId]);
+    return {
+      value: playerId,
+      label: `Player ${titleCase(playerId)}`,
+      mark: titleCase(playerId).charAt(0),
+      fill: SHIP_COLORS[playerId],
+      disabled: !isActive || isSelf,
+    };
+  });
 }
 
 function buildOrdersPayload() {
@@ -957,6 +1126,43 @@ elements.builderPlayerSelect.addEventListener("change", (event) => {
 elements.ordersBuilderView.addEventListener("change", (event) => {
   if (event.target.matches("select")) updateBuilderDraftFromControl(event.target);
 });
+elements.ordersBuilderView.addEventListener("click", (event) => {
+  const clearButton = event.target.closest(".stack-clear-button");
+  if (clearButton) {
+    if (clearButton.disabled) return;
+    clearActionStack(Number(clearButton.dataset.stack));
+    return;
+  }
+
+  const sealToggle = event.target.closest(".seal-toggle");
+  if (sealToggle) {
+    const stack = state.builderDraft.stacks[Number(sealToggle.dataset.stack)];
+    if (!stack || sealToggle.disabled) return;
+    stack.seal_mode = stack.seal_mode === "sealed" ? "overdrive" : "sealed";
+    renderAll();
+    return;
+  }
+
+  const frontCard = event.target.closest(".front-card");
+  if (frontCard) {
+    if (frontCard.disabled) return;
+    showCardPicker(Number(frontCard.dataset.stack), Number(frontCard.dataset.card));
+    return;
+  }
+
+  const choiceButton = event.target.closest(".hex-choice-summary");
+  if (choiceButton) {
+    if (choiceButton.disabled) return;
+    const stackIndex = Number(choiceButton.dataset.stack);
+    const cardIndex = Number(choiceButton.dataset.card);
+    const stack = state.builderDraft.stacks[stackIndex];
+    if (!stack?.cards?.[cardIndex]) {
+      showCardPicker(stackIndex, cardIndex);
+      return;
+    }
+    showHexChoicePanel(stackIndex, cardIndex);
+  }
+});
 elements.revealOrdersToggle.addEventListener("change", () => {
   if (state.selectedGameId) selectGame(state.selectedGameId).catch(showError);
 });
@@ -1060,18 +1266,14 @@ function hideCombatResultOverlay() {
 }
 
 function renderMiniShipBoards(game) {
-  if (!elements.leftMiniBoards || !elements.rightMiniBoards) return;
+  if (!elements.leftMiniBoards) return;
   if (!game) {
     elements.leftMiniBoards.replaceChildren();
-    elements.rightMiniBoards.replaceChildren();
     return;
   }
 
-  const leftColors = ["red", "green"];
-  const rightColors = ["blue", "yellow"];
-
-  elements.leftMiniBoards.replaceChildren(...leftColors.map(color => createMiniBoardCard(color, game)));
-  elements.rightMiniBoards.replaceChildren(...rightColors.map(color => createMiniBoardCard(color, game)));
+  const colors = PLAYER_ORDER.filter((color) => game.players[color]);
+  elements.leftMiniBoards.replaceChildren(...colors.map((color) => createMiniBoardCard(color, game)));
 }
 
 function createMiniBoardCard(color, game) {
@@ -1086,7 +1288,7 @@ function createMiniBoardCard(color, game) {
   header.className = "mini-ship-header";
   header.innerHTML = `
     <strong class="mini-ship-name" style="color: ${SHIP_COLORS[color] || '#555'}">${color.toUpperCase()}</strong>
-    <span class="mini-ship-shields">${player ? `${player.ship.shields} shields` : "-"}</span>
+    <span class="mini-ship-vp">${player ? player.victory_points : 0} VP</span>
   `;
   card.append(header);
 
@@ -1134,6 +1336,14 @@ function createMiniBoardCard(color, game) {
 
   svgContainer.append(svg);
   card.append(svgContainer);
+
+  const footer = document.createElement("div");
+  footer.className = "mini-ship-footer";
+  footer.innerHTML = `
+    <span class="mini-stat" title="Cards in deck"><span class="mini-icon deck-icon"></span>${player ? player.deck.length : 0}</span>
+    <span class="mini-stat" title="Cards in overheat"><span class="mini-icon overheat-icon"></span>${player ? player.overheat.length : 0}</span>
+  `;
+  card.append(footer);
   return card;
 }
 

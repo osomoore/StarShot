@@ -60,6 +60,13 @@
           </div>
 
           <div class="play-layout">
+            <aside class="player-rail" aria-label="Player ships">
+              <div class="panel-header">
+                <h2>Ships</h2>
+              </div>
+              <div id="leftMiniBoards" class="mini-boards-column"></div>
+            </aside>
+
             <section class="play-main">
               <section class="panel board-panel" aria-label="Hex board">
                 <div class="panel-header">
@@ -69,27 +76,8 @@
                   </div>
                 </div>
                 <div class="board-layout-container">
-                  <div id="leftMiniBoards" class="mini-boards-column"></div>
                   <svg id="boardSvg" class="board-svg" role="img" aria-label="StarShot hex board"></svg>
-                  <div id="rightMiniBoards" class="mini-boards-column"></div>
                 </div>
-              </section>
-
-              <section class="panel ship-board-panel" aria-label="Ship boards">
-                <div class="panel-header">
-                  <div>
-                    <h2>Ship Board</h2>
-                    <p class="panel-note">Damage-lane art placeholder for per-ship component tracking.</p>
-                  </div>
-                </div>
-                <div id="shipBoardsView" class="ship-boards"></div>
-              </section>
-
-              <section class="panel">
-                <div class="panel-header">
-                  <h2>Ships</h2>
-                </div>
-                <div id="playersView" class="players"></div>
               </section>
             </section>
 
