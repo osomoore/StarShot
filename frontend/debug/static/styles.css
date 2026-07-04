@@ -75,6 +75,7 @@ select {
 }
 
 .workspace {
+  align-items: start;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   min-height: calc(100vh - 82px);
@@ -119,6 +120,7 @@ select {
 }
 
 .inspector {
+  align-content: start;
   display: grid;
   gap: 16px;
   min-width: 0;
@@ -131,6 +133,13 @@ select {
   border: 1px solid #d4d8d4;
   border-radius: 8px;
   padding: 14px;
+}
+
+.summary-strip {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
 }
 
 .board-info {
@@ -147,7 +156,7 @@ select {
 
 
 .control-strip {
-  align-items: stretch;
+  align-items: start;
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -472,6 +481,41 @@ select {
 
 .builder-preview pre {
   max-height: 170px;
+}
+
+.board-header {
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.board-heading {
+  align-items: start;
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 280px);
+}
+
+.board-actions {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.board-actions #resolveButton {
+  white-space: nowrap;
+}
+
+.board-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.board-controls button {
+  min-height: 38px;
+  min-width: 34px;
+  padding: 8px 10px;
 }
 
 .board-panel {
@@ -1193,6 +1237,10 @@ pre {
   .lower-panels,
   .order-stacks {
     display: block;
+  }
+
+  .board-actions {
+    justify-content: flex-start;
   }
 
   .play-layout {

@@ -1,17 +1,26 @@
-Desperation Deck - Completed Basic-Face Implementation
+Desperation Deck - Basic Faces + First Desperate-Face Slice
 
 ## Current Status
 
 The basic-face desperation deck flow is implemented and covered by tests. The rules engine can define, draw, serialize, and place desperation cards; basic desperation moves are forward-only; targeted desperation attacks can stand alone; untargeted/hybrid desperation attacks can be played as either basic Move or basic Attack depending on the selected mode.
 
-The debug UI shows hybrid desperation cards in a dedicated Hybrid column. When a hybrid card is selected, the UI always shows both mode choices, graying out unavailable modes:
+The first normal action-stack Desperate faces are implemented for bonus movement, aim, damage, defense-only movement, always-hit, and single-use routing back to the shared Desperation deck. Implemented Desperate faces:
 
-- If the hybrid card is first in the stack, only Basic Move is available until a targeted attack partner exists.
-- If a targeted attack is already in the stack, only Basic Attack is available.
-- If a Move card is already in the stack, only Basic Move is available.
-- If the mode picker is dismissed without a choice, the pending hybrid card is removed from the slot instead of leaving a no-mode selection.
+- Thrust Ions: Move 5.
+- Turbo Ions: Move 10.
+- Evasive Action: +10 Defense, cannot move.
+- Ace Shot: +5 Aim.
+- Deadeye: always hits.
+- Steady Shot: +2 Aim, +1 Damage.
 
-The remaining work is to resolve desperate faces and especially desperate abilities, which are still deferred from the first playable slice.
+The debug UI picker has three piles: Move, Attack, and Desperation. All non-base desperation cards are in the Desperation pile. Choosing a desperation card opens a use-choice panel before loading the card into the stack:
+
+- Hybrid/basic-back cards can offer Basic Move, Basic Attack, and the Desperate face, with unavailable choices disabled.
+- Basic Move choices for desperation cards are forward-only and do not open a direction modal.
+- Desperate Move selections render bright green; Desperate Attack selections render bright orange.
+- Attack previews show target roll after Aim, with the Aim bonus in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
+
+The remaining work is to resolve the special/warp/multi-target Desperate faces and especially desperate abilities.
 
 ## Completed Scope
 
@@ -22,8 +31,8 @@ The remaining work is to resolve desperate faces and especially desperate abilit
 - Damage consequence: when the first component is destroyed by a volley, apply the deterministic auto-choice priority described below.
 - Card routing: desperation cards played on their basic face return to the player deck normally; is_base=False gates overdrive correctly.
 - Validation: desperation cards follow effective family constraints and cannot mix Move/Attack modes in a stack.
-- Serialization: DesperationDeck round-trips through state serialization.
-- Tests: draw, reshuffle, bauble draw, consequence choice, VP penalty, hybrid mode legality, and non-overdrive behavior.
+- Serialization: DesperationDeck and DesperateFace metadata round-trip through state serialization.
+- Tests: draw, reshuffle, bauble draw, consequence choice, VP penalty, hybrid mode legality, non-overdrive behavior, desperate-face movement/combat/routing, and debug split setup.
 
 ## Open Questions
 IMPORTANT
@@ -37,7 +46,7 @@ Lose 1 VP (if no valid base card exists in deck or overheat).
 
 NOTE
 
-Desperate faces are deferred. The Desperate back of each card (e.g. "Thrust Ions: Move 5", "Ace Shot: +5 to Hit") is noted in the model but not resolved in this increment. Cards with a desperate face that are played on their basic face return to the player deck normally, just like any other desperation card. Resolving desperate faces is a follow-up task.
+Some Desperate faces are still deferred: Homeward Bound, Treasure Hound, Nightjammer, Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got. Cards played on a Desperate face return to the shared Desperation deck; cards played on their basic face return to the player deck normally.
 
 NOTE
 
@@ -60,17 +69,17 @@ create_desperation_deck() -> DesperationDeck includes all basic-face cards from 
 Included cards:
 
 qty	id prefix	name	family	basic_value	desperate_face
-2	desp_thrust_ions_*	Thrust Ions	move	1	deferred
-1	desp_turbo_ions	Turbo Ions	move	1	deferred
+2	desp_thrust_ions_*	Thrust Ions	move	1	Move 5
+1	desp_turbo_ions	Turbo Ions	move	1	Move 10
 1	desp_homeward_bound	Homeward Bound	move	1	deferred
 1	desp_treasure_hound	Treasure Hound	move	1	deferred
-1	desp_evasive_action	Evasive Action	move	1	deferred
-2	desp_ace_shot_*	Ace Shot	attack	1	deferred
-1	desp_deadeye	Deadeye	attack	1	deferred
+1	desp_evasive_action	Evasive Action	move	1	+10 Defense, cannot move
+2	desp_ace_shot_*	Ace Shot	attack	1	+5 Aim
+1	desp_deadeye	Deadeye	attack	1	Always hits
 1	desp_nightjammer	Nightjammer	attack	1	deferred
 1	desp_self_destruct	Self Destruct	attack	1	deferred
 1	desp_death_blossom	Death Blossom	attack	1	deferred
-2	desp_steady_shot_*	Steady Shot	attack	1	deferred
+2	desp_steady_shot_*	Steady Shot	attack	1	+2 Aim, +1 Damage
 4	desp_targeted_attack_1_*	Desperation Attack 1	attack	1	N/A (targeted)
 Cards have is_base=False. The targeted attack cards are proper targeted attacks (can designate a target); the others need a paired targeted attack card.
 
@@ -82,7 +91,8 @@ draw_desperation_card(deck: DesperationDeck, rng: Random) draws from the concept
 - _resolve_award_baubles draws and places a real desperation card into player.deck for non-Fang baubles.
 - _apply_unshielded_damage calls _apply_desperation_consequence(state, target) exactly once per volley after the first shot that destroys a component.
 - _apply_desperation_consequence(state, player) implements the auto-choice priority described above and emits a desperation_consequence event.
-- _resolve_stack_movement / _move_resolved_stack_cards route non-base cards back to deck because is_base=False skips overheat.
+- _resolve_stack_movement / _resolve_combat use effective face helpers to read DesperateFace metadata.
+- _move_resolved_stack_cards routes cards played on a Desperate face back to the shared Desperation deck.
 - _validate_stack uses effective hybrid family/mode and the combined card lookup so desperation card IDs are legal inputs.
 
 4. Card lookup: `backend/starshot/rules/decks.py` and `backend/starshot/rules/engine.py`
@@ -111,7 +121,7 @@ Automated Tests
 powershell
 
 python -m unittest discover -s tests
-Expected: 49 tests pass.
+Expected: 55 tests pass as of the latest verified run. This doc update was not test-run per user request.
 
 Manual Verification
 Start a game in the debug UI, advance to Award Baubles while a ship is in a bauble hex, verify the player's deck grows by 1 card in the state panel.

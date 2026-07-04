@@ -49,11 +49,15 @@ Implemented so far:
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
 - Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
-- Show hybrid desperation cards in their own debug picker column with light-blue styling and a mode chooser.
-- Enforce hybrid desperation mode constraints in the debug builder: first hybrid card offers Basic Move only, targeted-attack stacks offer Basic Attack only, move stacks offer Basic Move only, and canceling the mode chooser removes the pending hybrid card.
+- Implement the first normal action-stack Desperate faces: Thrust Ions, Turbo Ions, Evasive Action, Ace Shot, Deadeye, and Steady Shot.
+- Show all non-base desperation cards in one debug picker pile named Desperation.
+- Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
+- Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
+- Preview implemented Desperate movement, damage, target roll, Aim, and always-hit effects.
 
 Not implemented yet:
 
+- Deferred Desperate faces: Homeward Bound, Treasure Hound, Nightjammer, Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got.
 - Full combat damage/shield rules.
 - Bauble placement/collection scoring details beyond placeholder phase flow.
 - Collision, obstacles, board boundaries, and any rule-specific movement edge cases not yet extracted into code.
@@ -68,7 +72,8 @@ Not implemented yet:
 - Ship facing should point toward hex faces, not corners.
 - `Turn Left` and `Turn Right` were corrected after visual testing; keep server resolution and JS preview in sync.
 - In 2-player games, attack target selection should default to the only opponent where practical.
-- Hybrid desperation cards must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
+- Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
+- Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck after resolution.
 
 ## Collaboration Notes
 

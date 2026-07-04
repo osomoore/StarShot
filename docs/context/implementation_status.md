@@ -2,17 +2,17 @@
 
 ## Current Status
 
-The core desperation-card work is now in place for the basic-face flow. The backend recognizes desperation moves and hybrid desperation attacks, the debug builder shows a dedicated Hybrid column, and hybrid cards preserve their chosen mode through serialization and UI state.
+The core desperation-card work is in place for the basic-face flow, plus the first normal action-stack Desperate-face slice. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, always-hit, and single-use return to the shared Desperation deck.
 
-Hybrid desperation mode selection is tied off for the basic-face implementation:
+The debug builder now has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack:
 
-- A hybrid selected into an empty stack can only choose Basic Move.
-- A hybrid selected into a stack with a targeted attack can only choose Basic Attack.
-- A hybrid selected into a stack with a Move card can only choose Basic Move.
-- The debug UI still shows both choices, but grays out unavailable modes.
-- Canceling/dismissing the hybrid mode picker removes the pending hybrid card instead of leaving a no-mode card in the stack.
+- Empty stack or Move stack: hybrid cards can choose Basic Move; Basic Attack and Desperate Attack Mod choices are disabled until a targeted attack partner exists.
+- Targeted Attack stack: hybrid cards can choose Basic Attack or their Desperate Attack Mod; Basic Move is disabled.
+- Basic Move desperation choices are forward-only and do not show a direction modal.
+- Desperate Move selections use bright green styling; Desperate Attack selections use bright orange styling.
+- Attack previews show target roll after Aim, with Aim shown in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
 
-Current focus is the next slice: resolving desperate faces and especially desperate abilities, rather than the basic card draw and placement flow.
+Current focus is the next slice: deferred special/warp/multi-target Desperate faces and especially desperate abilities.
 
 ## Recent Commits Of Interest
 
@@ -59,7 +59,7 @@ Current board behavior:
 - Order previews only show during `give_orders` before the selected player submits orders.
 - Preview markers are labeled by action/card slot, e.g. `A1.1`, `A2.1`, `A3.1`.
 - Attack preview bursts are drawn at the shooter location, colored by target player.
-- Order previews use hybrid mode as the effective card family, so Move-mode hybrids preview movement and Attack-mode hybrids contribute to attack damage.
+- Order previews use selected face/mode as the effective card family, so Basic Move/Attack and implemented Desperate faces preview movement, damage, target roll, Aim, and always-hit effects.
 
 ## Good Next Implementation Candidates
 
