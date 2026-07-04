@@ -224,15 +224,21 @@ select {
 }
 
 .builder-controls {
-  align-items: end;
+  align-items: center;
   display: grid;
-  gap: 10px;
-  grid-template-columns: 1fr;
+  gap: 8px;
+  grid-template-columns: minmax(90px, 1fr) auto;
 }
 
 .stacked-header {
-  align-items: stretch;
-  display: grid;
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.stacked-header h2 {
+  flex: 1 0 auto;
 }
 
 .builder-controls label,
@@ -242,6 +248,23 @@ select {
   display: grid;
   font-size: 12px;
   gap: 4px;
+}
+
+.builder-controls label {
+  align-items: center;
+  display: grid;
+  grid-template-columns: auto minmax(84px, 1fr);
+}
+
+.builder-controls select {
+  min-height: 32px;
+  padding: 4px 7px;
+}
+
+.builder-controls button {
+  min-height: 32px;
+  padding: 5px 9px;
+  white-space: nowrap;
 }
 
 .order-stacks {
@@ -1081,8 +1104,7 @@ pre {
   .summary-strip,
   .control-strip,
   .lower-panels,
-  .order-stacks,
-  .builder-controls {
+  .order-stacks {
     display: block;
   }
 
