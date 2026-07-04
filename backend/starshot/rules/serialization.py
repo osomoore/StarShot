@@ -5,6 +5,7 @@ from starshot.rules.models import (
     BaubleState,
     Card,
     CardFamily,
+    DesperationDeck,
     GamePhase,
     GameResult,
     GameState,
@@ -25,6 +26,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         "rng_seed": state.rng_seed,
         "rng_step": state.rng_step,
         "baubles": [bauble_to_dict(bauble) for bauble in state.baubles],
+        "desperation_deck": desperation_deck_to_dict(state.desperation_deck),
         "players": {
             player_id: player_to_dict(player, reveal_orders=reveal_orders)
             for player_id, player in state.players.items()
@@ -38,6 +40,7 @@ def state_from_dict(data: dict) -> GameState:
     return GameState(
         players={player_id: player_from_dict(player) for player_id, player in data["players"].items()},
         baubles=[bauble_from_dict(bauble) for bauble in data.get("baubles", [])],
+        desperation_deck=desperation_deck_from_dict(data.get("desperation_deck", {})),
         round_number=data["round_number"],
         phase=GamePhase(data["phase"]),
         starting_player_id=data["starting_player_id"],
@@ -86,6 +89,9 @@ def card_to_dict(card: Card) -> dict:
         "family": card.family.value,
         "value": card.value,
         "is_base": card.is_base,
+        "orientation_options": list(card.orientation_options),
+        "requires_target": card.requires_target,
+        "is_hybrid": card.is_hybrid,
     }
 
 
@@ -96,6 +102,9 @@ def card_from_dict(data: dict) -> Card:
         family=CardFamily(data["family"]),
         value=data["value"],
         is_base=data.get("is_base", True),
+        orientation_options=tuple(data.get("orientation_options", ("forward", "turn_left", "turn_right", "u_turn"))),
+        requires_target=data.get("requires_target", True),
+        is_hybrid=data.get("is_hybrid", False),
     )
 
 
@@ -154,6 +163,20 @@ def bauble_from_dict(data: dict) -> BaubleState:
     )
 
 
+def desperation_deck_to_dict(deck: DesperationDeck) -> dict:
+    return {
+        "cards": [card_to_dict(card) for card in deck.cards],
+        "shuffle_marker_on_top": deck.shuffle_marker_on_top,
+    }
+
+
+def desperation_deck_from_dict(data: dict) -> DesperationDeck:
+    return DesperationDeck(
+        cards=[card_from_dict(card) for card in data.get("cards", [])],
+        shuffle_marker_on_top=data.get("shuffle_marker_on_top", True),
+    )
+
+
 def orders_to_dict(orders: OrdersSubmission) -> dict:
     return {"stacks": [stack_to_dict(stack) for stack in orders.stacks]}
 
@@ -187,6 +210,7 @@ def selection_to_dict(selection: OrderCardSelection) -> dict:
         "face": selection.face,
         "orientation": selection.orientation,
         "target_player_id": selection.target_player_id,
+        "mode": selection.mode,
     }
 
 
@@ -196,6 +220,7 @@ def selection_from_dict(data: dict) -> OrderCardSelection:
         face=data.get("face", "front"),
         orientation=data.get("orientation", "up"),
         target_player_id=data.get("target_player_id"),
+        mode=data.get("mode"),
     )
 
 

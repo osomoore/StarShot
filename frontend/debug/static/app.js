@@ -134,6 +134,7 @@ function createEmptyDraft() {
       cards: ["", ""],
       targets: ["", ""],
       move_choices: ["forward", "forward"],
+      modes: ["", ""],
     })),
   };
 }
@@ -164,7 +165,11 @@ async function refreshGames() {
 async function createGame() {
   const payload = await api("/api/games", {
     method: "POST",
-    body: JSON.stringify({ player_ids: ["red", "blue"], seed: 3 }),
+    body: JSON.stringify({
+      player_ids: ["red", "blue"],
+      seed: 3,
+      debug_start_with_attack_desperation_card: true,
+    }),
   });
   state.selectedGameId = payload.game_id;
   state.builderDraft = createEmptyDraft();
@@ -265,9 +270,13 @@ function demoCardSelection(card, actionNumber, attackTargetId) {
   const selection = {
     card_id: card.id,
     face: "front",
-    orientation: card.family === "move" ? DEMO_MOVE_CHOICES[actionNumber - 1] : "up",
+    orientation: card.is_hybrid
+      ? "up"
+      : card.family === "move"
+        ? (card.orientation_options?.length === 1 ? card.orientation_options[0] : DEMO_MOVE_CHOICES[actionNumber - 1])
+        : "up",
   };
-  if (card.family === "attack") {
+  if (cardNeedsTarget(card)) {
     selection.target_player_id = attackTargetId;
   }
   return selection;
@@ -766,7 +775,14 @@ function rememberVisibleCards(game) {
 
 function cardLookupForPlayer(player) {
   const visibleCards = Object.fromEntries([...(player?.deck || []), ...(player?.overheat || [])].map((card) => [card.id, card]));
-  return { ...state.knownCards, ...visibleCards };
+  const merged = { ...state.knownCards, ...visibleCards };
+  Object.entries(merged).forEach(([cardId, card]) => {
+    if (!card || cardId === undefined) return;
+    if (card.is_hybrid === undefined) {
+      merged[cardId] = { ...card, is_hybrid: inferCardFromId(cardId).is_hybrid };
+    }
+  });
+  return merged;
 }
 
 function cardsForBuilder(player) {
@@ -783,10 +799,12 @@ function cardsForBuilder(player) {
 }
 
 function inferCardFromId(cardId) {
-  const family = cardId.startsWith("attack") ? "attack" : "move";
+  const isHybrid = cardId.startsWith("desp_ace_shot") || cardId.startsWith("desp_deadeye") || cardId.startsWith("desp_nightjammer") || cardId.startsWith("desp_self_destruct") || cardId.startsWith("desp_death_blossom") || cardId.startsWith("desp_steady_shot");
+  const family = isHybrid ? "hybrid" : cardId.startsWith("attack") || cardId.startsWith("desp_targeted_attack") ? "attack" : "move";
   const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
-  const name = family === "attack" ? `Targeted Attack ${value}` : `Controlled Move ${value}`;
-  return { id: cardId, name, family, value, is_base: true };
+  const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
+  const requiresTarget = family === "attack" && !cardId.startsWith("desp_") ? true : cardId.startsWith("desp_targeted_attack");
+  return { id: cardId, name, family, value, is_base: true, requires_target: requiresTarget, is_hybrid: isHybrid };
 }
 
 function renderOrdersBuilder(game) {
@@ -859,11 +877,15 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   const slot = document.createElement("div");
   slot.className = "card-slot";
   const selectedCard = cardById[stack.cards[cardIndex]];
-  const cardTone = selectedCard?.family === "attack" ? "attack-card" : selectedCard?.family === "move" ? "move-card" : "";
+  const cardTone = selectedCard?.is_hybrid ? "hybrid-card" : selectedCard?.family === "attack" ? "attack-card" : selectedCard?.family === "move" ? "move-card" : "";
   const detail = selectedCard
-    ? selectedCard.family === "attack"
-      ? targetChoiceLabel(stack.targets[cardIndex])
-      : moveChoiceLabel(stack.move_choices[cardIndex])
+    ? selectedCard.is_hybrid
+      ? hybridModeLabel(stack.modes[cardIndex])
+      : selectedCard.family === "attack"
+        ? cardNeedsTarget(selectedCard)
+          ? targetChoiceLabel(stack.targets[cardIndex])
+          : "Pairs with targeted attack"
+        : moveChoiceLabel(stack.move_choices[cardIndex])
     : "No card";
 
   slot.innerHTML = `
@@ -881,6 +903,14 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
     </button>
   `;
   return slot;
+}
+
+function cardNeedsTarget(card) {
+  return Boolean(card?.family === "attack" && card.requires_target !== false);
+}
+
+function hybridModeLabel(mode) {
+  return mode === "attack" ? "Attack mode" : mode === "move" ? "Move mode" : "Choose mode";
 }
 
 function moveChoiceLabel(value) {
@@ -943,6 +973,9 @@ function showCardPicker(stackIndex, cardIndex) {
       <div class="picker-column attack-column">
         <h3>Attack</h3>
       </div>
+      <div class="picker-column hybrid-column">
+        <h3>Hybrid</h3>
+      </div>
     </div>
   `;
   panel.querySelector(".card-picker-header button[aria-label]").addEventListener("click", hideCardPickerOverlay);
@@ -954,10 +987,14 @@ function showCardPicker(stackIndex, cardIndex) {
   const columns = {
     move: panel.querySelector(".move-column"),
     attack: panel.querySelector(".attack-column"),
+    hybrid: panel.querySelector(".hybrid-column"),
   };
 
-  ["move", "attack"].forEach((family) => {
-    const cards = availableCards.filter((card) => card.family === family);
+  ["move", "attack", "hybrid"].forEach((family) => {
+    const cards = availableCards.filter((card) => {
+      if (family === "hybrid") return Boolean(card.is_hybrid);
+      return !card.is_hybrid && card.family === family;
+    });
     if (cards.length === 0) {
       const empty = document.createElement("p");
       empty.className = "picker-empty";
@@ -965,12 +1002,15 @@ function showCardPicker(stackIndex, cardIndex) {
       columns[family].append(empty);
     }
     cards.forEach((card) => {
+      const cardMeta = cardLookupForPlayer(player)[card.id] || card;
+      const hasTargetedPartner = stack.cards.some((cardId, index) => index !== cardIndex && cardLookupForPlayer(player)[cardId]?.family === "attack" && cardLookupForPlayer(player)[cardId]?.requires_target !== false);
       const isUsedElsewhere = selectedIds.includes(card.id) && stack.cards[cardIndex] !== card.id;
-      const isWrongFamily = Boolean(lockedFamily && card.family !== lockedFamily);
+      const isWrongFamily = Boolean(lockedFamily && !card.is_hybrid && card.family !== lockedFamily);
+      const isUntargetedAttackWithoutPartner = cardMeta.family === "attack" && cardMeta.requires_target === false && !hasTargetedPartner;
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `picker-card ${family === "move" ? "move-card" : "attack-card"}`;
-      button.disabled = isUsedElsewhere || isWrongFamily;
+      button.className = `picker-card ${family === "move" ? "move-card" : family === "hybrid" ? "hybrid-card" : "attack-card"}`;
+      button.disabled = isUsedElsewhere || isWrongFamily || (family !== "hybrid" && isUntargetedAttackWithoutPartner);
       button.innerHTML = `
         <strong>${card.name}</strong>
         <span>${card.id}</span>
@@ -979,6 +1019,14 @@ function showCardPicker(stackIndex, cardIndex) {
       button.addEventListener("click", () => {
         selectBuilderCard(stackIndex, cardIndex, card.id);
         hideCardPickerOverlay();
+        if (card.is_hybrid) {
+          showHybridModePanel(stackIndex, cardIndex);
+          return;
+        }
+        if (card.family === "attack" && !cardNeedsTarget(card)) {
+          renderAll();
+          return;
+        }
         showHexChoicePanel(stackIndex, cardIndex);
       });
       columns[family].append(button);
@@ -995,6 +1043,7 @@ function selectBuilderCard(stackIndex, cardIndex, cardId) {
   stack.cards[cardIndex] = cardId;
   stack.targets[cardIndex] = "";
   stack.move_choices[cardIndex] = "forward";
+  stack.modes[cardIndex] = "";
   applyDefaultAttackTarget(stack, cardIndex);
   renderAll();
 }
@@ -1006,7 +1055,62 @@ function clearActionStack(stackIndex) {
   stack.cards = ["", ""];
   stack.targets = ["", ""];
   stack.move_choices = ["forward", "forward"];
+  stack.modes = ["", ""];
   renderAll();
+}
+
+function moveChoicesForCard(card) {
+  if (!card || card.family !== "move") return MOVE_CHOICES;
+  if (card.orientation_options && card.orientation_options.length === 1) {
+    return [{ value: card.orientation_options[0], label: "Forward", mark: "F" }];
+  }
+  return MOVE_CHOICES;
+}
+
+function showHybridModePanel(stackIndex, cardIndex) {
+  const game = state.selectedState;
+  const player = game?.players?.[state.builderPlayerId];
+  const stack = state.builderDraft.stacks[stackIndex];
+  const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
+  if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
+
+  const overlay = cardPickerOverlayElement();
+  overlay.replaceChildren();
+  const panel = document.createElement("section");
+  panel.className = "hex-choice-panel";
+  panel.innerHTML = `
+    <div class="card-picker-header">
+      <span>Choose Hybrid Mode</span>
+      <button type="button" aria-label="Dismiss choice panel">&times;</button>
+    </div>
+    <div class="hex-choice-grid"></div>
+  `;
+  panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
+  const grid = panel.querySelector(".hex-choice-grid");
+  const hasTargetedPartner = stack.cards.some((cardId, index) => index !== cardIndex && cardLookupForPlayer(player)[cardId]?.family === "attack" && cardLookupForPlayer(player)[cardId]?.requires_target !== false);
+  [
+    { value: "move", label: "Move", mark: "M", fill: "#3f9963" },
+    { value: "attack", label: "Attack", mark: "A", fill: "#c9433f", disabled: !hasTargetedPartner },
+  ].forEach((choice) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "hex-choice";
+    button.disabled = Boolean(choice.disabled);
+    button.style.setProperty("--choice-fill", choice.fill);
+    button.innerHTML = `
+      <span class="choice-hex">${choice.mark}</span>
+      <strong>${choice.label}</strong>
+    `;
+    button.addEventListener("click", () => {
+      stack.modes[cardIndex] = choice.value;
+      hideCardPickerOverlay();
+      renderAll();
+      showHexChoicePanel(stackIndex, cardIndex);
+    });
+    grid.append(button);
+  });
+  overlay.append(panel);
+  overlay.classList.add("visible");
 }
 
 function showHexChoicePanel(stackIndex, cardIndex) {
@@ -1015,6 +1119,12 @@ function showHexChoicePanel(stackIndex, cardIndex) {
   const stack = state.builderDraft.stacks[stackIndex];
   const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
   if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
+  if (card.is_hybrid && !stack.modes[cardIndex]) {
+    return;
+  }
+  if (card.family === "attack" && !cardNeedsTarget(card)) {
+    return;
+  }
 
   const overlay = cardPickerOverlayElement();
   overlay.replaceChildren();
@@ -1031,7 +1141,13 @@ function showHexChoicePanel(stackIndex, cardIndex) {
   panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
   const grid = panel.querySelector(".hex-choice-grid");
 
-  const choices = card.family === "attack" ? attackHexChoices(game) : MOVE_CHOICES;
+  const choices = card.is_hybrid && stack.modes[cardIndex] === "attack"
+    ? attackHexChoices(game)
+    : card.is_hybrid && stack.modes[cardIndex] === "move"
+      ? moveChoicesForCard(card)
+      : card.family === "attack"
+        ? attackHexChoices(game)
+        : moveChoicesForCard(card);
   choices.forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -1043,7 +1159,11 @@ function showHexChoicePanel(stackIndex, cardIndex) {
       <strong>${choice.label}</strong>
     `;
     button.addEventListener("click", () => {
-      if (card.family === "attack") {
+      if (card.is_hybrid && stack.modes[cardIndex] === "attack") {
+        stack.targets[cardIndex] = choice.value;
+      } else if (card.is_hybrid && stack.modes[cardIndex] === "move") {
+        stack.move_choices[cardIndex] = choice.value;
+      } else if (card.family === "attack") {
         stack.targets[cardIndex] = choice.value;
       } else {
         stack.move_choices[cardIndex] = choice.value;
@@ -1086,9 +1206,12 @@ function buildOrdersPayload() {
           const selection = {
             card_id: cardId,
             face: "front",
-            orientation: card?.family === "move" ? stack.move_choices[cardIndex] : "up",
+            orientation: card?.family === "move" || (card?.is_hybrid && stack.modes[cardIndex] === "move")
+              ? stack.move_choices[cardIndex]
+              : "up",
+            mode: card?.is_hybrid ? stack.modes[cardIndex] : undefined,
           };
-          if (card?.family === "attack") {
+          if (cardNeedsTarget(card)) {
             selection.target_player_id = stack.targets[cardIndex];
           }
           return selection;
@@ -1117,7 +1240,7 @@ function validateBuiltOrders() {
       if (used.has(cardId)) return { ok: false, message: `${cardId} is used more than once.` };
       used.add(cardId);
       families.add(card.family);
-      if (card.family === "attack") {
+      if (cardNeedsTarget(card)) {
         if (!stack.targets[cardIndex]) return { ok: false, message: `${cardId} needs a target.` };
         targets.add(stack.targets[cardIndex]);
       }
@@ -1145,6 +1268,7 @@ function updateBuilderDraftFromControl(target) {
     stack.cards[cardIndex] = target.value;
     stack.targets[cardIndex] = "";
     stack.move_choices[cardIndex] = "forward";
+    stack.modes[cardIndex] = "";
     applyDefaultAttackTarget(stack, cardIndex);
   } else if (field === "move_choice" && cardIndex !== null) {
     stack.move_choices[cardIndex] = target.value;
@@ -1160,7 +1284,7 @@ function applyDefaultAttackTarget(stack, cardIndex) {
   const opponents = Object.keys(state.selectedState?.players || {}).filter(
     (playerId) => playerId !== state.builderPlayerId,
   );
-  if (card?.family === "attack" && opponents.length === 1) {
+  if (cardNeedsTarget(card) && opponents.length === 1) {
     stack.targets[cardIndex] = opponents[0];
   }
 }

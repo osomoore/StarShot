@@ -10,7 +10,12 @@ from starshot.rules.baubles import (
     fang_vp_for_round,
     ship_inside_bauble,
 )
-from starshot.rules.decks import base_card_by_id, create_base_deck
+from starshot.rules.decks import (
+    card_by_id,
+    create_base_deck,
+    create_desperation_deck,
+    draw_desperation_card,
+)
 from starshot.rules.hex import (
     clamp_to_board,
     corner_start,
@@ -24,6 +29,7 @@ from starshot.rules.models import (
     ActionStack,
     Card,
     CardFamily,
+    DesperationDeck,
     GameConfig,
     GamePhase,
     GameResult,
@@ -60,12 +66,25 @@ def create_initial_state(config: GameConfig) -> GameState:
         player_id: PlayerState(id=player_id, deck=create_base_deck(), ship=_starting_ship(index))
         for index, player_id in enumerate(player_ids)
     }
+    if config.debug_start_with_attack_desperation_card:
+        from starshot.rules.decks import desperation_card_by_id
+
+        for player in players.values():
+            player.deck.append(desperation_card_by_id("desp_ace_shot_a"))
 
     try:
         baubles = create_baubles(setup_rng, players)
     except BaublePlacementError as exc:
         raise RulesError(str(exc)) from exc
-    state = GameState(players=players, baubles=baubles, starting_player_id=starting_player_id, rng_seed=rng_seed)
+
+    desperation_deck = create_desperation_deck(setup_rng)
+    state = GameState(
+        players=players,
+        baubles=baubles,
+        desperation_deck=desperation_deck,
+        starting_player_id=starting_player_id,
+        rng_seed=rng_seed,
+    )
     state.event_log.append(
         {
             "type": "game_created",
@@ -214,16 +233,33 @@ def _resolve_action_phase(state: GameState) -> None:
     _change_phase(state, NEXT_PHASE[state.phase])
 
 
+def _normalize_move_choice(orientation: str) -> str:
+    return "forward" if orientation in {"up", "forward"} else orientation
+
+
+def _selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
+    if card.is_hybrid:
+        if selection.mode == "attack":
+            return CardFamily.ATTACK
+        if selection.mode == "move":
+            return CardFamily.MOVE
+        raise RulesError(f"Hybrid card {card.id} requires a mode selection.")
+    return card.family
+
+
 def _resolve_stack_movement(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
     movement_steps: list[dict] = []
     for selection in stack.cards:
-        card = base_card_by_id(selection.card_id)
-        if card.family.value != "move":
+        card = card_by_id(selection.card_id)
+        if _selected_card_family(card, selection) != CardFamily.MOVE:
             continue
+
+        move_choice = _normalize_move_choice(selection.orientation)
+        if move_choice not in card.orientation_options:
+            raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
 
         distance = card.value + (1 if stack.seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
         before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
-        move_choice = "forward" if selection.orientation == "up" else selection.orientation
         attempted_q = player.ship.q
         attempted_r = player.ship.r
 
@@ -278,7 +314,7 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
     returned: list[str] = []
     overheated: list[str] = []
     for selection in stack.cards:
-        card = base_card_by_id(selection.card_id)
+        card = card_by_id(selection.card_id)
         if stack.seal_mode == SealMode.OVERDRIVE and card.is_base:
             player.overheat.append(card)
             overheated.append(card.id)
@@ -390,8 +426,8 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
 
 def _target_player_id_for_attack(stack: ActionStack) -> str | None:
     for selection in stack.cards:
-        card = base_card_by_id(selection.card_id)
-        if card.family == CardFamily.ATTACK:
+        card = card_by_id(selection.card_id)
+        if _selected_card_family(card, selection) == CardFamily.ATTACK and card.requires_target:
             return selection.target_player_id
     return None
 
@@ -399,8 +435,8 @@ def _target_player_id_for_attack(stack: ActionStack) -> str | None:
 def _attack_cards_for_stack(stack: ActionStack) -> list[Card]:
     attack_cards: list[Card] = []
     for selection in stack.cards:
-        card = base_card_by_id(selection.card_id)
-        if card.family == CardFamily.ATTACK:
+        card = card_by_id(selection.card_id)
+        if _selected_card_family(card, selection) == CardFamily.ATTACK:
             attack_cards.append(card)
     return attack_cards
 
@@ -408,6 +444,7 @@ def _attack_cards_for_stack(stack: ActionStack) -> list[Card]:
 def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int) -> dict:
     shots: list[dict] = []
     was_destroyed = target.ship.destroyed
+    desperation_consequence_applied = False
 
     for shot_number in range(1, damage + 1):
         lane_roll = _roll_d12(state)
@@ -431,6 +468,10 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
                 }
             )
             target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
+            # The first component destroyed by this volley triggers a desperation consequence.
+            if not desperation_consequence_applied:
+                _apply_desperation_consequence(state, target)
+                desperation_consequence_applied = True
         shots.append(shot)
 
     return {
@@ -444,12 +485,78 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
     }
 
 
-def _roll_2d12(state: GameState) -> int:
+def _apply_desperation_consequence(state: GameState, player: PlayerState) -> None:
+    """Apply the desperation consequence when the first component is destroyed
+    in a volley.  Auto-choice priority (player preference: always prefer drawing
+    a desperation card):
+      1. Swap first base card in deck for a drawn desperation card.
+      2. Swap first base card in overheat for a drawn desperation card.
+      3. Lose 1 VP.
+    """
+    rng = _make_rng(state)
+
+    # Option 1: swap a base card from deck.
+    base_in_deck = next((c for c in player.deck if c.is_base), None)
+    if base_in_deck is not None:
+        player.deck.remove(base_in_deck)
+        drawn = draw_desperation_card(state.desperation_deck, rng)
+        player.deck.append(drawn)
+        state.event_log.append(
+            {
+                "type": "desperation_consequence",
+                "player_id": player.id,
+                "choice": "swap_deck",
+                "removed_card_id": base_in_deck.id,
+                "drawn_card_id": drawn.id,
+                "vp_lost": 0,
+            }
+        )
+        return
+
+    # Option 2: swap a base card from overheat.
+    base_in_overheat = next((c for c in player.overheat if c.is_base), None)
+    if base_in_overheat is not None:
+        player.overheat.remove(base_in_overheat)
+        drawn = draw_desperation_card(state.desperation_deck, rng)
+        player.overheat.append(drawn)
+        state.event_log.append(
+            {
+                "type": "desperation_consequence",
+                "player_id": player.id,
+                "choice": "swap_overheat",
+                "removed_card_id": base_in_overheat.id,
+                "drawn_card_id": drawn.id,
+                "vp_lost": 0,
+            }
+        )
+        return
+
+    # Option 3: lose 1 VP.
+    player.victory_points = max(0, player.victory_points - 1)
+    state.event_log.append(
+        {
+            "type": "desperation_consequence",
+            "player_id": player.id,
+            "choice": "vp_penalty",
+            "removed_card_id": None,
+            "drawn_card_id": None,
+            "vp_lost": 1,
+        }
+    )
+
+
+def _make_rng(state: GameState) -> Random:
+    """Return a seeded RNG at the current rng_step position (without consuming a step)."""
     if state.rng_seed is None:
         state.rng_seed = 0
     rng = Random(state.rng_seed)
     for _ in range(state.rng_step):
         rng.randint(1, 12)
+    return rng
+
+
+def _roll_2d12(state: GameState) -> int:
+    rng = _make_rng(state)
     first = rng.randint(1, 12)
     second = rng.randint(1, 12)
     state.rng_step += 2
@@ -457,11 +564,7 @@ def _roll_2d12(state: GameState) -> int:
 
 
 def _roll_d12(state: GameState) -> int:
-    if state.rng_seed is None:
-        state.rng_seed = 0
-    rng = Random(state.rng_seed)
-    for _ in range(state.rng_step):
-        rng.randint(1, 12)
+    rng = _make_rng(state)
     value = rng.randint(1, 12)
     state.rng_step += 1
     return value
@@ -469,6 +572,7 @@ def _roll_d12(state: GameState) -> int:
 
 def _resolve_award_baubles(state: GameState) -> None:
     awarded_any = False
+    rng = _make_rng(state)
     for bauble in state.baubles:
         if not bauble.is_fang and bauble.number != state.round_number:
             continue
@@ -484,11 +588,19 @@ def _resolve_award_baubles(state: GameState) -> None:
             player.victory_points += vp_awarded
             if player.id not in bauble.claimed_by:
                 bauble.claimed_by.append(player.id)
+
+            drawn_card_id: str | None = None
+            if not bauble.is_fang:
+                drawn = draw_desperation_card(state.desperation_deck, rng)
+                player.deck.append(drawn)
+                drawn_card_id = drawn.id
+
             award = {
                 "player_id": player.id,
                 "distance": distance,
                 "vp_awarded": vp_awarded,
                 "desperation_card_drawn": not bauble.is_fang,
+                "desperation_card_id": drawn_card_id,
             }
             if bauble.is_fang:
                 award.update(_apply_fang_damage(state, player))
@@ -637,8 +749,13 @@ def _validate_stack(
         if card is None:
             raise RulesError(f"Card is not available in deck: {selection.card_id}")
         used_card_ids.add(selection.card_id)
-        families.add(card.family)
-        if card.family.value == "attack":
+        effective_family = _selected_card_family(card, selection)
+        families.add(effective_family)
+        if effective_family == CardFamily.MOVE:
+            move_choice = _normalize_move_choice(selection.orientation)
+            if move_choice not in card.orientation_options:
+                raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
+        if effective_family == CardFamily.ATTACK and card.requires_target:
             if not selection.target_player_id:
                 raise RulesError("Attack cards require a target player.")
             if selection.target_player_id == "":
@@ -648,6 +765,20 @@ def _validate_stack(
             if selection.target_player_id not in state.players:
                 raise RulesError(f"Unknown attack target: {selection.target_player_id}")
             target_player_ids.add(selection.target_player_id)
+
+    attack_cards = [
+        (card_by_id(selection.card_id), selection)
+        for selection in stack.cards
+        if selection.card_id
+    ]
+    if any(
+        _selected_card_family(card, selection) == CardFamily.ATTACK and not card.requires_target
+        for card, selection in attack_cards
+    ) and not any(
+        _selected_card_family(card, selection) == CardFamily.ATTACK and card.requires_target
+        for card, selection in attack_cards
+    ):
+        raise RulesError("Untargeted attack cards must be paired with a targeted attack card.")
 
     if len(families) > 1:
         raise RulesError("A stack cannot mix move and attack cards.")

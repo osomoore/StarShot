@@ -18,6 +18,7 @@ class GamePhase(StrEnum):
 class CardFamily(StrEnum):
     MOVE = "move"
     ATTACK = "attack"
+    HYBRID = "hybrid"
 
 
 class SealMode(StrEnum):
@@ -29,6 +30,7 @@ class SealMode(StrEnum):
 class GameConfig:
     player_ids: tuple[str, ...]
     seed: int | None = None
+    debug_start_with_attack_desperation_card: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +40,9 @@ class Card:
     family: CardFamily
     value: int
     is_base: bool = True
+    orientation_options: tuple[str, ...] = ("forward", "turn_left", "turn_right", "u_turn")
+    requires_target: bool = True
+    is_hybrid: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +51,7 @@ class OrderCardSelection:
     face: str = "front"
     orientation: str = "up"
     target_player_id: str | None = None
+    mode: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +101,18 @@ class BaubleState:
     claimed_by: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class DesperationDeck:
+    """Shared desperation deck.  Cards are drawn from index 0 (bottom).
+    The shuffle marker is a sentinel: when drawn it triggers a reshuffle
+    and is placed back on top (end of list).
+    """
+
+    cards: list[Card] = field(default_factory=list)
+    # True when the "Shuffle Desperately" marker sits on top (end of list).
+    shuffle_marker_on_top: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class GameResult:
     winner_ids: tuple[str, ...]
@@ -106,6 +124,7 @@ class GameResult:
 class GameState:
     players: dict[str, PlayerState]
     baubles: list[BaubleState] = field(default_factory=list)
+    desperation_deck: DesperationDeck = field(default_factory=DesperationDeck)
     round_number: int = 1
     phase: GamePhase = GamePhase.GIVE_ORDERS
     starting_player_id: str = ""

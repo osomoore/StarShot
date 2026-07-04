@@ -72,6 +72,20 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(orders.stacks[0].cards[0].card_id, "move_1_a")
         self.assertEqual(orders.stacks[2].seal_mode, SealMode.OVERDRIVE)
 
+    def test_hybrid_desperation_cards_keep_metadata_across_serialization(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("red", "blue"),
+                seed=1,
+                debug_start_with_attack_desperation_card=True,
+            )
+        )
+        restored = state_from_dict(state_to_dict(state))
+
+        ace_shot = next(card for card in restored.players["red"].deck if card.id == "desp_ace_shot_a")
+        self.assertTrue(ace_shot.is_hybrid)
+        self.assertFalse(ace_shot.requires_target)
+
 
 if __name__ == "__main__":
     unittest.main()
