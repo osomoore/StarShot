@@ -48,6 +48,8 @@ Implemented so far:
 - Start ships near board corners, 3 hexes in from the corner.
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
+- Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
+- Show hybrid desperation cards in their own debug picker column with light-blue styling and a mode chooser.
 
 Not implemented yet:
 

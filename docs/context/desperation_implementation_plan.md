@@ -1,11 +1,13 @@
 Desperation Deck – Initial Implementation Plan
-Background
-StarShot already has base deck cards, movement, combat, shields, and bauble VP. When a ship takes unshielded component damage for the first time in a volley, the defender must choose a desperation consequence. One option is to swap a base card for a random Desperation card drawn from a shared Desperation deck. Baubles (non-Fang) also trigger a desperation card draw.
 
-Currently the code logs desperation_card_drawn: true for baubles and has placeholder desperation consequence comments, but no actual Desperation deck object exists in the state and no cards are drawn or added to player decks.
+## Current Status
 
-Scope for This Increment
-The rules doc marks "desperation card desperate faces" as deferred but says the basic face and draw mechanics are in-scope for the first playable slice. We will implement:
+The basic-face desperation deck flow is now implemented. The rules engine can define, draw, and place desperation cards; basic desperation moves are treated as forward-only; hybrid desperation attacks can be used as either Move or Attack depending on the selected mode; and the debug UI shows them in a dedicated Hybrid column.
+
+The remaining work is to resolve desperate faces and especially desperate abilities, which are still deferred from the first playable slice.
+
+## Scope for This Increment
+The rules doc marks "desperation card desperate faces" as deferred, but the basic face and draw mechanics are now in place. The next work is to implement the desperate-face behavior and any especially desperate abilities that should interact with the action-stack model.
 
 Desperation deck definition – all cards from Table 12.2 + 13.1, basic face only.
 Shared DesperationDeck state living on GameState.

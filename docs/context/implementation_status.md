@@ -1,16 +1,10 @@
 # StarShot Implementation Status
 
-## Last Known Good State
+## Current Status
 
-The latest implemented milestone is a browser-visible order preview on the hex board.
+The core desperation-card work is now in place for the basic-face flow. The backend recognizes desperation moves and hybrid desperation attacks, the debug builder shows a dedicated Hybrid column, and hybrid cards preserve their chosen mode through serialization and UI state.
 
-Validated with:
-
-```powershell
-python -m unittest discover -s tests
-```
-
-Expected result at the time this note was written: 12 tests pass.
+Current focus is the next slice: resolving desperate faces and especially desperate abilities, rather than the basic card draw and placement flow.
 
 ## Recent Commits Of Interest
 

@@ -291,6 +291,57 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             ),
         )
 
+    def test_hybrid_desperation_attack_allows_attack_mode_with_targeted_partner(self):
+        """Hybrid attack mode is legal when paired with a targeted attack."""
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+
+        submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(
+                        1,
+                        SealMode.SEALED,
+                        (
+                            OrderCardSelection("attack_1_a", target_player_id="blue"),
+                            OrderCardSelection("desp_ace_shot_a", mode="attack"),
+                        ),
+                    ),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                ),
+            ),
+        )
+
+    def test_hybrid_desperation_move_mode_rejects_targeted_attack_partner(self):
+        """A hybrid card cannot use move mode in a targeted attack stack."""
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+
+        with self.assertRaises(RulesError):
+            submit_orders(
+                state,
+                "red",
+                OrdersSubmission(
+                    stacks=(
+                        ActionStack(
+                            1,
+                            SealMode.SEALED,
+                            (
+                                OrderCardSelection("attack_1_a", target_player_id="blue"),
+                                OrderCardSelection("desp_ace_shot_a", orientation="forward", mode="move"),
+                            ),
+                        ),
+                        ActionStack(2, SealMode.SEALED),
+                        ActionStack(3, SealMode.SEALED),
+                    ),
+                ),
+            )
+
     def test_desperation_move_card_requires_forward_orientation(self):
         """Desperation move cards should be forward-only and reject other move orientations."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

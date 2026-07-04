@@ -408,6 +408,12 @@ select {
   border-color: #c9433f;
 }
 
+.front-card.hybrid-card,
+.picker-card.hybrid-card {
+  background: linear-gradient(135deg, #eaf6ff, #ffffff 58%);
+  border-color: #7fb6e6;
+}
+
 .card-slot-label {
   color: #66716f;
   font-size: 11px;
@@ -897,8 +903,8 @@ select {
 }
 
 .card-picker-panel {
-  max-width: min(620px, 100%);
-  width: 560px;
+  max-width: min(920px, 100%);
+  width: min(900px, 100%);
 }
 
 .hex-choice-panel {
@@ -936,7 +942,7 @@ select {
 .card-picker-columns {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   min-width: 0;
 }
 
