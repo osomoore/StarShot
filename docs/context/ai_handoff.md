@@ -50,6 +50,7 @@ Implemented so far:
 - Show movement stops, facing, and attack burst previews.
 - Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
 - Show hybrid desperation cards in their own debug picker column with light-blue styling and a mode chooser.
+- Enforce hybrid desperation mode constraints in the debug builder: first hybrid card offers Basic Move only, targeted-attack stacks offer Basic Attack only, move stacks offer Basic Move only, and canceling the mode chooser removes the pending hybrid card.
 
 Not implemented yet:
 
@@ -67,6 +68,7 @@ Not implemented yet:
 - Ship facing should point toward hex faces, not corners.
 - `Turn Left` and `Turn Right` were corrected after visual testing; keep server resolution and JS preview in sync.
 - In 2-player games, attack target selection should default to the only opponent where practical.
+- Hybrid desperation cards must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
 
 ## Collaboration Notes
 

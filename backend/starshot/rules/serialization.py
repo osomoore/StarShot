@@ -5,6 +5,7 @@ from starshot.rules.models import (
     BaubleState,
     Card,
     CardFamily,
+    DesperateFace,
     DesperationDeck,
     GamePhase,
     GameResult,
@@ -92,6 +93,7 @@ def card_to_dict(card: Card) -> dict:
         "orientation_options": list(card.orientation_options),
         "requires_target": card.requires_target,
         "is_hybrid": card.is_hybrid,
+        "desperate_face": desperate_face_to_dict(card.desperate_face) if card.desperate_face else None,
     }
 
 
@@ -105,6 +107,35 @@ def card_from_dict(data: dict) -> Card:
         orientation_options=tuple(data.get("orientation_options", ("forward", "turn_left", "turn_right", "u_turn"))),
         requires_target=data.get("requires_target", True),
         is_hybrid=data.get("is_hybrid", False),
+        desperate_face=desperate_face_from_dict(data["desperate_face"]) if data.get("desperate_face") else None,
+    )
+
+
+def desperate_face_to_dict(face: DesperateFace) -> dict:
+    return {
+        "family": face.family.value,
+        "value": face.value,
+        "orientation_options": list(face.orientation_options),
+        "requires_target": face.requires_target,
+        "aim_bonus": face.aim_bonus,
+        "damage_bonus": face.damage_bonus,
+        "defense_bonus": face.defense_bonus,
+        "always_hits": face.always_hits,
+        "movement_disabled": face.movement_disabled,
+    }
+
+
+def desperate_face_from_dict(data: dict) -> DesperateFace:
+    return DesperateFace(
+        family=CardFamily(data["family"]),
+        value=data.get("value", 0),
+        orientation_options=tuple(data.get("orientation_options", ("forward",))),
+        requires_target=data.get("requires_target", False),
+        aim_bonus=data.get("aim_bonus", 0),
+        damage_bonus=data.get("damage_bonus", 0),
+        defense_bonus=data.get("defense_bonus", 0),
+        always_hits=data.get("always_hits", False),
+        movement_disabled=data.get("movement_disabled", False),
     )
 
 

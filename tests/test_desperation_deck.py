@@ -291,6 +291,28 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             ),
         )
 
+    def test_hybrid_desperation_move_mode_is_forward_only(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+
+        with self.assertRaises(RulesError):
+            submit_orders(
+                state,
+                "red",
+                OrdersSubmission(
+                    stacks=(
+                        ActionStack(
+                            1,
+                            SealMode.SEALED,
+                            (OrderCardSelection("desp_ace_shot_a", orientation="turn_left", mode="move"),),
+                        ),
+                        ActionStack(2, SealMode.SEALED),
+                        ActionStack(3, SealMode.SEALED),
+                    ),
+                ),
+            )
+
     def test_hybrid_desperation_attack_allows_attack_mode_with_targeted_partner(self):
         """Hybrid attack mode is legal when paired with a targeted attack."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -403,6 +425,158 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
                            and e["player_id"] == "red"]
         if movement_events:
             self.assertEqual(movement_events[0]["steps"][0]["distance"], 1)
+
+    def test_desperate_move_uses_single_use_face_and_returns_to_desperation_deck(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_thrust_ions_a"))
+        desperation_deck_size_before = len(state.desperation_deck.cards)
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("desp_thrust_ions_a", face="desperate"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        movement_events = [e for e in state.event_log if e["type"] == "movement_resolved"
+                           and e["player_id"] == "red"]
+        self.assertEqual(movement_events[0]["steps"][0]["distance"], 5)
+        self.assertNotIn("desp_thrust_ions_a", {c.id for c in state.players["red"].deck})
+        self.assertIn("desp_thrust_ions_a", {c.id for c in state.desperation_deck.cards})
+        self.assertEqual(len(state.desperation_deck.cards), desperation_deck_size_before + 1)
+
+    def test_desperate_evasive_action_adds_defense_without_movement(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_evasive_action"))
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_evasive_action", face="desperate"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.players["red"].ship.movement_this_action, 0)
+        self.assertEqual(state.players["red"].ship.defense_bonus_this_action, 10)
+        movement_events = [e for e in state.event_log if e["type"] == "movement_resolved"
+                           and e["player_id"] == "red"]
+        self.assertEqual(movement_events[0]["steps"][0]["distance"], 0)
+        self.assertEqual(movement_events[0]["steps"][0]["defense_bonus"], 10)
+
+    def test_desperate_steady_shot_adds_aim_and_damage(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_steady_shot_a"))
+        state.players["blue"].ship.shields = 0
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (
+                    OrderCardSelection("attack_1_a", target_player_id="blue"),
+                    OrderCardSelection("desp_steady_shot_a", face="desperate"),
+                )),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["aim_bonus"], 2)
+        self.assertEqual(volley["damage"], 2)
+        self.assertEqual(volley["roll_total"], volley["roll"] + 2)
+        moved = [e for e in state.event_log if e["type"] == "action_cards_moved"
+                 and e["player_id"] == "red"][0]
+        self.assertIn("desp_steady_shot_a", moved["returned_to_desperation_deck"])
+
+    def test_desperate_deadeye_always_hits(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        from starshot.rules.decks import desperation_card_by_id
+        state.players["red"].deck.append(desperation_card_by_id("desp_deadeye"))
+        state.players["blue"].ship.shields = 0
+        state.players["red"].ship.q = -14
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 14
+        state.players["blue"].ship.r = 0
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (
+                    OrderCardSelection("attack_1_a", target_player_id="blue"),
+                    OrderCardSelection("desp_deadeye", face="desperate"),
+                )),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
+        self.assertTrue(volley["always_hits"])
+        self.assertTrue(volley["hit"])
+        self.assertLess(volley["roll_total"], volley["defense_threshold"])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,14 @@
 
 The core desperation-card work is now in place for the basic-face flow. The backend recognizes desperation moves and hybrid desperation attacks, the debug builder shows a dedicated Hybrid column, and hybrid cards preserve their chosen mode through serialization and UI state.
 
+Hybrid desperation mode selection is tied off for the basic-face implementation:
+
+- A hybrid selected into an empty stack can only choose Basic Move.
+- A hybrid selected into a stack with a targeted attack can only choose Basic Attack.
+- A hybrid selected into a stack with a Move card can only choose Basic Move.
+- The debug UI still shows both choices, but grays out unavailable modes.
+- Canceling/dismissing the hybrid mode picker removes the pending hybrid card instead of leaving a no-mode card in the stack.
+
 Current focus is the next slice: resolving desperate faces and especially desperate abilities, rather than the basic card draw and placement flow.
 
 ## Recent Commits Of Interest
@@ -51,6 +59,7 @@ Current board behavior:
 - Order previews only show during `give_orders` before the selected player submits orders.
 - Preview markers are labeled by action/card slot, e.g. `A1.1`, `A2.1`, `A3.1`.
 - Attack preview bursts are drawn at the shooter location, colored by target player.
+- Order previews use hybrid mode as the effective card family, so Move-mode hybrids preview movement and Attack-mode hybrids contribute to attack damage.
 
 ## Good Next Implementation Candidates
 

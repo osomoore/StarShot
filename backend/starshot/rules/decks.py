@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from random import Random
 
-from starshot.rules.models import Card, CardFamily, DesperationDeck
+from starshot.rules.models import Card, CardFamily, DesperateFace, DesperationDeck
 
 
 def create_base_deck() -> list[Card]:
@@ -28,25 +28,26 @@ def base_card_by_id(card_id: str) -> Card:
 # ---------------------------------------------------------------------------
 
 # Basic faces of all desperation cards that are in-scope for the first slice.
-# Desperate faces are deferred; 'value' here is the basic-face value.
+# 'value' here is the basic-face value; desperate_face holds the single-use
+# face where that face fits the current action-stack engine.
 # Hull Repair, Advanced Repair, and All She's Got are also deferred.
 _DESPERATION_CARDS: list[Card] = [
     # Move-type basic faces
-    Card(id="desp_thrust_ions_a",    name="Thrust Ions",      family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
-    Card(id="desp_thrust_ions_b",    name="Thrust Ions",      family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
-    Card(id="desp_turbo_ions",       name="Turbo Ions",       family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
+    Card(id="desp_thrust_ions_a",    name="Thrust Ions",      family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",), desperate_face=DesperateFace(CardFamily.MOVE, value=5)),
+    Card(id="desp_thrust_ions_b",    name="Thrust Ions",      family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",), desperate_face=DesperateFace(CardFamily.MOVE, value=5)),
+    Card(id="desp_turbo_ions",       name="Turbo Ions",       family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",), desperate_face=DesperateFace(CardFamily.MOVE, value=10)),
     Card(id="desp_homeward_bound",   name="Homeward Bound",   family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
     Card(id="desp_treasure_hound",   name="Treasure Hound",   family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
-    Card(id="desp_evasive_action",   name="Evasive Action",   family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",)),
+    Card(id="desp_evasive_action",   name="Evasive Action",   family=CardFamily.MOVE,   value=1, is_base=False, orientation_options=("forward",), desperate_face=DesperateFace(CardFamily.MOVE, defense_bonus=10, movement_disabled=True)),
     # Attack-type basic faces (untargeted bonus; must pair with a targeted attack)
-    Card(id="desp_ace_shot_a",       name="Ace Shot",         family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_ace_shot_b",       name="Ace Shot",         family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_deadeye",          name="Deadeye",          family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_nightjammer",      name="Nightjammer",      family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_self_destruct",    name="Self Destruct",    family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_death_blossom",    name="Death Blossom",    family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_steady_shot_a",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
-    Card(id="desp_steady_shot_b",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, requires_target=False, is_hybrid=True),
+    Card(id="desp_ace_shot_a",       name="Ace Shot",         family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=5)),
+    Card(id="desp_ace_shot_b",       name="Ace Shot",         family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=5)),
+    Card(id="desp_deadeye",          name="Deadeye",          family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, always_hits=True)),
+    Card(id="desp_nightjammer",      name="Nightjammer",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True),
+    Card(id="desp_self_destruct",    name="Self Destruct",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True),
+    Card(id="desp_death_blossom",    name="Death Blossom",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True),
+    Card(id="desp_steady_shot_a",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=2, damage_bonus=1)),
+    Card(id="desp_steady_shot_b",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=2, damage_bonus=1)),
     # Desperate Targeted Attack cards – proper targeted attacks, not overdriven
     Card(id="desp_targeted_attack_1_a", name="Desperation Attack 1", family=CardFamily.ATTACK, value=1, is_base=False),
     Card(id="desp_targeted_attack_1_b", name="Desperation Attack 1", family=CardFamily.ATTACK, value=1, is_base=False),

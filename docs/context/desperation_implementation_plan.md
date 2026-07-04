@@ -1,28 +1,31 @@
-Desperation Deck – Initial Implementation Plan
+Desperation Deck - Completed Basic-Face Implementation
 
 ## Current Status
 
-The basic-face desperation deck flow is now implemented. The rules engine can define, draw, and place desperation cards; basic desperation moves are treated as forward-only; hybrid desperation attacks can be used as either Move or Attack depending on the selected mode; and the debug UI shows them in a dedicated Hybrid column.
+The basic-face desperation deck flow is implemented and covered by tests. The rules engine can define, draw, serialize, and place desperation cards; basic desperation moves are forward-only; targeted desperation attacks can stand alone; untargeted/hybrid desperation attacks can be played as either basic Move or basic Attack depending on the selected mode.
+
+The debug UI shows hybrid desperation cards in a dedicated Hybrid column. When a hybrid card is selected, the UI always shows both mode choices, graying out unavailable modes:
+
+- If the hybrid card is first in the stack, only Basic Move is available until a targeted attack partner exists.
+- If a targeted attack is already in the stack, only Basic Attack is available.
+- If a Move card is already in the stack, only Basic Move is available.
+- If the mode picker is dismissed without a choice, the pending hybrid card is removed from the slot instead of leaving a no-mode selection.
 
 The remaining work is to resolve desperate faces and especially desperate abilities, which are still deferred from the first playable slice.
 
-## Scope for This Increment
-The rules doc marks "desperation card desperate faces" as deferred, but the basic face and draw mechanics are now in place. The next work is to implement the desperate-face behavior and any especially desperate abilities that should interact with the action-stack model.
+## Completed Scope
 
-Desperation deck definition – all cards from Table 12.2 + 13.1, basic face only.
-Shared DesperationDeck state living on GameState.
-Drawing a desperation card – draws from the bottom, handles the "Shuffle Desperately" reshuffle sentinel.
-Bauble desperation draw – actually adds the drawn card to the player's deck when in bauble range.
-Damage consequence choice – when first component is destroyed by a volley, defender picks one of:
-Move a base card from deck to overheat.
-Swap a base card in deck for a desperation card.
-Swap a base card in overheat for a desperation card.
-If no valid choice exists, lose 1 VP.
-Card routing after use – desperation cards played on their basic face return to player deck normally; is_base=False already gates overdrive correctly.
-Validation – desperation cards cannot be placed in the same stack as base attack/move cards that mix types; they follow the same family constraint.
-Serialization – round-trip DesperationDeck.
-Tests – cover draw, reshuffle, bauble draw, consequence choice, VP penalty.
-Open Questions
+- Desperation deck definition: all in-scope basic-face cards from Table 12.2 + 13.1.
+- Shared DesperationDeck state living on GameState.
+- Desperation draws: draw from the bottom and handle the "Shuffle Desperately" reshuffle sentinel.
+- Bauble draws: non-Fang baubles add the drawn desperation card to the player's deck.
+- Damage consequence: when the first component is destroyed by a volley, apply the deterministic auto-choice priority described below.
+- Card routing: desperation cards played on their basic face return to the player deck normally; is_base=False gates overdrive correctly.
+- Validation: desperation cards follow effective family constraints and cannot mix Move/Attack modes in a stack.
+- Serialization: DesperationDeck round-trips through state serialization.
+- Tests: draw, reshuffle, bauble draw, consequence choice, VP penalty, hybrid mode legality, and non-overdrive behavior.
+
+## Open Questions
 IMPORTANT
 
 Consequence choice is a player decision. In the current single-server-call model there is no interactive mid-resolution prompt. For this increment, the server will auto-choose the consequence with the following deterministic priority (per user preference: always prefer drawing a desperation card):
@@ -40,17 +43,21 @@ NOTE
 
 "All She's Got" and "Hull Repair / Advanced Repair" are Especially Desperate / special-seal cards that don't fit the normal action-stack model. They are deferred per the rules doc.
 
-Proposed Changes
-1. Models (models.py)
-[MODIFY] 
-models.py
-Add DesperationDeck dataclass with cards: list[Card] and a shuffle_marker_on_top: bool flag.
-Add desperation_deck: DesperationDeck field to GameState.
-Add desperation_hand: list[Card] to PlayerState (cards drawn but not yet placed in deck – simplifies draw-then-place).
-2. Desperation Cards (decks.py)
-[MODIFY] 
-decks.py
-Add create_desperation_deck() -> DesperationDeck with all cards from the rules (Table 12.2 + 13.1), excluding "Hull Repair", "Advanced Repair" (deferred), and "All She's Got" (deferred). Included cards:
+## Implementation Notes
+
+The following notes describe the implementation that is now in place.
+
+1. Models: `backend/starshot/rules/models.py`
+
+- DesperationDeck dataclass with cards: list[Card] and a shuffle_marker_on_top: bool flag.
+- desperation_deck: DesperationDeck field on GameState.
+- No separate desperation_hand is currently used; drawn cards are placed directly into player.deck.
+
+2. Desperation cards: `backend/starshot/rules/decks.py`
+
+create_desperation_deck() -> DesperationDeck includes all basic-face cards from the rules (Table 12.2 + 13.1), excluding "Hull Repair", "Advanced Repair" (deferred), and "All She's Got" (deferred).
+
+Included cards:
 
 qty	id prefix	name	family	basic_value	desperate_face
 2	desp_thrust_ions_*	Thrust Ions	move	1	deferred
@@ -67,41 +74,28 @@ qty	id prefix	name	family	basic_value	desperate_face
 4	desp_targeted_attack_1_*	Desperation Attack 1	attack	1	N/A (targeted)
 Cards have is_base=False. The targeted attack cards are proper targeted attacks (can designate a target); the others need a paired targeted attack card.
 
-Add draw_from_desperation_deck(deck: DesperationDeck, rng: Random) -> Card that draws from the conceptual "bottom" (implemented as pop(0) from the list), reshuffles and re-tops sentinel when the sentinel is drawn.
+draw_desperation_card(deck: DesperationDeck, rng: Random) draws from the conceptual "bottom" (implemented as pop(0) from the list), reshuffles after the shuffle marker/sentinel is reached, and returns a valid desperation card.
 
-3. Engine (engine.py)
-[MODIFY] 
-engine.py
-create_initial_state: shuffle and attach desperation_deck to the new state.
+3. Engine: `backend/starshot/rules/engine.py`
 
-_resolve_award_baubles: replace the placeholder desperation_card_drawn: True log with an actual draw-and-place call that appends the card to player.deck.
+- create_initial_state shuffles and attaches desperation_deck to the new state.
+- _resolve_award_baubles draws and places a real desperation card into player.deck for non-Fang baubles.
+- _apply_unshielded_damage calls _apply_desperation_consequence(state, target) exactly once per volley after the first shot that destroys a component.
+- _apply_desperation_consequence(state, player) implements the auto-choice priority described above and emits a desperation_consequence event.
+- _resolve_stack_movement / _move_resolved_stack_cards route non-base cards back to deck because is_base=False skips overheat.
+- _validate_stack uses effective hybrid family/mode and the combined card lookup so desperation card IDs are legal inputs.
 
-_apply_unshielded_damage: after the first shot that destroys a component, call _apply_desperation_consequence(state, target) exactly once per volley.
+4. Card lookup: `backend/starshot/rules/decks.py` and `backend/starshot/rules/engine.py`
 
-_apply_desperation_consequence(state, player): implements the auto-choice priority described above; emits a desperation_consequence event.
+- desperation_card_by_id(card_id: str) -> Card.
+- card_by_id(card_id: str) -> Card tries base first, then desperation.
+- Engine card lookup uses card_by_id(...) where desperation cards can appear.
 
-_resolve_stack_movement / _move_resolved_stack_cards: already correctly routes non-base cards back to deck (because is_base=False skips overheat). No change needed for basic-face use; desperate-face routing is deferred.
+5. Serialization: `backend/starshot/rules/serialization.py`
 
-Validation in _validate_stack: update base_card_by_id calls to handle desperation cards. The validator currently calls base_card_by_id(selection.card_id) which will KeyError on desperation IDs. Fix by providing a combined lookup.
+desperation_deck_to_dict / desperation_deck_from_dict are wired into state_to_dict / state_from_dict.
 
-4. Card Lookup (decks.py and engine.py)
-[MODIFY] 
-decks.py
-Add desperation_card_by_id(card_id: str) -> Card and card_by_id(card_id: str) -> Card (tries base first, then desperation).
-
-[MODIFY] 
-engine.py
-Replace all base_card_by_id(...) calls with card_by_id(...).
-
-5. Serialization (serialization.py)
-[MODIFY] 
-serialization.py
-Add desperation_deck_to_dict / desperation_deck_from_dict. Wire into state_to_dict / state_from_dict.
-
-6. Tests (tests/test_rules_engine.py)
-[MODIFY] 
-test_rules_engine.py
-New test cases:
+6. Tests
 
 test_initial_state_has_desperation_deck – deck has correct card count (17 non-deferred cards + sentinel behavior).
 test_bauble_award_draws_desperation_card_into_deck – player in bauble range gains a desperation card in their deck.
@@ -110,16 +104,14 @@ test_desperation_consequence_swaps_base_for_desperation_card_when_deck_has_no_ba
 test_desperation_consequence_vp_penalty_when_no_base_cards_anywhere – lose 1 VP when fully depleted.
 test_desperation_card_not_overdriven – desperation card used with overdrive seal still has base value and goes to deck not overheat.
 test_desperation_card_in_attack_stack_requires_targeted_attack_partner – (validation test, deferred per rules; desperation attack 1 targeted cards are full targeted attacks and can stand alone).
-[NEW] 
-test_desperation_deck.py
-Unit tests specifically for the deck/draw mechanics (draw order, reshuffle sentinel).
+test_desperation_deck.py contains deck/draw mechanics plus integration coverage.
 
 Verification Plan
 Automated Tests
 powershell
 
 python -m unittest discover -s tests
-Expected: all existing 12 tests pass, plus ~7 new tests pass.
+Expected: 49 tests pass.
 
 Manual Verification
 Start a game in the debug UI, advance to Award Baubles while a ship is in a bauble hex, verify the player's deck grows by 1 card in the state panel.

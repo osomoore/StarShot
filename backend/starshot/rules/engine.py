@@ -34,6 +34,7 @@ from starshot.rules.models import (
     GamePhase,
     GameResult,
     GameState,
+    OrderCardSelection,
     OrdersSubmission,
     PlayerState,
     SealMode,
@@ -215,6 +216,7 @@ def _resolve_action_phase(state: GameState) -> None:
                         "face": selection.face,
                         "orientation": selection.orientation,
                         "target_player_id": selection.target_player_id,
+                        "mode": selection.mode,
                     }
                     for selection in stack.cards
                 ],
@@ -237,7 +239,22 @@ def _normalize_move_choice(orientation: str) -> str:
     return "forward" if orientation in {"up", "forward"} else orientation
 
 
+def _is_desperate_face(selection: OrderCardSelection) -> bool:
+    return selection.face == "desperate"
+
+
+def _desperate_face_for(card: Card, selection: OrderCardSelection):
+    if not _is_desperate_face(selection):
+        return None
+    if card.desperate_face is None:
+        raise RulesError(f"Card {card.id} does not have an implemented desperate face.")
+    return card.desperate_face
+
+
 def _selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
+    desperate_face = _desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.family
     if card.is_hybrid:
         if selection.mode == "attack":
             return CardFamily.ATTACK
@@ -247,6 +264,52 @@ def _selected_card_family(card: Card, selection: OrderCardSelection) -> CardFami
     return card.family
 
 
+def _card_requires_target(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = _desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.requires_target
+    return card.requires_target
+
+
+def _card_orientation_options(card: Card, selection: OrderCardSelection) -> tuple[str, ...]:
+    desperate_face = _desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.orientation_options
+    return card.orientation_options
+
+
+def _card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
+    desperate_face = _desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.value
+    return card.value + (1 if seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+
+
+def _card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = _desperate_face_for(card, selection)
+    return desperate_face.aim_bonus if desperate_face is not None else 0
+
+
+def _card_damage_bonus(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = _desperate_face_for(card, selection)
+    return desperate_face.damage_bonus if desperate_face is not None else 0
+
+
+def _card_defense_bonus(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = _desperate_face_for(card, selection)
+    return desperate_face.defense_bonus if desperate_face is not None else 0
+
+
+def _card_always_hits(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = _desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.always_hits)
+
+
+def _card_movement_disabled(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = _desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.movement_disabled)
+
+
 def _resolve_stack_movement(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
     movement_steps: list[dict] = []
     for selection in stack.cards:
@@ -254,16 +317,23 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
         if _selected_card_family(card, selection) != CardFamily.MOVE:
             continue
 
+        defense_bonus = _card_defense_bonus(card, selection)
+        if defense_bonus:
+            player.ship.defense_bonus_this_action += defense_bonus
+
         move_choice = _normalize_move_choice(selection.orientation)
-        if move_choice not in card.orientation_options:
+        orientation_options = _card_orientation_options(card, selection)
+        if move_choice not in orientation_options:
             raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
 
-        distance = card.value + (1 if stack.seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+        distance = _card_value(card, selection, stack.seal_mode)
         before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
         attempted_q = player.ship.q
         attempted_r = player.ship.r
 
-        if move_choice == "forward":
+        if _card_movement_disabled(card, selection):
+            pass
+        elif move_choice == "forward":
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
             player.ship.q, player.ship.r = attempted_q, attempted_r
             player.ship.movement_this_action += distance
@@ -288,8 +358,10 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
         movement_steps.append(
             {
                 "card_id": card.id,
+                "face": selection.face,
                 "choice": move_choice,
-                "distance": 0 if move_choice == "u_turn" else distance,
+                "distance": 0 if move_choice == "u_turn" or _card_movement_disabled(card, selection) else distance,
+                "defense_bonus": defense_bonus,
                 "before": before,
                 "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
                 "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
@@ -313,16 +385,21 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
 def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
     returned: list[str] = []
     overheated: list[str] = []
+    returned_to_desperation_deck: list[str] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if stack.seal_mode == SealMode.OVERDRIVE and card.is_base:
+        if _is_desperate_face(selection):
+            state.desperation_deck.cards.append(card)
+            state.desperation_deck.shuffle_marker_on_top = False
+            returned_to_desperation_deck.append(card.id)
+        elif stack.seal_mode == SealMode.OVERDRIVE and card.is_base:
             player.overheat.append(card)
             overheated.append(card.id)
         else:
             player.deck.append(card)
             returned.append(card.id)
 
-    if returned or overheated:
+    if returned or overheated or returned_to_desperation_deck:
         state.event_log.append(
             {
                 "type": "action_cards_moved",
@@ -331,6 +408,7 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
                 "action_number": action_number,
                 "returned_to_deck": returned,
                 "moved_to_overheat": overheated,
+                "returned_to_desperation_deck": returned_to_desperation_deck,
             }
         )
 
@@ -369,26 +447,32 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
             continue
 
         damage = sum(
-            card.value + (1 if stack.seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
-            for card in attack_cards
+            _card_value(card, selection, stack.seal_mode) + _card_damage_bonus(card, selection)
+            for card, selection in attack_cards
         )
+        aim_bonus = sum(_card_aim_bonus(card, selection) for card, selection in attack_cards)
+        always_hits = any(_card_always_hits(card, selection) for card, selection in attack_cards)
         distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
         defense_threshold = distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
         roll = _roll_2d12(state)
-        hit = roll >= defense_threshold
+        roll_total = roll + aim_bonus
+        hit = always_hits or roll_total >= defense_threshold
         event = {
             "type": "volley_resolved",
             "round": state.round_number,
             "action_number": action_number,
             "attacker_id": attacker_id,
             "target_id": target_id,
-            "card_ids": [card.id for card in attack_cards],
+            "card_ids": [card.id for card, selection in attack_cards],
             "damage": damage,
+            "aim_bonus": aim_bonus,
             "distance": distance,
             "target_movement": target.ship.movement_this_action,
             "target_defense_bonus": target.ship.defense_bonus_this_action,
             "defense_threshold": defense_threshold,
             "roll": roll,
+            "roll_total": roll_total,
+            "always_hits": always_hits,
             "hit": hit,
             "shielded": False,
             "damage_applied": 0,
@@ -427,17 +511,17 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
 def _target_player_id_for_attack(stack: ActionStack) -> str | None:
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if _selected_card_family(card, selection) == CardFamily.ATTACK and card.requires_target:
+        if _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection):
             return selection.target_player_id
     return None
 
 
-def _attack_cards_for_stack(stack: ActionStack) -> list[Card]:
-    attack_cards: list[Card] = []
+def _attack_cards_for_stack(stack: ActionStack) -> list[tuple[Card, OrderCardSelection]]:
+    attack_cards: list[tuple[Card, OrderCardSelection]] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
         if _selected_card_family(card, selection) == CardFamily.ATTACK:
-            attack_cards.append(card)
+            attack_cards.append((card, selection))
     return attack_cards
 
 
@@ -748,14 +832,18 @@ def _validate_stack(
         card = available.get(selection.card_id)
         if card is None:
             raise RulesError(f"Card is not available in deck: {selection.card_id}")
+        if selection.face not in {"front", "desperate"}:
+            raise RulesError(f"Unsupported card face: {selection.face}")
+        if selection.face == "desperate" and card.desperate_face is None:
+            raise RulesError(f"Card {card.id} does not have an implemented desperate face.")
         used_card_ids.add(selection.card_id)
         effective_family = _selected_card_family(card, selection)
         families.add(effective_family)
         if effective_family == CardFamily.MOVE:
             move_choice = _normalize_move_choice(selection.orientation)
-            if move_choice not in card.orientation_options:
+            if move_choice not in _card_orientation_options(card, selection):
                 raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
-        if effective_family == CardFamily.ATTACK and card.requires_target:
+        if effective_family == CardFamily.ATTACK and _card_requires_target(card, selection):
             if not selection.target_player_id:
                 raise RulesError("Attack cards require a target player.")
             if selection.target_player_id == "":
@@ -772,10 +860,10 @@ def _validate_stack(
         if selection.card_id
     ]
     if any(
-        _selected_card_family(card, selection) == CardFamily.ATTACK and not card.requires_target
+        _selected_card_family(card, selection) == CardFamily.ATTACK and not _card_requires_target(card, selection)
         for card, selection in attack_cards
     ) and not any(
-        _selected_card_family(card, selection) == CardFamily.ATTACK and card.requires_target
+        _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection)
         for card, selection in attack_cards
     ):
         raise RulesError("Untargeted attack cards must be paired with a targeted attack card.")

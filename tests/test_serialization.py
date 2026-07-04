@@ -85,6 +85,8 @@ class SerializationTests(unittest.TestCase):
         ace_shot = next(card for card in restored.players["red"].deck if card.id == "desp_ace_shot_a")
         self.assertTrue(ace_shot.is_hybrid)
         self.assertFalse(ace_shot.requires_target)
+        self.assertIsNotNone(ace_shot.desperate_face)
+        self.assertEqual(ace_shot.desperate_face.aim_bonus, 5)
 
 
 if __name__ == "__main__":

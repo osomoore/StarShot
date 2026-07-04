@@ -5,7 +5,6 @@ const state = {
   builderPlayerId: "red",
   builderDraft: createEmptyDraft(),
   knownCards: {},
-  pendingHybridChoice: null,
   // New properties for board interaction
   zoomScale: 1,
   panOffsetX: 0,
@@ -133,6 +132,7 @@ function createEmptyDraft() {
       action_number: actionNumber,
       seal_mode: "sealed",
       cards: ["", ""],
+      faces: ["front", "front"],
       targets: ["", ""],
       move_choices: ["forward", "forward"],
       modes: ["", ""],
@@ -476,19 +476,21 @@ function renderActionPreview(svg, game) {
         const before = { ...preview };
         applyPreviewMove(
           preview,
-          previewCardValue(card, stack.seal_mode),
+          previewSelectionValue(card, stack, cardIndex),
           stack.move_choices[cardIndex],
         );
         drawMovementPathPreview(svg, before, preview);
         drawPositionPreview(svg, preview, `A${stackIndex + 1}.${cardIndex + 1}`);
       });
     } else if (family === "attack") {
-      const firstAttack = selections.find(({ card, family }) => family === "attack" && cardNeedsTarget(card));
+      const firstAttack = selections.find(({ card, cardIndex, family }) => (
+        family === "attack" && effectiveCardRequiresTarget(card, stack, cardIndex)
+      ));
       const target = firstAttack ? game.players[stack.targets[firstAttack.cardIndex]] : null;
       if (target) {
         const damage = selections
           .filter((selection) => selection.family === "attack")
-          .reduce((total, { card }) => total + previewCardValue(card, stack.seal_mode), 0);
+          .reduce((total, { card, cardIndex }) => total + previewSelectionValue(card, stack, cardIndex), 0);
         drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, damage);
       }
     }
@@ -511,6 +513,13 @@ function firstUnresolvedStackIndex(phase) {
 
 function previewCardValue(card, sealMode) {
   return card.value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
+}
+
+function previewSelectionValue(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.movement_disabled ? 0 : card.desperate_face.value;
+  }
+  return previewCardValue(card, stack.seal_mode);
 }
 
 function applyPreviewMove(preview, distance, choice) {
@@ -882,12 +891,16 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
   const slot = document.createElement("div");
   slot.className = "card-slot";
   const selectedCard = cardById[stack.cards[cardIndex]];
-  const cardTone = selectedCard?.is_hybrid ? "hybrid-card" : selectedCard?.family === "attack" ? "attack-card" : selectedCard?.family === "move" ? "move-card" : "";
+  const face = selectedFace(selectedCard, stack, cardIndex);
+  const family = effectiveCardFamily(selectedCard, stack, cardIndex);
+  const cardTone = selectedCard?.is_hybrid && face !== "desperate" ? "hybrid-card" : family === "attack" ? "attack-card" : family === "move" ? "move-card" : "";
   const detail = selectedCard
-    ? selectedCard.is_hybrid
+    ? face === "desperate"
+      ? desperateFaceLabel(selectedCard)
+      : selectedCard.is_hybrid
       ? hybridModeLabel(stack.modes[cardIndex])
       : selectedCard.family === "attack"
-        ? cardNeedsTarget(selectedCard)
+        ? effectiveCardRequiresTarget(selectedCard, stack, cardIndex)
           ? targetChoiceLabel(stack.targets[cardIndex])
           : "Pairs with targeted attack"
         : moveChoiceLabel(stack.move_choices[cardIndex])
@@ -914,8 +927,22 @@ function cardNeedsTarget(card) {
   return Boolean(card?.family === "attack" && card.requires_target !== false);
 }
 
+function selectedFace(card, stack, cardIndex) {
+  if (!card?.desperate_face) return "front";
+  return stack?.faces?.[cardIndex] === "desperate" ? "desperate" : "front";
+}
+
+function effectiveCardRequiresTarget(card, stack, cardIndex) {
+  if (!card) return false;
+  if (selectedFace(card, stack, cardIndex) === "desperate") {
+    return Boolean(card.desperate_face?.requires_target);
+  }
+  return cardNeedsTarget(card);
+}
+
 function effectiveCardFamily(card, stack, cardIndex) {
   if (!card) return "";
+  if (selectedFace(card, stack, cardIndex) === "desperate") return card.desperate_face?.family || "";
   if (card.is_hybrid) return stack?.modes?.[cardIndex] || "";
   return card.family;
 }
@@ -932,21 +959,109 @@ function stackHasTargetedAttack(stack, cardById, excludingCardIndex = null) {
   return stack.cards.some((cardId, index) => {
     if (index === excludingCardIndex) return false;
     const card = cardById[cardId];
-    return card?.family === "attack" && card.requires_target !== false;
+    return effectiveCardFamily(card, stack, index) === "attack" && effectiveCardRequiresTarget(card, stack, index);
   });
 }
 
-function allowedHybridModes(stack, cardById, cardIndex) {
+function cardUseChoices(card, stack, cardById, cardIndex) {
   const lockedFamily = stackLockedFamily(stack, cardById, cardIndex);
   const hasTargetedPartner = stackHasTargetedAttack(stack, cardById, cardIndex);
-  return {
-    move: !lockedFamily || lockedFamily === "move",
-    attack: hasTargetedPartner && (!lockedFamily || lockedFamily === "attack"),
-  };
+  const choices = [];
+
+  function familyAllowed(family) {
+    return !lockedFamily || lockedFamily === family;
+  }
+
+  if (card.is_hybrid) {
+    choices.push({
+      face: "front",
+      mode: "move",
+      family: "move",
+      label: "Basic Move",
+      mark: "M",
+      fill: "#3f9963",
+      disabled: !familyAllowed("move"),
+    });
+    choices.push({
+      face: "front",
+      mode: "attack",
+      family: "attack",
+      label: "Basic Attack",
+      mark: "A",
+      fill: "#c9433f",
+      disabled: !hasTargetedPartner || !familyAllowed("attack"),
+    });
+  }
+
+  if (card.desperate_face) {
+    const family = card.desperate_face.family;
+    const requiresTarget = Boolean(card.desperate_face.requires_target);
+    const needsTargetedPartner = family === "attack" && !requiresTarget;
+    choices.push({
+      face: "desperate",
+      mode: "",
+      family,
+      label: `${card.name} Desperate`,
+      mark: family === "attack" ? "D" : "M",
+      fill: family === "attack" ? "#c9433f" : "#3f9963",
+      disabled: !familyAllowed(family) || (needsTargetedPartner && !hasTargetedPartner),
+    });
+  }
+
+  if (!card.is_hybrid && !card.desperate_face) {
+    const family = card.family;
+    const needsTargetedPartner = family === "attack" && card.requires_target === false;
+    choices.push({
+      face: "front",
+      mode: "",
+      family,
+      label: family === "attack" ? "Attack" : "Move",
+      mark: family === "attack" ? "A" : "M",
+      fill: family === "attack" ? "#c9433f" : "#3f9963",
+      disabled: !familyAllowed(family) || (needsTargetedPartner && !hasTargetedPartner),
+    });
+  } else if (!card.is_hybrid && card.family === "move") {
+    choices.unshift({
+      face: "front",
+      mode: "",
+      family: "move",
+      label: "Basic Move",
+      mark: "M",
+      fill: "#3f9963",
+      disabled: !familyAllowed("move"),
+    });
+  } else if (!card.is_hybrid && card.family === "attack") {
+    const needsTargetedPartner = card.requires_target === false;
+    choices.unshift({
+      face: "front",
+      mode: "",
+      family: "attack",
+      label: "Basic Attack",
+      mark: "A",
+      fill: "#c9433f",
+      disabled: !familyAllowed("attack") || (needsTargetedPartner && !hasTargetedPartner),
+    });
+  }
+
+  return choices;
 }
 
 function hybridModeLabel(mode) {
   return mode === "attack" ? "Attack mode" : mode === "move" ? "Move mode" : "Choose mode";
+}
+
+function desperateFaceLabel(card) {
+  const face = card?.desperate_face;
+  if (!face) return "Basic";
+  if (face.family === "move") {
+    if (face.movement_disabled) return `Desperate: +${face.defense_bonus} Defense`;
+    return `Desperate: Move ${face.value}`;
+  }
+  const parts = [];
+  if (face.aim_bonus) parts.push(`+${face.aim_bonus} Aim`);
+  if (face.damage_bonus) parts.push(`+${face.damage_bonus} Damage`);
+  if (face.always_hits) parts.push("Always hits");
+  return `Desperate: ${parts.join(", ") || "Attack mod"}`;
 }
 
 function moveChoiceLabel(value) {
@@ -974,7 +1089,6 @@ function cardPickerOverlayElement() {
 }
 
 function hideCardPickerOverlay() {
-  cancelPendingHybridChoice();
   elements.cardPickerOverlay?.classList.remove("visible");
 }
 
@@ -982,23 +1096,10 @@ function clearCardSlot(stackIndex, cardIndex) {
   const stack = state.builderDraft.stacks[stackIndex];
   if (!stack) return;
   stack.cards[cardIndex] = "";
+  stack.faces[cardIndex] = "front";
   stack.targets[cardIndex] = "";
   stack.move_choices[cardIndex] = "forward";
   stack.modes[cardIndex] = "";
-}
-
-function cancelPendingHybridChoice() {
-  const pending = state.pendingHybridChoice;
-  if (!pending) return;
-
-  const stack = state.builderDraft.stacks[pending.stackIndex];
-  const isStillPending = stack?.cards?.[pending.cardIndex] === pending.cardId
-    && !stack?.modes?.[pending.cardIndex];
-  state.pendingHybridChoice = null;
-  if (!isStillPending) return;
-
-  clearCardSlot(pending.stackIndex, pending.cardIndex);
-  renderAll();
 }
 
 function showCardPicker(stackIndex, cardIndex) {
@@ -1011,7 +1112,6 @@ function showCardPicker(stackIndex, cardIndex) {
   const selectedIds = selectedBuilderCardIds();
   const stack = state.builderDraft.stacks[stackIndex];
   const cardById = cardLookupForPlayer(player);
-  const lockedFamily = stackLockedFamily(stack, cardById, cardIndex);
   overlay.replaceChildren();
 
   const panel = document.createElement("section");
@@ -1060,34 +1160,25 @@ function showCardPicker(stackIndex, cardIndex) {
       columns[family].append(empty);
     }
     cards.forEach((card) => {
-      const cardMeta = cardLookupForPlayer(player)[card.id] || card;
-      const hasTargetedPartner = stackHasTargetedAttack(stack, cardById, cardIndex);
-      const hybridModes = card.is_hybrid ? allowedHybridModes(stack, cardById, cardIndex) : null;
+      const choices = cardUseChoices(card, stack, cardById, cardIndex);
       const isUsedElsewhere = selectedIds.includes(card.id) && stack.cards[cardIndex] !== card.id;
-      const isWrongFamily = Boolean(lockedFamily && !card.is_hybrid && card.family !== lockedFamily);
-      const isUntargetedAttackWithoutPartner = cardMeta.family === "attack" && cardMeta.requires_target === false && !hasTargetedPartner;
-      const isHybridWithoutLegalMode = Boolean(card.is_hybrid && !hybridModes.move && !hybridModes.attack);
+      const hasLegalChoice = choices.some((choice) => !choice.disabled);
       const button = document.createElement("button");
       button.type = "button";
       button.className = `picker-card ${family === "move" ? "move-card" : family === "hybrid" ? "hybrid-card" : "attack-card"}`;
-      button.disabled = isUsedElsewhere || isWrongFamily || isHybridWithoutLegalMode || (family !== "hybrid" && isUntargetedAttackWithoutPartner);
+      button.disabled = isUsedElsewhere || !hasLegalChoice;
       button.innerHTML = `
         <strong>${card.name}</strong>
         <span>${card.id}</span>
         <b>${card.value}</b>
       `;
       button.addEventListener("click", () => {
-        selectBuilderCard(stackIndex, cardIndex, card.id);
-        hideCardPickerOverlay();
-        if (card.is_hybrid) {
-          showHybridModePanel(stackIndex, cardIndex);
+        if (card.is_hybrid || card.desperate_face) {
+          showCardUseChoicePanel(stackIndex, cardIndex, card.id);
           return;
         }
-        if (card.family === "attack" && !cardNeedsTarget(card)) {
-          renderAll();
-          return;
-        }
-        showHexChoicePanel(stackIndex, cardIndex);
+        const choice = choices.find((candidate) => !candidate.disabled);
+        selectBuilderCardUse(stackIndex, cardIndex, card.id, choice);
       });
       columns[family].append(button);
     });
@@ -1097,15 +1188,18 @@ function showCardPicker(stackIndex, cardIndex) {
   overlay.classList.add("visible");
 }
 
-function selectBuilderCard(stackIndex, cardIndex, cardId) {
+function selectBuilderCardUse(stackIndex, cardIndex, cardId, choice) {
   const stack = state.builderDraft.stacks[stackIndex];
   if (!stack) return;
   stack.cards[cardIndex] = cardId;
+  stack.faces[cardIndex] = choice?.face || "front";
   stack.targets[cardIndex] = "";
   stack.move_choices[cardIndex] = "forward";
-  stack.modes[cardIndex] = "";
+  stack.modes[cardIndex] = choice?.mode || "";
   applyDefaultAttackTarget(stack, cardIndex);
+  hideCardPickerOverlay();
   renderAll();
+  showFollowupChoicePanel(stackIndex, cardIndex);
 }
 
 function clearActionStack(stackIndex) {
@@ -1113,25 +1207,31 @@ function clearActionStack(stackIndex) {
   if (!stack) return;
   stack.seal_mode = "sealed";
   stack.cards = ["", ""];
+  stack.faces = ["front", "front"];
   stack.targets = ["", ""];
   stack.move_choices = ["forward", "forward"];
   stack.modes = ["", ""];
   renderAll();
 }
 
-function moveChoicesForCard(card) {
-  if (!card || card.family !== "move") return MOVE_CHOICES;
-  if (card.orientation_options && card.orientation_options.length === 1) {
-    return [{ value: card.orientation_options[0], label: "Forward", mark: "F" }];
+function moveChoicesForCard(card, stack = null, cardIndex = null) {
+  if (!card) return MOVE_CHOICES;
+  const face = cardIndex === null ? "front" : selectedFace(card, stack, cardIndex);
+  const options = face === "desperate"
+    ? card.desperate_face?.orientation_options
+    : card.orientation_options;
+  if (options && options.length === 1) {
+    return [{ value: options[0], label: "Forward", mark: "F" }];
   }
   return MOVE_CHOICES;
 }
 
-function showHybridModePanel(stackIndex, cardIndex) {
+function showCardUseChoicePanel(stackIndex, cardIndex, cardId) {
   const game = state.selectedState;
   const player = game?.players?.[state.builderPlayerId];
   const stack = state.builderDraft.stacks[stackIndex];
-  const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
+  const cardById = cardLookupForPlayer(player);
+  const card = cardById[cardId];
   if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
 
   const overlay = cardPickerOverlayElement();
@@ -1140,20 +1240,14 @@ function showHybridModePanel(stackIndex, cardIndex) {
   panel.className = "hex-choice-panel";
   panel.innerHTML = `
     <div class="card-picker-header">
-      <span>Choose Hybrid Mode</span>
+      <span>${card.name}</span>
       <button type="button" aria-label="Dismiss choice panel">&times;</button>
     </div>
     <div class="hex-choice-grid"></div>
   `;
   panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
   const grid = panel.querySelector(".hex-choice-grid");
-  const cardById = cardLookupForPlayer(player);
-  const modes = allowedHybridModes(stack, cardById, cardIndex);
-  state.pendingHybridChoice = { stackIndex, cardIndex, cardId: card.id };
-  [
-    { value: "move", label: "Move", mark: "M", fill: "#3f9963", disabled: !modes.move },
-    { value: "attack", label: "Attack", mark: "A", fill: "#c9433f", disabled: !modes.attack },
-  ].forEach((choice) => {
+  cardUseChoices(card, stack, cardById, cardIndex).forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `hex-choice ${choice.disabled ? "disabled-choice" : ""}`;
@@ -1164,15 +1258,30 @@ function showHybridModePanel(stackIndex, cardIndex) {
       <strong>${choice.label}</strong>
     `;
     button.addEventListener("click", () => {
-      stack.modes[cardIndex] = choice.value;
-      hideCardPickerOverlay();
-      renderAll();
-      showHexChoicePanel(stackIndex, cardIndex);
+      selectBuilderCardUse(stackIndex, cardIndex, card.id, choice);
     });
     grid.append(button);
   });
   overlay.append(panel);
   overlay.classList.add("visible");
+}
+
+function showFollowupChoicePanel(stackIndex, cardIndex) {
+  const game = state.selectedState;
+  const player = game?.players?.[state.builderPlayerId];
+  const stack = state.builderDraft.stacks[stackIndex];
+  const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
+  if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
+
+  const family = effectiveCardFamily(card, stack, cardIndex);
+  if (family === "attack") {
+    if (effectiveCardRequiresTarget(card, stack, cardIndex)) showHexChoicePanel(stackIndex, cardIndex);
+    return;
+  }
+
+  if (family === "move" && moveChoicesForCard(card, stack, cardIndex).length > 1) {
+    showHexChoicePanel(stackIndex, cardIndex);
+  }
 }
 
 function showHexChoicePanel(stackIndex, cardIndex) {
@@ -1181,10 +1290,12 @@ function showHexChoicePanel(stackIndex, cardIndex) {
   const stack = state.builderDraft.stacks[stackIndex];
   const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
   if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
-  if (card.is_hybrid && !stack.modes[cardIndex]) {
+  const face = selectedFace(card, stack, cardIndex);
+  const family = effectiveCardFamily(card, stack, cardIndex);
+  if (card.is_hybrid && face !== "desperate" && !stack.modes[cardIndex]) {
     return;
   }
-  if (card.family === "attack" && !cardNeedsTarget(card)) {
+  if (family === "attack" && !effectiveCardRequiresTarget(card, stack, cardIndex)) {
     return;
   }
 
@@ -1195,7 +1306,7 @@ function showHexChoicePanel(stackIndex, cardIndex) {
   panel.className = "hex-choice-panel";
   panel.innerHTML = `
     <div class="card-picker-header">
-      <span>${card.family === "attack" ? "Choose Target" : "Choose Move"}</span>
+      <span>${family === "attack" ? "Choose Target" : "Choose Move"}</span>
       <button type="button" aria-label="Dismiss choice panel">&times;</button>
     </div>
     <div class="hex-choice-grid"></div>
@@ -1203,13 +1314,9 @@ function showHexChoicePanel(stackIndex, cardIndex) {
   panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
   const grid = panel.querySelector(".hex-choice-grid");
 
-  const choices = card.is_hybrid && stack.modes[cardIndex] === "attack"
+  const choices = family === "attack"
     ? attackHexChoices(game)
-    : card.is_hybrid && stack.modes[cardIndex] === "move"
-      ? moveChoicesForCard(card)
-      : card.family === "attack"
-        ? attackHexChoices(game)
-        : moveChoicesForCard(card);
+    : moveChoicesForCard(card, stack, cardIndex);
   choices.forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -1221,11 +1328,7 @@ function showHexChoicePanel(stackIndex, cardIndex) {
       <strong>${choice.label}</strong>
     `;
     button.addEventListener("click", () => {
-      if (card.is_hybrid && stack.modes[cardIndex] === "attack") {
-        stack.targets[cardIndex] = choice.value;
-      } else if (card.is_hybrid && stack.modes[cardIndex] === "move") {
-        stack.move_choices[cardIndex] = choice.value;
-      } else if (card.family === "attack") {
+      if (family === "attack") {
         stack.targets[cardIndex] = choice.value;
       } else {
         stack.move_choices[cardIndex] = choice.value;
@@ -1265,15 +1368,17 @@ function buildOrdersPayload() {
         .map((cardId, cardIndex) => {
           if (!cardId) return null;
           const card = cardById[cardId];
+          const face = selectedFace(card, stack, cardIndex);
+          const family = effectiveCardFamily(card, stack, cardIndex);
           const selection = {
             card_id: cardId,
-            face: "front",
-            orientation: card?.family === "move" || (card?.is_hybrid && stack.modes[cardIndex] === "move")
+            face,
+            orientation: family === "move"
               ? stack.move_choices[cardIndex]
               : "up",
-            mode: card?.is_hybrid ? stack.modes[cardIndex] : undefined,
+            mode: card?.is_hybrid && face !== "desperate" ? stack.modes[cardIndex] : undefined,
           };
-          if (cardNeedsTarget(card)) {
+          if (effectiveCardRequiresTarget(card, stack, cardIndex)) {
             selection.target_player_id = stack.targets[cardIndex];
           }
           return selection;
@@ -1302,9 +1407,9 @@ function validateBuiltOrders() {
       if (used.has(cardId)) return { ok: false, message: `${cardId} is used more than once.` };
       used.add(cardId);
       const family = effectiveCardFamily(card, stack, cardIndex);
-      if (!family) return { ok: false, message: `${cardId} needs a hybrid mode.` };
+      if (!family) return { ok: false, message: `${cardId} needs a mode or face selection.` };
       families.add(family);
-      if (cardNeedsTarget(card)) {
+      if (effectiveCardRequiresTarget(card, stack, cardIndex)) {
         if (!stack.targets[cardIndex]) return { ok: false, message: `${cardId} needs a target.` };
         targets.add(stack.targets[cardIndex]);
       }
@@ -1330,6 +1435,7 @@ function updateBuilderDraftFromControl(target) {
     stack.seal_mode = target.value;
   } else if (field === "card_id" && cardIndex !== null) {
     stack.cards[cardIndex] = target.value;
+    stack.faces[cardIndex] = "front";
     stack.targets[cardIndex] = "";
     stack.move_choices[cardIndex] = "forward";
     stack.modes[cardIndex] = "";
@@ -1348,7 +1454,7 @@ function applyDefaultAttackTarget(stack, cardIndex) {
   const opponents = Object.keys(state.selectedState?.players || {}).filter(
     (playerId) => playerId !== state.builderPlayerId,
   );
-  if (cardNeedsTarget(card) && opponents.length === 1) {
+  if (effectiveCardRequiresTarget(card, stack, cardIndex) && opponents.length === 1) {
     stack.targets[cardIndex] = opponents[0];
   }
 }
@@ -1401,7 +1507,7 @@ elements.ordersBuilderView.addEventListener("click", (event) => {
       showCardPicker(stackIndex, cardIndex);
       return;
     }
-    showHexChoicePanel(stackIndex, cardIndex);
+    showFollowupChoicePanel(stackIndex, cardIndex);
   }
 });
 elements.revealOrdersToggle.addEventListener("change", () => {

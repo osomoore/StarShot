@@ -27,6 +27,19 @@ class SealMode(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class DesperateFace:
+    family: CardFamily
+    value: int = 0
+    orientation_options: tuple[str, ...] = ("forward",)
+    requires_target: bool = False
+    aim_bonus: int = 0
+    damage_bonus: int = 0
+    defense_bonus: int = 0
+    always_hits: bool = False
+    movement_disabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class GameConfig:
     player_ids: tuple[str, ...]
     seed: int | None = None
@@ -43,6 +56,7 @@ class Card:
     orientation_options: tuple[str, ...] = ("forward", "turn_left", "turn_right", "u_turn")
     requires_target: bool = True
     is_hybrid: bool = False
+    desperate_face: DesperateFace | None = None
 
 
 @dataclass(frozen=True, slots=True)
