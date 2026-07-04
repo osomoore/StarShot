@@ -5,6 +5,10 @@ const state = {
   builderPlayerId: "red",
   builderDraft: createEmptyDraft(),
   knownCards: {},
+  // New properties for board interaction
+  zoomScale: 1,
+  panOffsetX: 0,
+  panOffsetY: 0,
 };
 
 const BOARD_RADIUS = 14;
@@ -75,7 +79,52 @@ const elements = {
   stateJson: document.querySelector("#stateJson"),
   combatOverlay: null,
   cardPickerOverlay: null,
+  // Zoom button handlers
+  boardZoomOutButton: document.querySelector("#boardZoomOutButton"),
+  boardZoomInButton: document.querySelector("#boardZoomInButton"),
 };
+
+if (elements.boardZoomInButton) {
+  elements.boardZoomInButton.addEventListener("click", () => {
+    state.zoomScale = Math.min(state.zoomScale * 1.2, 4);
+    renderBoard(state.selectedState);
+  });
+}
+
+if (elements.boardZoomOutButton) {
+  elements.boardZoomOutButton.addEventListener("click", () => {
+    state.zoomScale = Math.max(state.zoomScale / 1.2, 0.5);
+    renderBoard(state.selectedState);
+  });
+}
+
+// Pan handling
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let panStartOffset = { x: 0, y: 0 };
+
+if (elements.boardSvg) {
+  elements.boardSvg.addEventListener("mousedown", (e) => {
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY };
+    panStartOffset = { x: state.panOffsetX, y: state.panOffsetY };
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    const svgRect = elements.boardSvg.getBoundingClientRect();
+    const viewSize = (BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5) * 2 / state.zoomScale;
+    const scaleFactorX = viewSize / svgRect.width;
+    const scaleFactorY = viewSize / svgRect.height;
+    state.panOffsetX = panStartOffset.x - dx * scaleFactorX;
+    state.panOffsetY = panStartOffset.y - dy * scaleFactorY;
+    renderBoard(state.selectedState);
+  });
+  window.addEventListener("mouseup", () => {
+    isPanning = false;
+  });
+}
 
 function createEmptyDraft() {
   return {
@@ -276,7 +325,11 @@ function renderBoard(game) {
   svg.replaceChildren();
 
   const extent = BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5;
-  svg.setAttribute("viewBox", `${-extent} ${-extent} ${extent * 2} ${extent * 2}`);
+  const viewWidth = (extent * 2) / state.zoomScale;
+  const viewHeight = (extent * 2) / state.zoomScale;
+  const viewX = -extent / state.zoomScale + state.panOffsetX;
+  const viewY = -extent / state.zoomScale + state.panOffsetY;
+  svg.setAttribute("viewBox", `${viewX} ${viewY} ${viewWidth} ${viewHeight}`);
 
   for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q += 1) {
     const rMin = Math.max(-BOARD_RADIUS, -q - BOARD_RADIUS);

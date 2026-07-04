@@ -133,11 +133,18 @@ select {
   padding: 14px;
 }
 
-.summary-strip {
-  display: grid;
+.board-info {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+
+.board-info > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 
 .control-strip {
   align-items: stretch;

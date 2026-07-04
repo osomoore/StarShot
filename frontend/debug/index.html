@@ -30,34 +30,25 @@
 
         <section class="inspector" aria-label="Game inspector">
           <div class="control-strip">
-            <div class="summary-strip">
-              <div>
-                <span class="label">Game</span>
-                <strong id="selectedGameId">None</strong>
-              </div>
-              <div>
-                <span class="label">Round</span>
-                <strong id="roundValue">-</strong>
-              </div>
-              <div>
-                <span class="label">Phase</span>
-                <strong id="phaseValue">-</strong>
-              </div>
-              <div>
-                <span class="label">Starting Player</span>
-                <strong id="startingPlayerValue">-</strong>
-              </div>
-            </div>
-            <div class="actions-row">
-              <button id="resolveButton" type="button" disabled>Resolve Next Step</button>
-              <button id="redOrdersButton" type="button" disabled>Red Demo</button>
-              <button id="blueOrdersButton" type="button" disabled>Blue Demo</button>
-              <label class="check-control">
-                <input id="revealOrdersToggle" type="checkbox" />
-                Reveal orders
-              </label>
-            </div>
-          </div>
+  <div class="summary-strip">
+    <div>
+      <span class="label">Game</span>
+      <strong id="selectedGameId">None</strong>
+    </div>
+    <div>
+      <span class="label">Starting Player</span>
+      <strong id="startingPlayerValue">-</strong>
+    </div>
+  </div>
+  <div class="actions-row">
+    <button id="redOrdersButton" type="button" disabled>Red Demo</button>
+    <button id="blueOrdersButton" type="button" disabled>Blue Demo</button>
+    <label class="check-control">
+      <input id="revealOrdersToggle" type="checkbox" />
+      Reveal orders
+    </label>
+  </div>
+</div>
 
           <div class="play-layout">
             <aside class="player-rail" aria-label="Player ships">
@@ -70,11 +61,19 @@
             <section class="play-main">
               <section class="panel board-panel" aria-label="Hex board">
                 <div class="panel-header">
-                  <div>
-                    <h2>Board</h2>
-                    <p class="panel-note">Radius 12 axial hex grid. Ships start three hexes in from their corners.</p>
-                  </div>
-                </div>
+      <div>
+        <h2>Board</h2>
+        <div class="board-info">
+          <div><span class="label">Round</span> <strong id="roundValue">-</strong></div>
+          <div><span class="label">Phase</span> <strong id="phaseValue">-</strong></div>
+        </div>
+        <button id="resolveButton" type="button" disabled>Resolve Next Step</button>
+      </div>
+      <div class="board-controls" aria-label="Board zoom controls">
+        <button id="boardZoomOutButton" type="button" aria-label="Zoom out">-</button>
+        <button id="boardZoomInButton" type="button" aria-label="Zoom in">+</button>
+      </div>
+    </div>
                 <div class="board-layout-container">
                   <svg id="boardSvg" class="board-svg" role="img" aria-label="StarShot hex board"></svg>
                 </div>
