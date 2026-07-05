@@ -49,7 +49,7 @@ Implemented so far:
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
 - Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
-- Implement the normal action-stack Desperate faces for Thrust Ions, Turbo Ions, Homeward Bound, Treasure Hound, Evasive Action, Ace Shot, Deadeye, Nightjammer, and Steady Shot.
+- Implement the normal action-stack Desperate faces for Thrust Ions, Turbo Ions, Homeward Bound, Treasure Hound, Evasive Action, Ace Shot, Deadeye, Nightjammer, Self Destruct, Death Blossom, and Steady Shot.
 - Show all non-base desperation cards in one debug picker pile named Desperation.
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
 - Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
@@ -57,7 +57,7 @@ Implemented so far:
 
 Not implemented yet:
 
-- Deferred Desperate faces: Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got.
+- Deferred Desperate faces: Hull Repair, Advanced Repair, and All She's Got.
 - Full combat damage/shield rules.
 - Bauble placement/collection scoring details beyond placeholder phase flow.
 - Collision, obstacles, board boundaries, and any rule-specific movement edge cases not yet extracted into code.

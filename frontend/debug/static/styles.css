@@ -25,6 +25,17 @@ button {
   padding: 8px 12px;
 }
 
+.toolbar-link {
+  align-items: center;
+  border: 1px solid #557176;
+  border-radius: 6px;
+  color: #ffffff;
+  display: inline-flex;
+  min-height: 38px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
 button:disabled {
   background: #bdc5c2;
   border-color: #9fa9a6;

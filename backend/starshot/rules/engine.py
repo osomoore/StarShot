@@ -18,8 +18,11 @@ from starshot.rules.desperation import (
     all_desperation_cards,
     card_aim_bonus as _desperation_card_aim_bonus,
     card_always_hits as _desperation_card_always_hits,
+    card_attacks_all as _desperation_card_attacks_all,
     card_damage_bonus as _desperation_card_damage_bonus,
     card_defense_bonus as _desperation_card_defense_bonus,
+    card_fixed_defense_threshold as _desperation_card_fixed_defense_threshold,
+    card_max_range as _desperation_card_max_range,
     card_movement_disabled as _desperation_card_movement_disabled,
     card_orientation_options as _desperation_card_orientation_options,
     card_requires_target as _desperation_card_requires_target,
@@ -327,6 +330,18 @@ def _card_warp_destination(card: Card, selection: OrderCardSelection) -> str | N
     return _translate_card_error(_desperation_card_warp_destination, card, selection)
 
 
+def _card_max_range(card: Card, selection: OrderCardSelection) -> int | None:
+    return _translate_card_error(_desperation_card_max_range, card, selection)
+
+
+def _card_fixed_defense_threshold(card: Card, selection: OrderCardSelection) -> int | None:
+    return _translate_card_error(_desperation_card_fixed_defense_threshold, card, selection)
+
+
+def _card_attacks_all(card: Card, selection: OrderCardSelection) -> bool:
+    return _translate_card_error(_desperation_card_attacks_all, card, selection)
+
+
 def _resolve_warp_destination(state: GameState, player: PlayerState, destination: str) -> tuple[int, int, int | None]:
     if destination == "home":
         player_index = tuple(state.players).index(player.id)
@@ -497,74 +512,12 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         if not attack_cards:
             continue
 
-        target_id = _target_player_id_for_attack(stack)
-        if target_id is None:
+        target_ids = _target_player_ids_for_attack(state, attacker, stack, attack_cards)
+        if not target_ids:
             continue
-        target = _player(state, target_id)
-        if target.eliminated or target.ship.destroyed:
-            state.event_log.append(
-                {
-                    "type": "volley_skipped",
-                    "round": state.round_number,
-                    "action_number": action_number,
-                    "attacker_id": attacker_id,
-                    "target_id": target_id,
-                    "reason": "target_not_active",
-                }
-            )
+        for target_id in target_ids:
+            _resolve_attack_volley(state, action_number, stack, attacker, target_id, attack_cards, shielded_target_ids)
             resolved_any = True
-            continue
-
-        damage = sum(
-            _card_value(card, selection, stack.seal_mode) + _card_damage_bonus(card, selection)
-            for card, selection in attack_cards
-        )
-        aim_bonus = sum(_card_aim_bonus(card, selection) for card, selection in attack_cards)
-        always_hits = any(_card_always_hits(card, selection) for card, selection in attack_cards)
-        distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
-        defense_threshold = distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
-        roll = _roll_2d12(state)
-        roll_total = roll + aim_bonus
-        hit = always_hits or roll_total >= defense_threshold
-        event = {
-            "type": "volley_resolved",
-            "round": state.round_number,
-            "action_number": action_number,
-            "attacker_id": attacker_id,
-            "target_id": target_id,
-            "card_ids": [card.id for card, selection in attack_cards],
-            "damage": damage,
-            "aim_bonus": aim_bonus,
-            "distance": distance,
-            "target_movement": target.ship.movement_this_action,
-            "target_defense_bonus": target.ship.defense_bonus_this_action,
-            "defense_threshold": defense_threshold,
-            "roll": roll,
-            "roll_total": roll_total,
-            "always_hits": always_hits,
-            "hit": hit,
-            "shielded": False,
-            "damage_applied": 0,
-            "vp_awarded": 0,
-        }
-
-        if hit and (target.ship.shields > 0 or target_id in shielded_target_ids):
-            if target_id not in shielded_target_ids:
-                target.ship.shields -= 1
-                shielded_target_ids.add(target_id)
-            attacker.victory_points += 1
-            event["shielded"] = True
-            event["vp_awarded"] = 1
-        elif hit:
-            damage_result = _apply_unshielded_damage(state, target, damage)
-            destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
-            vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
-            attacker.victory_points += vp_awarded
-            event.update(damage_result)
-            event["vp_awarded"] = vp_awarded
-
-        state.event_log.append(event)
-        resolved_any = True
 
     if not resolved_any:
         state.event_log.append(
@@ -583,6 +536,112 @@ def _target_player_id_for_attack(stack: ActionStack) -> str | None:
         if _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection):
             return selection.target_player_id
     return None
+
+
+def _target_player_ids_for_attack(
+    state: GameState,
+    attacker: PlayerState,
+    stack: ActionStack,
+    attack_cards: list[tuple[Card, OrderCardSelection]],
+) -> list[str]:
+    if any(_card_attacks_all(card, selection) for card, selection in attack_cards):
+        return [
+            player.id
+            for player in state.players.values()
+            if player.id != attacker.id and not player.eliminated and not player.ship.destroyed
+        ]
+    target_id = _target_player_id_for_attack(stack)
+    return [target_id] if target_id else []
+
+
+def _resolve_attack_volley(
+    state: GameState,
+    action_number: int,
+    stack: ActionStack,
+    attacker: PlayerState,
+    target_id: str,
+    attack_cards: list[tuple[Card, OrderCardSelection]],
+    shielded_target_ids: set[str],
+) -> None:
+    target = _player(state, target_id)
+    if target.eliminated or target.ship.destroyed:
+        state.event_log.append(
+            {
+                "type": "volley_skipped",
+                "round": state.round_number,
+                "action_number": action_number,
+                "attacker_id": attacker.id,
+                "target_id": target_id,
+                "reason": "target_not_active",
+            }
+        )
+        return
+
+    damage = sum(
+        _card_value(card, selection, stack.seal_mode) + _card_damage_bonus(card, selection)
+        for card, selection in attack_cards
+    )
+    aim_bonus = sum(_card_aim_bonus(card, selection) for card, selection in attack_cards)
+    always_hits = any(_card_always_hits(card, selection) for card, selection in attack_cards)
+    distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
+    fixed_defense_threshold = next(
+        (threshold for card, selection in attack_cards if (threshold := _card_fixed_defense_threshold(card, selection)) is not None),
+        None,
+    )
+    max_range = next(
+        (max_card_range for card, selection in attack_cards if (max_card_range := _card_max_range(card, selection)) is not None),
+        None,
+    )
+    defense_threshold = (
+        fixed_defense_threshold
+        if fixed_defense_threshold is not None
+        else distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
+    )
+    roll = _roll_2d12(state)
+    roll_total = roll + aim_bonus
+    in_range = max_range is None or distance <= max_range
+    hit = in_range and (always_hits or roll_total >= defense_threshold)
+    event = {
+        "type": "volley_resolved",
+        "round": state.round_number,
+        "action_number": action_number,
+        "attacker_id": attacker.id,
+        "target_id": target_id,
+        "card_ids": [card.id for card, selection in attack_cards],
+        "damage": damage,
+        "aim_bonus": aim_bonus,
+        "distance": distance,
+        "target_movement": target.ship.movement_this_action,
+        "target_defense_bonus": target.ship.defense_bonus_this_action,
+        "defense_threshold": defense_threshold,
+        "fixed_defense_threshold": fixed_defense_threshold,
+        "max_range": max_range,
+        "in_range": in_range,
+        "roll": roll,
+        "roll_total": roll_total,
+        "always_hits": always_hits,
+        "hit": hit,
+        "shielded": False,
+        "damage_applied": 0,
+        "vp_awarded": 0,
+    }
+
+    if hit and (target.ship.shields > 0 or target_id in shielded_target_ids):
+        if target_id not in shielded_target_ids:
+            target.ship.shields -= 1
+            shielded_target_ids.add(target_id)
+        attacker.victory_points += 1
+        event["shielded"] = True
+        event["vp_awarded"] = 1
+    elif hit:
+        damage_result = _apply_unshielded_damage(state, target, damage)
+        destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
+        vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
+        attacker.victory_points += vp_awarded
+        event.update(damage_result)
+        event["vp_awarded"] = vp_awarded
+
+    state.event_log.append(event)
 
 
 def _attack_cards_for_stack(stack: ActionStack) -> list[tuple[Card, OrderCardSelection]]:
@@ -929,7 +988,9 @@ def _validate_stack(
         if selection.card_id
     ]
     if any(
-        _selected_card_family(card, selection) == CardFamily.ATTACK and not _card_requires_target(card, selection)
+        _selected_card_family(card, selection) == CardFamily.ATTACK
+        and not _card_requires_target(card, selection)
+        and not _card_attacks_all(card, selection)
         for card, selection in attack_cards
     ) and not any(
         _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection)

@@ -123,6 +123,9 @@ def desperate_face_to_dict(face: DesperateFace) -> dict:
         "always_hits": face.always_hits,
         "movement_disabled": face.movement_disabled,
         "warp_destination": face.warp_destination,
+        "max_range": face.max_range,
+        "fixed_defense_threshold": face.fixed_defense_threshold,
+        "attacks_all": face.attacks_all,
     }
 
 
@@ -138,6 +141,9 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
         always_hits=data.get("always_hits", False),
         movement_disabled=data.get("movement_disabled", False),
         warp_destination=data.get("warp_destination"),
+        max_range=data.get("max_range"),
+        fixed_defense_threshold=data.get("fixed_defense_threshold"),
+        attacks_all=data.get("attacks_all", False),
     )
 
 

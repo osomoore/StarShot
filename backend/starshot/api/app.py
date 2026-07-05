@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from starshot.persistence import SQLiteGameStore
 from starshot.rules import GameConfig, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
+from starshot.rules.ship_simulation import simulate_ship_kills
 
 app = FastAPI(title="StarShot")
 ROOT = Path(__file__).resolve().parents[3]
@@ -49,9 +50,47 @@ def index() -> FileResponse:
     return FileResponse(index_path)
 
 
+@app.get("/ship-sim")
+def ship_simulator() -> FileResponse:
+    index_path = FRONTEND_DIR / "ship-sim.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Ship simulator UI not found.")
+    return FileResponse(index_path)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/simulations/ship-kill")
+def run_ship_kill_simulation(
+    runs: int = 1000,
+    seed: int | None = 1,
+    damage_per_volley: int = 1,
+    initial_shields: int = 0,
+    defense_threshold: int = 7,
+    aim_bonus: int = 0,
+    attack_dice_count: int = 2,
+    attack_die_sides: int = 12,
+    double_max_auto_hit: bool = False,
+    max_steps: int = 500,
+) -> dict:
+    try:
+        return simulate_ship_kills(
+            runs=runs,
+            seed=seed,
+            damage_per_volley=damage_per_volley,
+            initial_shields=initial_shields,
+            defense_threshold=defense_threshold,
+            aim_bonus=aim_bonus,
+            attack_dice_count=attack_dice_count,
+            attack_die_sides=attack_die_sides,
+            double_max_auto_hit=double_max_auto_hit,
+            max_steps=max_steps,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/games")

@@ -493,8 +493,15 @@ function renderActionPreview(svg, game) {
       const firstAttack = selections.find(({ card, cardIndex, family }) => (
         family === "attack" && effectiveCardRequiresTarget(card, stack, cardIndex)
       ));
-      const target = firstAttack ? game.players[stack.targets[firstAttack.cardIndex]] : null;
-      if (target) {
+      const attacksAll = selections.some(({ card, cardIndex, family }) => (
+        family === "attack" && previewSelectionAttacksAll(card, stack, cardIndex)
+      ));
+      const targets = attacksAll
+        ? Object.values(game.players || {}).filter((candidate) => candidate.id !== state.builderPlayerId)
+        : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
+          ? [game.players[stack.targets[firstAttack.cardIndex]]]
+          : [];
+      targets.forEach((target) => {
         const damage = selections
           .filter((selection) => selection.family === "attack")
           .reduce((total, { card, cardIndex }) => total + previewSelectionAttackDamage(card, stack, cardIndex), 0);
@@ -505,7 +512,7 @@ function renderActionPreview(svg, game) {
           family === "attack" && previewSelectionAlwaysHits(card, stack, cardIndex)
         ));
         drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
-      }
+      });
     }
   });
 }
@@ -560,6 +567,10 @@ function previewSelectionAimBonus(card, stack, cardIndex) {
 
 function previewSelectionAlwaysHits(card, stack, cardIndex) {
   return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.always_hits);
+}
+
+function previewSelectionAttacksAll(card, stack, cardIndex) {
+  return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.attacks_all);
 }
 
 function previewMoveLabel(stackIndex, cardIndex, distance, warpDestination = "") {
@@ -1119,7 +1130,8 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
   if (card.desperate_face) {
     const family = card.desperate_face.family;
     const requiresTarget = Boolean(card.desperate_face.requires_target);
-    const needsTargetedPartner = family === "attack" && !requiresTarget;
+    const attacksAll = Boolean(card.desperate_face.attacks_all);
+    const needsTargetedPartner = family === "attack" && !requiresTarget && !attacksAll;
     choices.push({
       face: "desperate",
       mode: "",
@@ -1188,7 +1200,11 @@ function desperateFaceLabel(card) {
     return `Desperate: Move ${face.value}`;
   }
   const parts = [];
+  if (face.attacks_all) parts.push("Attack all");
+  if (face.fixed_defense_threshold) parts.push(`Defense ${face.fixed_defense_threshold}`);
+  if (face.max_range) parts.push(`Range ${face.max_range}`);
   if (face.aim_bonus) parts.push(`+${face.aim_bonus} Aim`);
+  if (face.value) parts.push(`Damage ${face.value}`);
   if (face.damage_bonus) parts.push(`+${face.damage_bonus} Damage`);
   if (face.always_hits) parts.push("Always hits");
   return `Desperate: ${parts.join(", ") || "Attack mod"}`;

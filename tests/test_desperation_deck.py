@@ -156,6 +156,17 @@ class DesperationCardSemanticsTests(unittest.TestCase):
         self.assertEqual(face.aim_bonus, 999)
         self.assertTrue(face.always_hits)
 
+    def test_self_destruct_and_death_blossom_desperate_faces_have_special_attack_metadata(self):
+        self_destruct = desperation_card_by_id("desp_self_destruct").desperate_face
+        self.assertEqual(self_destruct.value, 4)
+        self.assertTrue(self_destruct.requires_target)
+        self.assertEqual(self_destruct.max_range, 2)
+
+        death_blossom = desperation_card_by_id("desp_death_blossom").desperate_face
+        self.assertEqual(death_blossom.value, 1)
+        self.assertTrue(death_blossom.attacks_all)
+        self.assertEqual(death_blossom.fixed_defense_threshold, 10)
+
 
 class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_initial_state_has_desperation_deck_with_cards(self):
@@ -774,6 +785,121 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         self.assertEqual(volley["aim_bonus"], 999)
         self.assertEqual(volley["roll_total"], volley["roll"] + 999)
         self.assertGreaterEqual(volley["roll_total"], volley["defense_threshold"])
+
+    def test_desperate_self_destruct_is_targeted_range_two_damage_four(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].deck.append(desperation_card_by_id("desp_self_destruct"))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 2
+        state.players["blue"].ship.r = 0
+        state.players["blue"].ship.shields = 0
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_self_destruct", face="desperate", target_player_id="blue"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["damage"], 4)
+        self.assertEqual(volley["max_range"], 2)
+        self.assertTrue(volley["in_range"])
+        moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
+        self.assertIn("desp_self_destruct", moved["returned_to_desperation_deck"])
+
+    def test_desperate_self_destruct_misses_outside_range_two(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].deck.append(desperation_card_by_id("desp_self_destruct"))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 3
+        state.players["blue"].ship.r = 0
+        state.players["blue"].ship.shields = 0
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_self_destruct", face="desperate", target_player_id="blue"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
+        self.assertFalse(volley["in_range"])
+        self.assertFalse(volley["hit"])
+        self.assertEqual(volley["damage_applied"], 0)
+
+    def test_desperate_death_blossom_attacks_all_opponents_at_fixed_defense_ten(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue", "green"), seed=1))
+        state.players["red"].deck.append(desperation_card_by_id("desp_death_blossom"))
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+        state.players["green"].ship.q = 5
+        state.players["green"].ship.r = 0
+
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_death_blossom", face="desperate"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )),
+        )
+        for player_id in ("blue", "green"):
+            state = submit_orders(
+                state,
+                player_id,
+                OrdersSubmission(stacks=(
+                    ActionStack(1, SealMode.SEALED),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )),
+            )
+
+        state = resolve_next_step(state)
+        state = resolve_next_step(state)
+
+        volleys = [e for e in state.event_log if e["type"] == "volley_resolved"]
+        self.assertEqual({volley["target_id"] for volley in volleys}, {"blue", "green"})
+        for volley in volleys:
+            self.assertEqual(volley["card_ids"], ["desp_death_blossom"])
+            self.assertEqual(volley["damage"], 1)
+            self.assertEqual(volley["fixed_defense_threshold"], 10)
+            self.assertEqual(volley["defense_threshold"], 10)
+        moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
+        self.assertIn("desp_death_blossom", moved["returned_to_desperation_deck"])
 
 
 if __name__ == "__main__":

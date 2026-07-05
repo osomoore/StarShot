@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>StarShot Ship Kill Simulator</title>
+    <link rel="stylesheet" href="/static/ship-sim.css" />
+  </head>
+  <body>
+    <main class="sim-shell">
+      <header class="sim-topbar">
+        <div>
+          <h1>Ship Kill Simulator</h1>
+          <p>Monte Carlo shot, defense, and damage-lane test bed for the base ship layout</p>
+        </div>
+        <a href="/">Debug UI</a>
+      </header>
+
+      <section class="controls-panel" aria-label="Simulation controls">
+        <label>
+          Runs
+          <input id="runsInput" type="number" min="1" max="100000" value="1000" />
+        </label>
+        <label>
+          Damage per volley
+          <input id="damageInput" type="number" min="1" max="50" value="1" />
+        </label>
+        <label>
+          Starting shields
+          <input id="shieldsInput" type="number" min="0" max="20" value="0" />
+        </label>
+        <label>
+          Defense
+          <input id="defenseInput" type="number" min="0" max="50" value="7" />
+        </label>
+        <label>
+          Aim bonus
+          <input id="aimInput" type="number" min="-50" max="50" value="0" />
+        </label>
+        <label>
+          Dice
+          <input id="diceCountInput" type="number" min="1" max="20" value="2" />
+        </label>
+        <label>
+          Sides
+          <input id="dieSidesInput" type="number" min="2" max="100" value="12" />
+        </label>
+        <label class="check-control">
+          <input id="doubleMaxAutoHitInput" type="checkbox" />
+          Double max roll auto-hit
+        </label>
+        <label>
+          Seed
+          <input id="seedInput" type="number" value="1" />
+        </label>
+        <button id="runButton" type="button">Run Simulation</button>
+      </section>
+
+      <section class="summary-grid" aria-label="Simulation summary">
+        <article>
+          <span>Average kill</span>
+          <strong id="averageKill">-</strong>
+        </article>
+        <article>
+          <span>Fastest</span>
+          <strong id="fastestKill">-</strong>
+        </article>
+        <article>
+          <span>Slowest</span>
+          <strong id="slowestKill">-</strong>
+        </article>
+        <article>
+          <span>Component hits</span>
+          <strong id="totalHits">-</strong>
+        </article>
+        <article>
+          <span>Hit rate</span>
+          <strong id="hitRate">-</strong>
+        </article>
+        <article>
+          <span>Shots fired</span>
+          <strong id="shotsFired">-</strong>
+        </article>
+        <article>
+          <span>Misses</span>
+          <strong id="misses">-</strong>
+        </article>
+        <article>
+          <span>Shield blocks</span>
+          <strong id="shieldBlocks">-</strong>
+        </article>
+        <article>
+          <span>Auto-hits</span>
+          <strong id="autoHits">-</strong>
+        </article>
+      </section>
+
+      <section class="main-grid">
+        <section class="panel heatmap-panel" aria-label="Ship heat map">
+          <div class="panel-header">
+            <h2>Heat Map</h2>
+            <span id="heatmapNote">Color shows destruction rate; label shows average first-hit shot.</span>
+          </div>
+          <svg id="shipHeatmap" class="ship-heatmap" role="img" aria-label="Base ship damage heat map"></svg>
+        </section>
+
+        <section class="panel" aria-label="Elimination modes">
+          <div class="panel-header">
+            <h2>Elimination</h2>
+          </div>
+          <div id="eliminationList" class="elimination-list"></div>
+        </section>
+      </section>
+
+      <section class="panel" aria-label="Component averages">
+        <div class="panel-header">
+          <h2>Components</h2>
+        </div>
+        <div id="componentList" class="component-list"></div>
+      </section>
+    </main>
+    <script src="/static/ship-sim.js"></script>
+  </body>
+</html>

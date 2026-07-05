@@ -29,8 +29,8 @@ _DESPERATION_CARDS: list[Card] = [
     Card(id="desp_ace_shot_b",       name="Ace Shot",         family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=5)),
     Card(id="desp_deadeye",          name="Deadeye",          family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=999, always_hits=True)),
     Card(id="desp_nightjammer",      name="Nightjammer",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.MOVE, defense_bonus=5, warp_destination="leader")),
-    Card(id="desp_self_destruct",    name="Self Destruct",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True),
-    Card(id="desp_death_blossom",    name="Death Blossom",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True),
+    Card(id="desp_self_destruct",    name="Self Destruct",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, value=4, requires_target=True, max_range=2)),
+    Card(id="desp_death_blossom",    name="Death Blossom",    family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, value=1, fixed_defense_threshold=10, attacks_all=True)),
     Card(id="desp_steady_shot_a",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=2, damage_bonus=1)),
     Card(id="desp_steady_shot_b",    name="Steady Shot",      family=CardFamily.ATTACK, value=1, is_base=False, orientation_options=("forward",), requires_target=False, is_hybrid=True, desperate_face=DesperateFace(CardFamily.ATTACK, aim_bonus=2, damage_bonus=1)),
     # Desperate Targeted Attack cards - proper targeted attacks, not overdriven
@@ -170,3 +170,18 @@ def card_movement_disabled(card: Card, selection: OrderCardSelection) -> bool:
 def card_warp_destination(card: Card, selection: OrderCardSelection) -> str | None:
     desperate_face = desperate_face_for(card, selection)
     return desperate_face.warp_destination if desperate_face is not None else None
+
+
+def card_max_range(card: Card, selection: OrderCardSelection) -> int | None:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.max_range if desperate_face is not None else None
+
+
+def card_fixed_defense_threshold(card: Card, selection: OrderCardSelection) -> int | None:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.fixed_defense_threshold if desperate_face is not None else None
+
+
+def card_attacks_all(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.attacks_all)

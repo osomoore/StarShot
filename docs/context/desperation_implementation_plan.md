@@ -20,7 +20,7 @@ The debug UI picker has three piles: Move, Attack, and Desperation. All non-base
 - Desperate Move selections render bright green; Desperate Attack selections render bright orange.
 - Attack previews show target roll after Aim, with the Aim bonus in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
 
-The remaining work is to resolve the special/multi-target Desperate faces and especially desperate abilities.
+The remaining work is to resolve the especially desperate abilities.
 
 ## Completed Scope
 
@@ -46,7 +46,7 @@ Lose 1 VP (if no valid base card exists in deck or overheat).
 
 NOTE
 
-Some Desperate faces are still deferred: Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got. Cards played on a Desperate face return to the shared Desperation deck; cards played on their basic face return to the player deck normally.
+Some Desperate faces are still deferred: Hull Repair, Advanced Repair, and All She's Got. Cards played on a Desperate face return to the shared Desperation deck; cards played on their basic face return to the player deck normally.
 
 NOTE
 
@@ -77,8 +77,8 @@ qty	id prefix	name	family	basic_value	desperate_face
 2	desp_ace_shot_*	Ace Shot	attack	1	+5 Aim
 1	desp_deadeye	Deadeye	attack	1	+999 Aim / Always hits
 1	desp_nightjammer	Nightjammer	attack	1	Warp Leader, +5 Defense
-1	desp_self_destruct	Self Destruct	attack	1	deferred
-1	desp_death_blossom	Death Blossom	attack	1	deferred
+1	desp_self_destruct	Self Destruct	attack	1	Range 2, Damage 4, Keep VP
+1	desp_death_blossom	Death Blossom	attack	1	Attack all with Defense 10
 2	desp_steady_shot_*	Steady Shot	attack	1	+2 Aim, +1 Damage
 4	desp_targeted_attack_1_*	Desperation Attack 1	attack	1	N/A (targeted)
 Cards have is_base=False. The targeted attack cards are proper targeted attacks (can designate a target); the others need a paired targeted attack card.
