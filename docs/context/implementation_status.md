@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The core desperation-card work is in place for the basic-face flow, plus the first normal action-stack Desperate-face slice. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, always-hit, and single-use return to the shared Desperation deck.
+The core desperation-card work is in place for the basic-face flow, plus the first normal action-stack Desperate-face slices. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, Warp movement, always-hit/+999 Aim, and single-use return to the shared Desperation deck.
 
 The debug builder now has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack:
 
@@ -11,8 +11,9 @@ The debug builder now has Move, Attack, and Desperation picker piles. All non-ba
 - Basic Move desperation choices are forward-only and do not show a direction modal.
 - Desperate Move selections use bright green styling; Desperate Attack selections use bright orange styling.
 - Attack previews show target roll after Aim, with Aim shown in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
+- Warp previews jump to the deterministic server destination: Home, nearest active numbered Bauble, or current VP Leader.
 
-Current focus is the next slice: deferred special/warp/multi-target Desperate faces and especially desperate abilities.
+Current focus is the next slice: deferred special/multi-target Desperate faces and especially desperate abilities.
 
 ## Recent Commits Of Interest
 

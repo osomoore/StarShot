@@ -77,7 +77,7 @@ class SerializationTests(unittest.TestCase):
             GameConfig(
                 player_ids=("red", "blue"),
                 seed=1,
-                debug_start_with_attack_desperation_card=True,
+                debug_start_with_split_desperation_cards=True,
             )
         )
         restored = state_from_dict(state_to_dict(state))
@@ -87,6 +87,11 @@ class SerializationTests(unittest.TestCase):
         self.assertFalse(ace_shot.requires_target)
         self.assertIsNotNone(ace_shot.desperate_face)
         self.assertEqual(ace_shot.desperate_face.aim_bonus, 5)
+
+        homeward_bound = next(card for card in restored.players["blue"].deck if card.id == "desp_homeward_bound")
+        self.assertIsNotNone(homeward_bound.desperate_face)
+        self.assertEqual(homeward_bound.desperate_face.warp_destination, "home")
+        self.assertEqual(homeward_bound.desperate_face.defense_bonus, 5)
 
 
 if __name__ == "__main__":

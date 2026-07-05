@@ -52,6 +52,7 @@ const AXIAL_DIRECTIONS = [
   [-1, 1],
   [0, 1],
 ];
+const START_CORNER_DIRECTIONS = [3, 0, 2, 5];
 
 const elements = {
   createButton: document.querySelector("#createButton"),
@@ -475,13 +476,18 @@ function renderActionPreview(svg, game) {
         if (family !== "move") return;
         const before = { ...preview };
         const distance = previewSelectionMoveDistance(card, stack, cardIndex);
-        applyPreviewMove(
-          preview,
-          distance,
-          stack.move_choices[cardIndex],
-        );
+        const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
+        if (warpDestination) {
+          applyPreviewWarp(game, player, preview, warpDestination);
+        } else {
+          applyPreviewMove(
+            preview,
+            distance,
+            stack.move_choices[cardIndex],
+          );
+        }
         drawMovementPathPreview(svg, before, preview);
-        drawPositionPreview(svg, preview, previewMoveLabel(stackIndex, cardIndex, distance));
+        drawPositionPreview(svg, preview, previewMoveLabel(stackIndex, cardIndex, distance, warpDestination));
       });
     } else if (family === "attack") {
       const firstAttack = selections.find(({ card, cardIndex, family }) => (
@@ -524,9 +530,18 @@ function previewCardValue(card, sealMode) {
 
 function previewSelectionMoveDistance(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
-    return card.desperate_face.movement_disabled ? 0 : card.desperate_face.value;
+    return card.desperate_face.movement_disabled || card.desperate_face.warp_destination
+      ? 0
+      : card.desperate_face.value;
   }
   return previewCardValue(card, stack.seal_mode);
+}
+
+function previewSelectionWarpDestination(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.warp_destination || "";
+  }
+  return "";
 }
 
 function previewSelectionAttackDamage(card, stack, cardIndex) {
@@ -547,8 +562,9 @@ function previewSelectionAlwaysHits(card, stack, cardIndex) {
   return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.always_hits);
 }
 
-function previewMoveLabel(stackIndex, cardIndex, distance) {
+function previewMoveLabel(stackIndex, cardIndex, distance, warpDestination = "") {
   const base = `A${stackIndex + 1}.${cardIndex + 1}`;
+  if (warpDestination) return `${base} W`;
   return distance > 0 ? `${base} M${distance}` : base;
 }
 
@@ -568,6 +584,68 @@ function applyPreviewMove(preview, distance, choice) {
   } else if (choice === "u_turn") {
     preview.facing = (preview.facing + 3) % 6;
   }
+}
+
+function applyPreviewWarp(game, player, preview, destination) {
+  let target = null;
+  if (destination === "home") {
+    target = previewHomeStart(game, player);
+  } else if (destination === "bauble") {
+    target = previewBaubleWarpTarget(game, preview);
+  } else if (destination === "leader") {
+    target = previewLeaderWarpTarget(game, player);
+  }
+  if (!target) return;
+  preview.q = target.q;
+  preview.r = target.r;
+  if (target.facing !== undefined) {
+    preview.facing = target.facing;
+  }
+}
+
+function previewHomeStart(game, player) {
+  const playerIds = Object.keys(game.players || {});
+  const index = Math.max(0, playerIds.indexOf(player.id));
+  const cornerDirection = START_CORNER_DIRECTIONS[index] ?? START_CORNER_DIRECTIONS[0];
+  const distanceFromCenter = BOARD_RADIUS - 3;
+  const [dq, dr] = AXIAL_DIRECTIONS[cornerDirection];
+  return { q: dq * distanceFromCenter, r: dr * distanceFromCenter };
+}
+
+function previewBaubleWarpTarget(game, preview) {
+  const numbered = (game.baubles || []).filter((bauble) => !bauble.is_fang);
+  const active = numbered.filter((bauble) => bauble.number === game.round_number);
+  const candidates = active.length ? active : numbered;
+  if (!candidates.length) return null;
+  return [...candidates].sort((left, right) => (
+    hexDistance(preview.q, preview.r, left.q, left.r) - hexDistance(preview.q, preview.r, right.q, right.r)
+    || left.number - right.number
+    || String(left.id).localeCompare(String(right.id))
+  ))[0];
+}
+
+function previewLeaderWarpTarget(game, player) {
+  const orderedIds = playerOrderFromStartingPlayer(game);
+  let candidates = orderedIds
+    .map((playerId) => game.players[playerId])
+    .filter((candidate) => candidate && candidate.id !== player.id && !candidate.eliminated);
+  if (!candidates.length) {
+    candidates = orderedIds.map((playerId) => game.players[playerId]).filter((candidate) => candidate && !candidate.eliminated);
+  }
+  if (!candidates.length) return null;
+  const leader = [...candidates].sort((left, right) => (
+    right.victory_points - left.victory_points
+    || orderedIds.indexOf(left.id) - orderedIds.indexOf(right.id)
+  ))[0].ship;
+  const [dq, dr] = AXIAL_DIRECTIONS[(leader.facing + 3) % 6];
+  const behind = clampToBoard(leader.q + dq, leader.r + dr);
+  return { q: behind.q, r: behind.r, facing: leader.facing };
+}
+
+function playerOrderFromStartingPlayer(game) {
+  const playerIds = Object.keys(game.players || {});
+  const startingIndex = Math.max(0, playerIds.indexOf(game.starting_player_id));
+  return playerIds.slice(startingIndex).concat(playerIds.slice(0, startingIndex));
 }
 
 function clampToBoard(q, r) {
@@ -1101,6 +1179,11 @@ function desperateFaceLabel(card) {
   const face = card?.desperate_face;
   if (!face) return "Basic";
   if (face.family === "move") {
+    if (face.warp_destination) {
+      const destination = titleCase(face.warp_destination);
+      const defense = face.defense_bonus ? `, +${face.defense_bonus} Defense` : "";
+      return `Desperate: Warp ${destination}${defense}`;
+    }
     if (face.movement_disabled) return `Desperate: +${face.defense_bonus} Defense`;
     return `Desperate: Move ${face.value}`;
   }
@@ -1566,23 +1649,73 @@ function showError(error) {
 }
 
 function showCombatResultOverlay(game, previousEventCount) {
-  const volleys = latestCombatVolleys(game, previousEventCount);
-  if (volleys.length === 0) return;
+  const steps = latestResolutionSteps(game, previousEventCount);
+  if (steps.length === 0) return;
 
   const overlay = combatOverlayElement();
-  const actionNumber = volleys[0].action_number;
   overlay.replaceChildren();
 
-  const panel = document.createElement("section");
-  panel.className = "combat-result-panel";
-  panel.innerHTML = `
-    <div class="combat-result-header">
-      <span>Action ${actionNumber}</span>
-      <button type="button" aria-label="Dismiss combat result">&times;</button>
-    </div>
-    <div class="combat-result-list"></div>
-  `;
-  const list = panel.querySelector(".combat-result-list");
+  let currentStepIndex = 0;
+  const renderStep = () => {
+    const step = steps[currentStepIndex];
+    overlay.replaceChildren();
+    const panel = document.createElement("section");
+    panel.className = "combat-result-panel";
+    panel.innerHTML = `
+      <div class="combat-result-header">
+        <span>Action ${step.actionNumber} - ${step.label}</span>
+        <button type="button" aria-label="Dismiss combat result">&times;</button>
+      </div>
+      <div class="combat-result-list"></div>
+      <div class="combat-result-actions">
+        <button type="button">${currentStepIndex < steps.length - 1 ? "Advance" : "Close"}</button>
+      </div>
+    `;
+    const list = panel.querySelector(".combat-result-list");
+    step.render(list);
+    panel.querySelector(".combat-result-header button").addEventListener("click", hideCombatResultOverlay);
+    panel.querySelector(".combat-result-actions button").addEventListener("click", () => {
+      if (currentStepIndex < steps.length - 1) {
+        currentStepIndex += 1;
+        renderStep();
+      } else {
+        hideCombatResultOverlay();
+      }
+    });
+    overlay.append(panel);
+    overlay.classList.add("visible");
+  };
+  renderStep();
+}
+
+function renderMovementResults(list, movements) {
+  movements.forEach((movement) => {
+    const item = document.createElement("article");
+    item.className = "combat-result-item";
+    item.innerHTML = `
+      <strong>${movement.player_id}</strong>
+      <span class="combat-result-summary">${movement.steps.length} movement step${movement.steps.length === 1 ? "" : "s"}</span>
+      <div class="combat-result-breakdown">
+        ${movement.steps.map(formatMovementStep).join("")}
+      </div>
+    `;
+    list.append(item);
+  });
+}
+
+function formatMovementStep(step) {
+  const before = step.before || {};
+  const after = step.after || {};
+  const destination = step.warp_destination
+    ? `Warp ${titleCase(step.warp_destination)}`
+    : step.distance > 0
+      ? `Move ${step.distance}`
+      : "No movement";
+  const defense = step.defense_bonus ? `, +${step.defense_bonus} Defense` : "";
+  return `<span>${step.card_id}: ${destination}${defense} (${before.q}, ${before.r}) -> (${after.q}, ${after.r}), facing ${after.facing}</span>`;
+}
+
+function renderVolleyResults(list, volleys) {
   volleys.forEach((volley) => {
     const item = document.createElement("article");
     item.className = volley.hit ? "combat-result-item hit" : "combat-result-item miss";
@@ -1605,9 +1738,37 @@ function showCombatResultOverlay(game, previousEventCount) {
     `;
     list.append(item);
   });
-  panel.querySelector("button").addEventListener("click", hideCombatResultOverlay);
-  overlay.append(panel);
-  overlay.classList.add("visible");
+}
+
+function latestResolutionSteps(game, previousEventCount) {
+  const events = (game?.event_log || []).slice(previousEventCount);
+  const movementEvents = events.filter((event) => event.type === "movement_resolved");
+  const volleyEvents = events.filter((event) => event.type === "volley_resolved");
+  const latest = [...movementEvents, ...volleyEvents].at(-1);
+  if (!latest) return [];
+
+  const movements = movementEvents.filter(
+    (event) => event.round === latest.round && event.action_number === latest.action_number,
+  );
+  const volleys = volleyEvents.filter(
+    (event) => event.round === latest.round && event.action_number === latest.action_number,
+  );
+  const steps = [];
+  if (movements.length) {
+    steps.push({
+      actionNumber: latest.action_number,
+      label: "Movement",
+      render: (list) => renderMovementResults(list, movements),
+    });
+  }
+  if (volleys.length) {
+    steps.push({
+      actionNumber: latest.action_number,
+      label: "Attacks",
+      render: (list) => renderVolleyResults(list, volleys),
+    });
+  }
+  return steps;
 }
 
 function renderDamageShotLines(shots) {
@@ -1630,17 +1791,6 @@ function formatComponentId(componentId) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-function latestCombatVolleys(game, previousEventCount) {
-  const volleys = (game?.event_log || [])
-    .slice(previousEventCount)
-    .filter((event) => event.type === "volley_resolved");
-  const latest = volleys.at(-1);
-  if (!latest) return [];
-  return volleys.filter(
-    (event) => event.round === latest.round && event.action_number === latest.action_number,
-  );
 }
 
 function combatOverlayElement() {

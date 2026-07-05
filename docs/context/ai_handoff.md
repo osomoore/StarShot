@@ -49,15 +49,15 @@ Implemented so far:
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
 - Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
-- Implement the first normal action-stack Desperate faces: Thrust Ions, Turbo Ions, Evasive Action, Ace Shot, Deadeye, and Steady Shot.
+- Implement the normal action-stack Desperate faces for Thrust Ions, Turbo Ions, Homeward Bound, Treasure Hound, Evasive Action, Ace Shot, Deadeye, Nightjammer, and Steady Shot.
 - Show all non-base desperation cards in one debug picker pile named Desperation.
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
 - Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
-- Preview implemented Desperate movement, damage, target roll, Aim, and always-hit effects.
+- Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
 
 Not implemented yet:
 
-- Deferred Desperate faces: Homeward Bound, Treasure Hound, Nightjammer, Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got.
+- Deferred Desperate faces: Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got.
 - Full combat damage/shield rules.
 - Bauble placement/collection scoring details beyond placeholder phase flow.
 - Collision, obstacles, board boundaries, and any rule-specific movement edge cases not yet extracted into code.
@@ -74,6 +74,7 @@ Not implemented yet:
 - In 2-player games, attack target selection should default to the only opponent where practical.
 - Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
 - Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck after resolution.
+- Warp Desperate faces are deterministic until a richer UI exists: Homeward Bound warps to the player's start tile, Treasure Hound warps to the nearest active numbered bauble with a nearest-numbered fallback, and Nightjammer warps to the hex behind the highest-VP active opponent using that ship's facing, then matches that facing. Ties use turn order.
 
 ## Collaboration Notes
 

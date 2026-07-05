@@ -20,7 +20,7 @@ The debug UI picker has three piles: Move, Attack, and Desperation. All non-base
 - Desperate Move selections render bright green; Desperate Attack selections render bright orange.
 - Attack previews show target roll after Aim, with the Aim bonus in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
 
-The remaining work is to resolve the special/warp/multi-target Desperate faces and especially desperate abilities.
+The remaining work is to resolve the special/multi-target Desperate faces and especially desperate abilities.
 
 ## Completed Scope
 
@@ -46,7 +46,7 @@ Lose 1 VP (if no valid base card exists in deck or overheat).
 
 NOTE
 
-Some Desperate faces are still deferred: Homeward Bound, Treasure Hound, Nightjammer, Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got. Cards played on a Desperate face return to the shared Desperation deck; cards played on their basic face return to the player deck normally.
+Some Desperate faces are still deferred: Self Destruct, Death Blossom, Hull Repair, Advanced Repair, and All She's Got. Cards played on a Desperate face return to the shared Desperation deck; cards played on their basic face return to the player deck normally.
 
 NOTE
 
@@ -62,7 +62,7 @@ The following notes describe the implementation that is now in place.
 - desperation_deck: DesperationDeck field on GameState.
 - No separate desperation_hand is currently used; drawn cards are placed directly into player.deck.
 
-2. Desperation cards: `backend/starshot/rules/decks.py`
+2. Desperation cards: `backend/starshot/rules/desperation.py`
 
 create_desperation_deck() -> DesperationDeck includes all basic-face cards from the rules (Table 12.2 + 13.1), excluding "Hull Repair", "Advanced Repair" (deferred), and "All She's Got" (deferred).
 
@@ -71,12 +71,12 @@ Included cards:
 qty	id prefix	name	family	basic_value	desperate_face
 2	desp_thrust_ions_*	Thrust Ions	move	1	Move 5
 1	desp_turbo_ions	Turbo Ions	move	1	Move 10
-1	desp_homeward_bound	Homeward Bound	move	1	deferred
-1	desp_treasure_hound	Treasure Hound	move	1	deferred
+1	desp_homeward_bound	Homeward Bound	move	1	Warp Home, +5 Defense
+1	desp_treasure_hound	Treasure Hound	move	1	Warp Bauble, +5 Defense
 1	desp_evasive_action	Evasive Action	move	1	+10 Defense, cannot move
 2	desp_ace_shot_*	Ace Shot	attack	1	+5 Aim
-1	desp_deadeye	Deadeye	attack	1	Always hits
-1	desp_nightjammer	Nightjammer	attack	1	deferred
+1	desp_deadeye	Deadeye	attack	1	+999 Aim / Always hits
+1	desp_nightjammer	Nightjammer	attack	1	Warp Leader, +5 Defense
 1	desp_self_destruct	Self Destruct	attack	1	deferred
 1	desp_death_blossom	Death Blossom	attack	1	deferred
 2	desp_steady_shot_*	Steady Shot	attack	1	+2 Aim, +1 Damage
@@ -84,6 +84,10 @@ qty	id prefix	name	family	basic_value	desperate_face
 Cards have is_base=False. The targeted attack cards are proper targeted attacks (can designate a target); the others need a paired targeted attack card.
 
 draw_desperation_card(deck: DesperationDeck, rng: Random) draws from the conceptual "bottom" (implemented as pop(0) from the list), reshuffles after the shuffle marker/sentinel is reached, and returns a valid desperation card.
+
+Desperation card definitions, draw/return mechanics, and effective-face semantics live in `backend/starshot/rules/desperation.py`. `backend/starshot/rules/decks.py` owns the base deck and keeps compatibility exports plus the combined card_by_id lookup.
+
+Warp is deterministic until there is a richer choice UI: Homeward Bound warps to the player's start tile; Treasure Hound warps to the nearest active numbered Bauble with a nearest-numbered fallback; Nightjammer warps to the hex behind the current VP leader, using that ship's facing, and then matches the leader's facing.
 
 3. Engine: `backend/starshot/rules/engine.py`
 
@@ -95,11 +99,11 @@ draw_desperation_card(deck: DesperationDeck, rng: Random) draws from the concept
 - _move_resolved_stack_cards routes cards played on a Desperate face back to the shared Desperation deck.
 - _validate_stack uses effective hybrid family/mode and the combined card lookup so desperation card IDs are legal inputs.
 
-4. Card lookup: `backend/starshot/rules/decks.py` and `backend/starshot/rules/engine.py`
+4. Card lookup: `backend/starshot/rules/decks.py`, `backend/starshot/rules/desperation.py`, and `backend/starshot/rules/engine.py`
 
 - desperation_card_by_id(card_id: str) -> Card.
 - card_by_id(card_id: str) -> Card tries base first, then desperation.
-- Engine card lookup uses card_by_id(...) where desperation cards can appear.
+- Engine card lookup uses card_by_id(...) where desperation cards can appear, while Desperation-specific setup and card semantics import from `starshot.rules.desperation`.
 
 5. Serialization: `backend/starshot/rules/serialization.py`
 

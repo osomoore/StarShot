@@ -37,6 +37,7 @@ class DesperateFace:
     defense_bonus: int = 0
     always_hits: bool = False
     movement_disabled: bool = False
+    warp_destination: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

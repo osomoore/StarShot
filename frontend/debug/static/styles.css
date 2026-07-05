@@ -965,6 +965,16 @@ select {
   gap: 5px;
 }
 
+.combat-result-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.combat-result-actions button {
+  min-height: 36px;
+  padding: 6px 14px;
+}
+
 .card-picker-overlay {
   align-items: center;
   background: rgb(18 24 25 / 0.32);

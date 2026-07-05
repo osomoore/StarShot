@@ -122,6 +122,7 @@ def desperate_face_to_dict(face: DesperateFace) -> dict:
         "defense_bonus": face.defense_bonus,
         "always_hits": face.always_hits,
         "movement_disabled": face.movement_disabled,
+        "warp_destination": face.warp_destination,
     }
 
 
@@ -136,6 +137,7 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
         defense_bonus=data.get("defense_bonus", 0),
         always_hits=data.get("always_hits", False),
         movement_disabled=data.get("movement_disabled", False),
+        warp_destination=data.get("warp_destination"),
     )
 
 

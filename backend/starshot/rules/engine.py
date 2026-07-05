@@ -11,11 +11,25 @@ from starshot.rules.baubles import (
     ship_inside_bauble,
 )
 from starshot.rules.decks import (
-    all_desperation_cards,
     card_by_id,
     create_base_deck,
+)
+from starshot.rules.desperation import (
+    all_desperation_cards,
+    card_aim_bonus as _desperation_card_aim_bonus,
+    card_always_hits as _desperation_card_always_hits,
+    card_damage_bonus as _desperation_card_damage_bonus,
+    card_defense_bonus as _desperation_card_defense_bonus,
+    card_movement_disabled as _desperation_card_movement_disabled,
+    card_orientation_options as _desperation_card_orientation_options,
+    card_requires_target as _desperation_card_requires_target,
+    card_value as _desperation_card_value,
+    card_warp_destination as _desperation_card_warp_destination,
     create_desperation_deck,
     draw_desperation_card,
+    is_desperate_face,
+    return_desperation_card,
+    selected_card_family as _desperation_selected_card_family,
 )
 from starshot.rules.hex import (
     clamp_to_board,
@@ -30,7 +44,6 @@ from starshot.rules.models import (
     ActionStack,
     Card,
     CardFamily,
-    DesperationDeck,
     GameConfig,
     GamePhase,
     GameResult,
@@ -69,7 +82,7 @@ def create_initial_state(config: GameConfig) -> GameState:
         for index, player_id in enumerate(player_ids)
     }
     if config.debug_start_with_attack_desperation_card:
-        from starshot.rules.decks import desperation_card_by_id
+        from starshot.rules.desperation import desperation_card_by_id
 
         for player in players.values():
             player.deck.append(desperation_card_by_id("desp_ace_shot_a"))
@@ -263,75 +276,101 @@ def _normalize_move_choice(orientation: str) -> str:
     return "forward" if orientation in {"up", "forward"} else orientation
 
 
+def _translate_card_error(callback, *args):
+    try:
+        return callback(*args)
+    except ValueError as exc:
+        raise RulesError(str(exc)) from exc
+
+
 def _is_desperate_face(selection: OrderCardSelection) -> bool:
-    return selection.face == "desperate"
-
-
-def _desperate_face_for(card: Card, selection: OrderCardSelection):
-    if not _is_desperate_face(selection):
-        return None
-    if card.desperate_face is None:
-        raise RulesError(f"Card {card.id} does not have an implemented desperate face.")
-    return card.desperate_face
+    return is_desperate_face(selection)
 
 
 def _selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
-    desperate_face = _desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.family
-    if card.is_hybrid:
-        if selection.mode == "attack":
-            return CardFamily.ATTACK
-        if selection.mode == "move":
-            return CardFamily.MOVE
-        raise RulesError(f"Hybrid card {card.id} requires a mode selection.")
-    return card.family
+    return _translate_card_error(_desperation_selected_card_family, card, selection)
 
 
 def _card_requires_target(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = _desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.requires_target
-    return card.requires_target
+    return _translate_card_error(_desperation_card_requires_target, card, selection)
 
 
 def _card_orientation_options(card: Card, selection: OrderCardSelection) -> tuple[str, ...]:
-    desperate_face = _desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.orientation_options
-    return card.orientation_options
+    return _translate_card_error(_desperation_card_orientation_options, card, selection)
 
 
 def _card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
-    desperate_face = _desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.value
-    return card.value + (1 if seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+    return _translate_card_error(_desperation_card_value, card, selection, seal_mode)
 
 
 def _card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = _desperate_face_for(card, selection)
-    return desperate_face.aim_bonus if desperate_face is not None else 0
+    return _translate_card_error(_desperation_card_aim_bonus, card, selection)
 
 
 def _card_damage_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = _desperate_face_for(card, selection)
-    return desperate_face.damage_bonus if desperate_face is not None else 0
+    return _translate_card_error(_desperation_card_damage_bonus, card, selection)
 
 
 def _card_defense_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = _desperate_face_for(card, selection)
-    return desperate_face.defense_bonus if desperate_face is not None else 0
+    return _translate_card_error(_desperation_card_defense_bonus, card, selection)
 
 
 def _card_always_hits(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = _desperate_face_for(card, selection)
-    return bool(desperate_face is not None and desperate_face.always_hits)
+    return _translate_card_error(_desperation_card_always_hits, card, selection)
 
 
 def _card_movement_disabled(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = _desperate_face_for(card, selection)
-    return bool(desperate_face is not None and desperate_face.movement_disabled)
+    return _translate_card_error(_desperation_card_movement_disabled, card, selection)
+
+
+def _card_warp_destination(card: Card, selection: OrderCardSelection) -> str | None:
+    return _translate_card_error(_desperation_card_warp_destination, card, selection)
+
+
+def _resolve_warp_destination(state: GameState, player: PlayerState, destination: str) -> tuple[int, int, int | None]:
+    if destination == "home":
+        player_index = tuple(state.players).index(player.id)
+        q, r, _facing = corner_start(player_index)
+        return q, r, None
+
+    if destination == "bauble":
+        active_numbered = [
+            bauble
+            for bauble in state.baubles
+            if not bauble.is_fang and bauble.number == state.round_number
+        ]
+        numbered = [bauble for bauble in state.baubles if not bauble.is_fang]
+        candidates = active_numbered or numbered
+        if not candidates:
+            return player.ship.q, player.ship.r, None
+        bauble = min(
+            candidates,
+            key=lambda candidate: (
+                hex_distance(player.ship.q, player.ship.r, candidate.q, candidate.r),
+                candidate.number,
+                candidate.id,
+            ),
+        )
+        return bauble.q, bauble.r, None
+
+    if destination == "leader":
+        candidates = [candidate for candidate in state.players.values() if candidate.id != player.id and not candidate.eliminated]
+        if not candidates:
+            candidates = [candidate for candidate in state.players.values() if not candidate.eliminated]
+        if not candidates:
+            return player.ship.q, player.ship.r, None
+
+        order = _player_order_from_starting_player(state)
+        order_index = {player_id: index for index, player_id in enumerate(order)}
+        leader = min(
+            candidates,
+            key=lambda candidate: (-candidate.victory_points, order_index.get(candidate.id, len(order))),
+        )
+        q, r = move_forward(leader.ship.q, leader.ship.r, u_turn(leader.ship.facing), 1)
+        q, r = clamp_to_board(q, r)
+        return q, r, leader.ship.facing
+
+    raise RulesError(f"Unsupported warp destination: {destination}")
 
 
 def _resolve_stack_movement(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
@@ -354,8 +393,14 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
         before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
         attempted_q = player.ship.q
         attempted_r = player.ship.r
+        warp_destination = _card_warp_destination(card, selection)
 
-        if _card_movement_disabled(card, selection):
+        if warp_destination:
+            attempted_q, attempted_r, attempted_facing = _resolve_warp_destination(state, player, warp_destination)
+            player.ship.q, player.ship.r = attempted_q, attempted_r
+            if attempted_facing is not None:
+                player.ship.facing = attempted_facing
+        elif _card_movement_disabled(card, selection):
             pass
         elif move_choice == "forward":
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
@@ -384,7 +429,8 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
                 "card_id": card.id,
                 "face": selection.face,
                 "choice": move_choice,
-                "distance": 0 if move_choice == "u_turn" or _card_movement_disabled(card, selection) else distance,
+                "distance": 0 if move_choice == "u_turn" or _card_movement_disabled(card, selection) or warp_destination else distance,
+                "warp_destination": warp_destination,
                 "defense_bonus": defense_bonus,
                 "before": before,
                 "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
@@ -413,8 +459,7 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
         if _is_desperate_face(selection):
-            state.desperation_deck.cards.append(card)
-            state.desperation_deck.shuffle_marker_on_top = False
+            return_desperation_card(state.desperation_deck, card)
             returned_to_desperation_deck.append(card.id)
         elif stack.seal_mode == SealMode.OVERDRIVE and card.is_base:
             player.overheat.append(card)
