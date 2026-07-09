@@ -14,7 +14,7 @@ class CardEffectsTests(unittest.TestCase):
         self.assertEqual(effect.family, CardFamily.MOVE)
         self.assertIsNotNone(effect.move)
         self.assertEqual(effect.move.distance, 2)
-        self.assertEqual(effect.move.orientation_options, ("forward", "turn_left", "turn_right", "u_turn"))
+        self.assertEqual(effect.move.orientation_options, ("forward", "turn_left", "turn_right"))
 
     def test_base_attack_ignores_overdrive_for_aim_value(self):
         card = card_by_id("attack_2_a")

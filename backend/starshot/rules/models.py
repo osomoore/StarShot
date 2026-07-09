@@ -56,7 +56,7 @@ class Card:
     family: CardFamily
     value: int
     is_base: bool = True
-    orientation_options: tuple[str, ...] = ("forward", "turn_left", "turn_right", "u_turn")
+    orientation_options: tuple[str, ...] = ("forward", "turn_left", "turn_right")
     requires_target: bool = True
     is_hybrid: bool = False
     desperate_face: DesperateFace | None = None

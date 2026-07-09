@@ -17,9 +17,8 @@ const SQRT3 = Math.sqrt(3);
 const DEMO_MOVE_CHOICES = ["forward", "turn_left", "turn_right"];
 const MOVE_CHOICES = [
   { value: "forward", label: "Forward", mark: "F" },
-  { value: "turn_left", label: "Turn Left", mark: "L" },
-  { value: "turn_right", label: "Turn Right", mark: "R" },
-  { value: "u_turn", label: "U-Turn", mark: "U" },
+  { value: "turn_left", label: "Turn Left, Move", mark: "L" },
+  { value: "turn_right", label: "Turn Right, Move", mark: "R" },
 ];
 const PLAYER_ORDER = ["red", "blue", "green", "yellow"];
 const SHIP_COLORS = {
@@ -614,21 +613,17 @@ function previewMoveLabel(stackIndex, cardIndex, distance, warpDestination = "")
 }
 
 function applyPreviewMove(preview, distance, choice) {
-  if (choice !== "u_turn") {
-    const [dq, dr] = AXIAL_DIRECTIONS[preview.facing % 6];
-    preview.q += dq * distance;
-    preview.r += dr * distance;
-    const clamped = clampToBoard(preview.q, preview.r);
-    preview.q = clamped.q;
-    preview.r = clamped.r;
-  }
   if (choice === "turn_left") {
     preview.facing = (preview.facing + 1) % 6;
   } else if (choice === "turn_right") {
     preview.facing = (preview.facing + 5) % 6;
-  } else if (choice === "u_turn") {
-    preview.facing = (preview.facing + 3) % 6;
   }
+  const [dq, dr] = AXIAL_DIRECTIONS[preview.facing % 6];
+  preview.q += dq * distance;
+  preview.r += dr * distance;
+  const clamped = clampToBoard(preview.q, preview.r);
+  preview.q = clamped.q;
+  preview.r = clamped.r;
 }
 
 function applyPreviewWarp(game, player, preview, destination) {

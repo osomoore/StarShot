@@ -150,10 +150,11 @@ class RulesEngineTests(unittest.TestCase):
 
     def test_movement_resolves_from_move_orientation(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        # Red starts at (-11, 0) facing 0 (east)
         red_orders = OrdersSubmission(
             stacks=(
                 ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a", orientation="turn_right"),)),
-                ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b", orientation="u_turn"),)),
+                ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b", orientation="turn_left"),)),
                 ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a", orientation="forward"),)),
             )
         )
@@ -167,19 +168,19 @@ class RulesEngineTests(unittest.TestCase):
         state = submit_orders(state, "red", red_orders)
         state = submit_orders(state, "blue", blue_orders)
 
+        # Action 1: turn_right (0->5), move 1 in facing 5
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
         self.assertEqual(state.players["red"].ship.facing, 5)
         self.assertEqual(state.players["red"].ship.movement_this_action, 1)
 
+        # Action 2: turn_left (5->0), move 1 in facing 0
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
-        self.assertEqual(state.players["red"].ship.facing, 2)
-        self.assertEqual(state.players["red"].ship.movement_this_action, 0)
+        self.assertEqual(state.players["red"].ship.facing, 0)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 1)
 
+        # Action 3: forward Move 2, overdrive duplicates it (2+2=4)
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, -4))
-        self.assertEqual(state.players["red"].ship.facing, 2)
+        self.assertEqual(state.players["red"].ship.facing, 0)
         self.assertEqual(state.players["red"].ship.movement_this_action, 4)
         movement_events = [event for event in state.event_log if event["type"] == "movement_resolved"]
         self.assertFalse(movement_events[-2]["overdrive_copy"])

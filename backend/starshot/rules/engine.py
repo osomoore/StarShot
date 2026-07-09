@@ -412,35 +412,32 @@ def _resolve_stack_movement(
             player.ship.q, player.ship.r = attempted_q, attempted_r
             player.ship.movement_this_action += distance
         elif move_choice == "turn_left":
+            player.ship.facing = turn_left(player.ship.facing)
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
             player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.facing = turn_left(player.ship.facing)
             player.ship.movement_this_action += distance
         elif move_choice == "turn_right":
+            player.ship.facing = turn_right(player.ship.facing)
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
             player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.facing = turn_right(player.ship.facing)
             player.ship.movement_this_action += distance
-        elif move_choice == "u_turn":
-            player.ship.facing = u_turn(player.ship.facing)
         else:
             raise RulesError(f"Unsupported move orientation: {move_choice}")
 
-        if move_choice != "u_turn":
-            player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
+        player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
 
         movement_steps.append(
             {
                 "card_id": card.id,
                 "face": selection.face,
                 "choice": move_choice,
-                "distance": 0 if move_choice == "u_turn" or move_effect.movement_disabled or warp_destination else distance,
+                "distance": 0 if move_effect.movement_disabled or warp_destination else distance,
                 "warp_destination": warp_destination,
                 "defense_bonus": defense_bonus,
                 "before": before,
                 "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
                 "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
-                "clamped": move_choice != "u_turn" and (attempted_q, attempted_r) != (player.ship.q, player.ship.r),
+                "clamped": (attempted_q, attempted_r) != (player.ship.q, player.ship.r),
             }
         )
 
