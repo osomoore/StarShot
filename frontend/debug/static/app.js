@@ -5,6 +5,7 @@ const state = {
   builderPlayerId: "red",
   builderDraft: createEmptyDraft(),
   knownCards: {},
+  selectedAiType: "bauble_runner",
   // New properties for board interaction
   zoomScale: 1,
   panOffsetX: 0,
@@ -15,6 +16,11 @@ const BOARD_RADIUS = 14;
 const HEX_SIZE = 14;
 const SQRT3 = Math.sqrt(3);
 const DEMO_MOVE_CHOICES = ["forward", "turn_left", "turn_right"];
+const AI_TYPES = {
+  bauble_runner: "Bauble Runner",
+  hunter_killer: "Hunter-Killer",
+  blaster: "Blaster",
+};
 const MOVE_CHOICES = [
   { value: "forward", label: "Forward", mark: "F" },
   { value: "turn_left", label: "Turn Left, Move", mark: "L" },
@@ -69,6 +75,7 @@ const elements = {
   startingPlayerValue: document.querySelector("#startingPlayerValue"),
   redOrdersButton: document.querySelector("#redOrdersButton"),
   blueOrdersButton: document.querySelector("#blueOrdersButton"),
+  aiTypeSelect: document.querySelector("#aiTypeSelect"),
   resolveButton: document.querySelector("#resolveButton"),
   revealOrdersToggle: document.querySelector("#revealOrdersToggle"),
   builderPlayerSelect: document.querySelector("#builderPlayerSelect"),
@@ -243,6 +250,24 @@ async function submitDemoOrders(playerId, preferredFamily) {
   await submitOrders(playerId, orders);
 }
 
+async function submitAiOrders(playerId) {
+  const aiType = state.selectedAiType;
+  const orders = buildAiOrders(playerId, aiType);
+  if (!orders) {
+    const label = AI_TYPES[aiType] || "AI";
+    showError(new Error(`${label} cannot submit orders for ${playerId} right now.`));
+    return;
+  }
+  await submitOrders(playerId, orders);
+}
+
+function buildAiOrders(playerId, aiType) {
+  if (aiType === "bauble_runner") return buildBaubleRunnerOrders(playerId);
+  if (aiType === "hunter_killer") return buildDemoOrders(playerId, "attack");
+  if (aiType === "blaster") return buildDemoOrders(playerId, "attack");
+  return buildDemoOrders(playerId, "move");
+}
+
 function buildDemoOrders(playerId, preferredFamily) {
   const game = state.selectedState;
   const player = game?.players?.[playerId];
@@ -269,6 +294,288 @@ function buildDemoOrders(playerId, preferredFamily) {
       };
     }),
   };
+}
+
+function buildBaubleRunnerOrders(playerId) {
+  const game = state.selectedState;
+  const player = game?.players?.[playerId];
+  if (!game || !player || !canSubmit(playerId)) return null;
+
+  const available = [...(player.hand || [])];
+  const opponentIds = Object.keys(game.players).filter((id) => id !== playerId);
+  const attackTargetId = nearestOpponentId(game, player) || (opponentIds.includes("red") ? "red" : opponentIds[0]);
+  const preview = {
+    q: player.ship.q,
+    r: player.ship.r,
+    facing: player.ship.facing,
+  };
+  const currentTarget = nearestBaubleForRound(game, game.round_number, preview);
+  const sealedCurrentReachPlan = currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, false) : null;
+  const currentReachPlan = sealedCurrentReachPlan
+    || (currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, true) : null);
+  const plannedMoves = currentReachPlan ? [...currentReachPlan] : [];
+  const targetBaubles = currentReachPlan ? [currentTarget] : nextRoundBaubleTargets(game, preview);
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber) => {
+      const alreadyScoring = distanceToBestBauble(targetBaubles, preview).distance === 0;
+      const movePlan = plannedMoves.length
+        ? takePlannedAiMove(available, plannedMoves.shift())
+        : alreadyScoring
+          ? null
+          : takeBestBaubleMove(targetBaubles, available, preview);
+      if (movePlan) {
+        applyAiMovePreview(preview, movePlan);
+        return {
+          action_number: actionNumber,
+          seal_mode: movePlan.sealMode,
+          cards: [movePlan.selection],
+        };
+      }
+
+      const attackPlan = takeAiAttack(available, attackTargetId);
+      return {
+        action_number: actionNumber,
+        seal_mode: "sealed",
+        cards: attackPlan ? [attackPlan.selection] : [],
+      };
+    }),
+  };
+}
+
+function nextRoundBaubleTargets(game, preview) {
+  const nextRound = Math.min((game?.round_number || 1) + 1, 6);
+  const nextTarget = nearestBaubleForRound(game, nextRound, preview);
+  return nextTarget ? [nextTarget] : activeBaubleTargets(game);
+}
+
+function nearestBaubleForRound(game, roundNumber, preview) {
+  const candidates = roundBaubleTargets(game, roundNumber);
+  if (!candidates.length) return null;
+  return [...candidates].sort((left, right) => (
+    baubleRangeDistance(left, preview) - baubleRangeDistance(right, preview)
+    || (right.victory_points || 0) - (left.victory_points || 0)
+    || String(left.id).localeCompare(String(right.id))
+  ))[0];
+}
+
+function roundBaubleTargets(game, roundNumber) {
+  const baubles = game?.baubles || [];
+  if (roundNumber >= 6) return baubles.filter((bauble) => bauble.is_fang);
+  return baubles.filter((bauble) => !bauble.is_fang && bauble.number === roundNumber);
+}
+
+function baubleRunnerReachPlan(bauble, available, preview, allowOverdrive) {
+  const moveCards = available.filter(aiCanUseAsMove);
+  const seen = new Set();
+
+  function search(position, remainingCards, actionsLeft) {
+    if (baubleRangeDistance(bauble, position) === 0) return [];
+    if (actionsLeft === 0) return null;
+
+    const key = `${position.q},${position.r},${position.facing}|${actionsLeft}|${remainingCards.map((card) => card.id).join(",")}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+
+    for (let cardIndex = 0; cardIndex < remainingCards.length; cardIndex += 1) {
+      const card = remainingCards[cardIndex];
+      const nextCards = remainingCards.filter((_, index) => index !== cardIndex);
+      for (const choice of aiMoveChoices(card)) {
+        for (const sealMode of aiMoveSealModes(allowOverdrive)) {
+          const candidate = { q: position.q, r: position.r, facing: position.facing };
+          applyAiMoveCandidatePreview(candidate, card, choice, sealMode);
+          const remainder = search(candidate, nextCards, actionsLeft - 1);
+          if (remainder) {
+            return [{ cardId: card.id, choice, sealMode }, ...remainder];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  return search({ q: preview.q, r: preview.r, facing: preview.facing }, moveCards, 3);
+}
+
+function takeBestBaubleMove(targetBaubles, available, preview) {
+  let best = null;
+  available.forEach((card, index) => {
+    aiMoveChoices(card).forEach((choice) => {
+      const candidate = {
+        q: preview.q,
+        r: preview.r,
+        facing: preview.facing,
+      };
+      applyPreviewMove(candidate, previewCardValue(card, "sealed"), choice, card, aiStackForSelection(card, choice, "move"), 0);
+      const baubleScore = distanceToBestBauble(targetBaubles, candidate);
+      const currentScore = distanceToBestBauble(targetBaubles, preview);
+      const improvement = currentScore.distance - baubleScore.distance;
+      const score = [
+        improvement,
+        -baubleScore.distance,
+        baubleScore.victoryPoints,
+        previewCardValue(card, "sealed"),
+        -index,
+      ];
+      if (!best || compareAiScores(score, best.score) > 0) {
+        best = {
+          card,
+          index,
+          choice,
+          sealMode: "sealed",
+          score,
+          selection: aiSelectionForMove(card, choice),
+        };
+      }
+    });
+  });
+  if (!best || best.score[0] <= 0) return null;
+  available.splice(best.index, 1);
+  return best;
+}
+
+function takePlannedAiMove(available, plannedMove) {
+  if (!plannedMove) return null;
+  const index = available.findIndex((card) => card.id === plannedMove.cardId);
+  if (index < 0) return null;
+  const [card] = available.splice(index, 1);
+  return {
+    card,
+    index,
+    choice: plannedMove.choice,
+    sealMode: plannedMove.sealMode,
+    selection: aiSelectionForMove(card, plannedMove.choice),
+  };
+}
+
+function takeAiAttack(available, attackTargetId) {
+  let best = null;
+  available.forEach((card, index) => {
+    if (!aiCanUseAsAttack(card)) return;
+    const score = [previewCardValue(card, "sealed"), -index];
+    if (!best || compareAiScores(score, best.score) > 0) {
+      best = {
+        card,
+        index,
+        score,
+        selection: aiSelectionForAttack(card, attackTargetId),
+      };
+    }
+  });
+  if (!best) return null;
+  available.splice(best.index, 1);
+  return best;
+}
+
+function aiMoveChoices(card) {
+  if (!aiCanUseAsMove(card)) return [];
+  return card.orientation_options?.length ? card.orientation_options : ["forward"];
+}
+
+function aiMoveSealModes(allowOverdrive) {
+  return allowOverdrive ? ["sealed", "overdrive"] : ["sealed"];
+}
+
+function aiCanUseAsMove(card) {
+  if (!card || card.no_basic_face) return false;
+  return card.is_hybrid || (card.effect?.family ?? card.family) === "move";
+}
+
+function aiCanUseAsAttack(card) {
+  if (!card || card.no_basic_face) return false;
+  return card.is_hybrid || (card.effect?.family ?? card.family) === "attack";
+}
+
+function aiSelectionForMove(card, choice) {
+  const selection = {
+    card_id: card.id,
+    face: "front",
+    orientation: choice,
+  };
+  if (card.is_hybrid) selection.mode = "move";
+  return selection;
+}
+
+function aiSelectionForAttack(card, attackTargetId) {
+  const selection = {
+    card_id: card.id,
+    face: "front",
+    orientation: "up",
+  };
+  if (card.is_hybrid) selection.mode = "attack";
+  if (cardNeedsTarget(card) && attackTargetId) selection.target_player_id = attackTargetId;
+  return selection;
+}
+
+function aiStackForSelection(card, choice, mode) {
+  return {
+    seal_mode: "sealed",
+    cards: [card.id],
+    faces: ["front"],
+    move_choices: [choice],
+    modes: [card.is_hybrid ? mode : ""],
+    targets: [""],
+  };
+}
+
+function applyAiMovePreview(preview, movePlan) {
+  applyAiMoveCandidatePreview(preview, movePlan.card, movePlan.choice, movePlan.sealMode);
+}
+
+function applyAiMoveCandidatePreview(preview, card, choice, sealMode) {
+  const passes = sealMode === "overdrive" ? 2 : 1;
+  for (let pass = 0; pass < passes; pass += 1) {
+    applyPreviewMove(
+      preview,
+      previewCardValue(card, sealMode),
+      choice,
+      card,
+      aiStackForSelection(card, choice, "move"),
+      0,
+    );
+  }
+}
+
+function distanceToBestBauble(candidates, preview) {
+  if (!candidates.length) return { distance: Infinity, victoryPoints: 0 };
+  return candidates
+    .map((bauble) => ({
+      distance: baubleRangeDistance(bauble, preview),
+      victoryPoints: bauble.victory_points || 0,
+    }))
+    .sort((left, right) => (
+      left.distance - right.distance
+      || right.victoryPoints - left.victoryPoints
+    ))[0];
+}
+
+function baubleRangeDistance(bauble, preview) {
+  return Math.max(0, hexDistance(preview.q, preview.r, bauble.q, bauble.r) - 1);
+}
+
+function activeBaubleTargets(game) {
+  const baubles = game?.baubles || [];
+  const active = baubles.filter((bauble) => bauble.is_fang || bauble.number === game.round_number);
+  if (active.length) return active;
+  return baubles.filter((bauble) => !bauble.is_fang);
+}
+
+function nearestOpponentId(game, player) {
+  return Object.values(game.players || {})
+    .filter((candidate) => candidate.id !== player.id && !candidate.eliminated)
+    .sort((left, right) => (
+      hexDistance(player.ship.q, player.ship.r, left.ship.q, left.ship.r)
+      - hexDistance(player.ship.q, player.ship.r, right.ship.q, right.ship.r)
+      || left.id.localeCompare(right.id)
+    ))[0]?.id || "";
+}
+
+function compareAiScores(left, right) {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (left[index] || 0) - (right[index] || 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
 }
 
 function demoCardSelection(card, actionNumber, attackTargetId) {
@@ -314,6 +621,8 @@ function renderAll() {
   elements.startingPlayerValue.textContent = game?.starting_player_id ?? "-";
   elements.redOrdersButton.disabled = !canSubmit("red");
   elements.blueOrdersButton.disabled = !canSubmit("blue");
+  elements.aiTypeSelect.disabled = !game;
+  elements.aiTypeSelect.value = state.selectedAiType;
   elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
@@ -1711,10 +2020,13 @@ function applyDefaultAttackTarget(stack, cardIndex) {
 
 elements.createButton.addEventListener("click", () => createGame().catch(showError));
 elements.refreshButton.addEventListener("click", () => refreshGames().catch(showError));
-elements.redOrdersButton.addEventListener("click", () => submitDemoOrders("red", "move").catch(showError));
-elements.blueOrdersButton.addEventListener("click", () => submitDemoOrders("blue", "attack").catch(showError));
+elements.redOrdersButton.addEventListener("click", () => submitAiOrders("red").catch(showError));
+elements.blueOrdersButton.addEventListener("click", () => submitAiOrders("blue").catch(showError));
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
+elements.aiTypeSelect.addEventListener("change", (event) => {
+  state.selectedAiType = event.target.value;
+});
 elements.builderPlayerSelect.addEventListener("change", (event) => {
   state.builderPlayerId = event.target.value;
   state.builderDraft = createEmptyDraft();

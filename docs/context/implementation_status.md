@@ -15,7 +15,9 @@ Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. C
 
 The 0.2 desperation deck is in place with 41 cards. The backend recognizes no-basic-face return behavior for Afterburners and Crack Shot, hybrid/basic desperation attacks, and implemented Desperate faces for Steady Shot, Side Slip, Drift King, Thrust Ions, Crazy Ivan, Active Cooling, Turbo Ions, NightJammer, StarShot, and Lead the Target. Deferred Desperate faces still reject cleanly: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
 
-The debug builder has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack.
+Untargeted attack cards can be ordered alone and shoot straight ahead at the first enemy on the forward line. If paired with a targeted attack, they join the same volley and share the targeted card's target.
+
+The debug builder has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack. After choosing card 1 for an order, the builder advances to card 2 after any required move/target choice. Move-choice panels only show orientations supported by the selected card.
 
 Current focus is post-0.2 polish and any remaining UI/rules discrepancies.
 
@@ -76,6 +78,7 @@ Current board behavior:
 - Attack preview bursts are drawn at the shooter location, colored by target player.
 - Move preview applies turn-before-move to match backend behavior.
 - Target picker opens automatically when a Targeted Attack card is placed, unless the stack already has a target set from another card.
+- Untargeted attack cards do not open a target picker; they either shoot forward or join a targeted attack in the same stack.
 - In 2-player games, target auto-fills to the only opponent.
 
 ## Good Next Implementation Candidates
@@ -83,6 +86,7 @@ Current board behavior:
 1. Review the debug UI in-browser for the completed 0.2 desperation deck flow.
 2. Design the deferred Desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
 3. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
+4. Current backend verification: `python -m unittest discover -s tests` passes with 96 tests.
 
 ## Files To Read Before Rule Work
 

@@ -42,8 +42,16 @@
     </div>
   </div>
   <div class="actions-row">
-    <button id="redOrdersButton" type="button" disabled>Red Demo</button>
-    <button id="blueOrdersButton" type="button" disabled>Blue Demo</button>
+    <label class="ai-control">
+      AI Type
+      <select id="aiTypeSelect">
+        <option value="bauble_runner">Bauble Runner</option>
+        <option value="hunter_killer">Hunter-Killer</option>
+        <option value="blaster">Blaster</option>
+      </select>
+    </label>
+    <button id="redOrdersButton" type="button" disabled>Red AI</button>
+    <button id="blueOrdersButton" type="button" disabled>Blue AI</button>
     <label class="check-control">
       <input id="revealOrdersToggle" type="checkbox" />
       Reveal orders

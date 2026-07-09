@@ -414,6 +414,7 @@ Completed notes:
 - Cleanup returns Desperate-face cards and no-basic-face cards to the shared Desperation deck.
 - Serialization preserves new desperation metadata, including side slip, double turn, U-turn, active cooling, lead target, base damage, and no-basic-face flags.
 - Debug UI fallback card inference and preview labels recognize the new 0.2 desperation cards.
+- Untargeted desperation attacks can be ordered alone to shoot forward, or paired with a targeted attack to share that target.
 
 ## Open Design Questions To Resolve While Implementing
 

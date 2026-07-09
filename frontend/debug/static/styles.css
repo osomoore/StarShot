@@ -85,6 +85,15 @@ select {
   gap: 10px;
 }
 
+.ai-control {
+  align-items: center;
+  color: #43504d;
+  display: grid;
+  font-size: 0.82rem;
+  gap: 4px;
+  min-width: 170px;
+}
+
 .workspace {
   align-items: start;
   display: grid;
