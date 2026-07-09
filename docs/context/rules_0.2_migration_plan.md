@@ -225,7 +225,8 @@ Verification:
 
 ### Group 5: Base Deck and Combat Math
 
-Playable after: yes. Combat should now match the central 0.2 attack model.
+Status: complete. Playable after: yes.
+Combat should now match the central 0.2 attack model.
 
 - Change base deck to 10 cards:
   - 2 Targeted Attack Aim +1
@@ -238,6 +239,14 @@ Playable after: yes. Combat should now match the central 0.2 attack model.
 - Multiple attack cards combine aim/damage, but do not add extra base damage.
 - Update event payload fields so logs/previews show aim and damage clearly.
 - Update debug previews from old damage/card-value assumptions.
+
+Completed notes:
+
+- Base deck is the 10-card 0.2 deck: 3 Move 1, 4 Move 2, 2 Targeted Attack Aim +1, and 1 Targeted Attack Aim +2.
+- Base attack cards contribute Aim, not damage value. A combined volley has base 1 damage plus `Damage +X` modifiers.
+- Multiple base attack cards combine into one volley with summed Aim and no extra base damage.
+- Attack rolls now use `2d6`; damage lanes remain `1d12`.
+- Debug previews use the same base-damage-plus-modifiers model.
 
 Likely files:
 
@@ -256,7 +265,8 @@ Verification:
 
 ### Group 6: 0.2 Overdrive
 
-Playable after: yes. Isolate this because it affects sequencing and event logs.
+Status: complete. Playable after: yes.
+Isolate this because it affects sequencing and event logs.
 
 - Replace numeric `+1` overdrive with duplicate-order execution.
 - Movement: execute normal moves, then execute overdrive duplicate moves immediately after normal moves.
@@ -264,6 +274,14 @@ Playable after: yes. Isolate this because it affects sequencing and event logs.
 - Ensure duplicate volleys can trigger shields, VP, damage, and per-volley effects separately.
 - Mark events with enough detail for the debug log, e.g. `overdrive_copy: true`.
 - Remove remaining old overdrive boost assumptions from frontend previews and tests.
+
+Completed notes:
+
+- Removed the legacy overdrive `+1` card-value boost from backend card interpretation and debug previews.
+- Movement stacks sealed with Overdrive execute once normally, then immediately execute a duplicate copy. Movement events include `overdrive_copy`.
+- Attack stacks sealed with Overdrive resolve a normal volley, then immediately resolve a duplicate volley before the next attacker. Volley events include `overdrive_copy`.
+- Duplicate volleys resolve shields, VP, component damage, and desperation consequences as separate volleys.
+- Cleanup still sends overdriven command cards to overheat.
 
 Likely files:
 

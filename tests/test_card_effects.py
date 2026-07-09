@@ -7,16 +7,16 @@ from starshot.rules.models import CardFamily, OrderCardSelection, SealMode
 
 
 class CardEffectsTests(unittest.TestCase):
-    def test_base_move_keeps_legacy_overdrive_distance(self):
+    def test_base_move_ignores_overdrive_for_card_value(self):
         card = card_by_id("move_2_a")
         effect = interpret_card(card, OrderCardSelection(card.id), SealMode.OVERDRIVE)
 
         self.assertEqual(effect.family, CardFamily.MOVE)
         self.assertIsNotNone(effect.move)
-        self.assertEqual(effect.move.distance, 3)
+        self.assertEqual(effect.move.distance, 2)
         self.assertEqual(effect.move.orientation_options, ("forward", "turn_left", "turn_right", "u_turn"))
 
-    def test_base_attack_keeps_legacy_damage_value(self):
+    def test_base_attack_ignores_overdrive_for_aim_value(self):
         card = card_by_id("attack_2_a")
         effect = interpret_card(
             card,
@@ -27,7 +27,7 @@ class CardEffectsTests(unittest.TestCase):
         self.assertEqual(effect.family, CardFamily.ATTACK)
         self.assertIsNotNone(effect.attack)
         self.assertEqual(effect.attack.base_damage, 1)
-        self.assertEqual(effect.attack.aim_bonus, 3)
+        self.assertEqual(effect.attack.aim_bonus, 2)
         self.assertEqual(effect.attack.damage, 1)
         self.assertTrue(effect.attack.requires_target)
 

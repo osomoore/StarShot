@@ -178,9 +178,12 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
 
         state = resolve_next_step(state)
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, -3))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, -4))
         self.assertEqual(state.players["red"].ship.facing, 2)
-        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 4)
+        movement_events = [event for event in state.event_log if event["type"] == "movement_resolved"]
+        self.assertFalse(movement_events[-2]["overdrive_copy"])
+        self.assertTrue(movement_events[-1]["overdrive_copy"])
 
     def test_move_clamps_to_board_after_attempt_but_keeps_full_defense(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -207,10 +210,12 @@ class RulesEngineTests(unittest.TestCase):
         state = resolve_next_step(state)
 
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (14, 0))
-        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
-        movement = [event for event in state.event_log if event["type"] == "movement_resolved"][0]
-        self.assertEqual(movement["steps"][0]["attempted"], {"q": 16, "r": 0, "facing": 0})
-        self.assertTrue(movement["steps"][0]["clamped"])
+        self.assertEqual(state.players["red"].ship.movement_this_action, 4)
+        movements = [event for event in state.event_log if event["type"] == "movement_resolved"]
+        self.assertEqual(movements[0]["steps"][0]["attempted"], {"q": 15, "r": 0, "facing": 0})
+        self.assertEqual(movements[1]["steps"][0]["attempted"], {"q": 16, "r": 0, "facing": 0})
+        self.assertTrue(movements[0]["steps"][0]["clamped"])
+        self.assertTrue(movements[1]["steps"][0]["clamped"])
 
     def test_baubles_are_placed_without_overlap_and_later_rounds_are_nearer_center(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "yellow"), seed=11))
@@ -393,13 +398,17 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
 
-        self.assertEqual(state.players["red"].ship.damage_taken, 1)
-        self.assertEqual(state.players["blue"].victory_points, 1)
+        self.assertEqual(state.players["red"].ship.damage_taken, 2)
+        self.assertEqual(state.players["blue"].victory_points, 2)
         self.assertNotIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
-        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
-        self.assertEqual(volley["damage_applied"], 1)
-        self.assertEqual(len(volley["damage_rolls"]), 1)
-        self.assertEqual(len(volley["damage_shots"]), 1)
+        volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
+        self.assertEqual(len(volleys), 2)
+        self.assertFalse(volleys[0]["overdrive_copy"])
+        self.assertTrue(volleys[1]["overdrive_copy"])
+        self.assertEqual(volleys[0]["damage_applied"], 1)
+        self.assertEqual(volleys[1]["damage_applied"], 1)
+        self.assertEqual(len(volleys[0]["damage_rolls"]), 1)
+        self.assertEqual(len(volleys[1]["damage_shots"]), 1)
 
     def test_multiple_attack_cards_create_one_combined_volley(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

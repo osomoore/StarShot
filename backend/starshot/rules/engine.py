@@ -244,6 +244,8 @@ def _resolve_action_phase(state: GameState) -> None:
             }
         )
         _resolve_stack_movement(state, player, action_number, stack)
+        if stack.seal_mode == SealMode.OVERDRIVE:
+            _resolve_stack_movement(state, player, action_number, stack, overdrive_copy=True)
 
     _resolve_combat(state, action_number, revealed_stacks)
 
@@ -367,7 +369,13 @@ def _resolve_warp_destination(state: GameState, player: PlayerState, destination
     raise RulesError(f"Unsupported warp destination: {destination}")
 
 
-def _resolve_stack_movement(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
+def _resolve_stack_movement(
+    state: GameState,
+    player: PlayerState,
+    action_number: int,
+    stack: ActionStack,
+    overdrive_copy: bool = False,
+) -> None:
     movement_steps: list[dict] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
@@ -442,6 +450,7 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
                 "round": state.round_number,
                 "player_id": player.id,
                 "action_number": action_number,
+                "overdrive_copy": overdrive_copy,
                 "steps": movement_steps,
                 "movement_this_action": player.ship.movement_this_action,
             }
@@ -499,6 +508,19 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         for target_id in target_ids:
             _resolve_attack_volley(state, action_number, stack, attacker, target_id, attack_cards, shielded_target_ids)
             resolved_any = True
+        if stack.seal_mode == SealMode.OVERDRIVE:
+            for target_id in target_ids:
+                _resolve_attack_volley(
+                    state,
+                    action_number,
+                    stack,
+                    attacker,
+                    target_id,
+                    attack_cards,
+                    shielded_target_ids,
+                    overdrive_copy=True,
+                )
+                resolved_any = True
 
     if not resolved_any:
         state.event_log.append(
@@ -545,6 +567,7 @@ def _resolve_attack_volley(
     target_id: str,
     attack_cards: list[tuple[Card, OrderCardSelection]],
     shielded_target_ids: set[str],
+    overdrive_copy: bool = False,
 ) -> None:
     target = _player(state, target_id)
     if target.eliminated or target.ship.destroyed:
@@ -585,7 +608,7 @@ def _resolve_attack_volley(
         if fixed_defense_threshold is not None
         else distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
     )
-    roll = _roll_2d12(state)
+    roll = _roll_2d6(state)
     roll_total = roll + aim_bonus
     in_range = max_range is None or distance <= max_range
     hit = in_range and (always_hits or roll_total >= defense_threshold)
@@ -595,6 +618,7 @@ def _resolve_attack_volley(
         "action_number": action_number,
         "attacker_id": attacker.id,
         "target_id": target_id,
+        "overdrive_copy": overdrive_copy,
         "card_ids": [card.id for card, selection in attack_cards],
         "damage": damage,
         "aim_bonus": aim_bonus,
@@ -614,10 +638,9 @@ def _resolve_attack_volley(
         "vp_awarded": 0,
     }
 
-    if hit and (target.ship.shields > 0 or target_id in shielded_target_ids):
-        if target_id not in shielded_target_ids:
-            target.ship.shields -= 1
-            shielded_target_ids.add(target_id)
+    if hit and target.ship.shields > 0:
+        target.ship.shields -= 1
+        shielded_target_ids.add(target_id)
         attacker.victory_points += 1
         event["shielded"] = True
         event["vp_awarded"] = 1
@@ -762,10 +785,10 @@ def _shuffle_cards(state: GameState, cards: list[Card]) -> None:
     state.rng_step += len(cards)
 
 
-def _roll_2d12(state: GameState) -> int:
+def _roll_2d6(state: GameState) -> int:
     rng = _make_rng(state)
-    first = rng.randint(1, 12)
-    second = rng.randint(1, 12)
+    first = rng.randint(1, 6)
+    second = rng.randint(1, 6)
     state.rng_step += 2
     return first + second
 

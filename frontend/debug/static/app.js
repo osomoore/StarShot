@@ -471,23 +471,27 @@ function renderActionPreview(svg, game) {
       .filter((selection) => selection.card && selection.family);
     const family = selections[0]?.family;
     if (family === "move") {
-      selections.forEach(({ card, cardIndex, family }) => {
-        if (family !== "move") return;
-        const before = { ...preview };
-        const distance = previewSelectionMoveDistance(card, stack, cardIndex);
-        const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
-        if (warpDestination) {
-          applyPreviewWarp(game, player, preview, warpDestination);
-        } else {
-          applyPreviewMove(
-            preview,
-            distance,
-            stack.move_choices[cardIndex],
-          );
-        }
-        drawMovementPathPreview(svg, before, preview);
-        drawPositionPreview(svg, preview, previewMoveLabel(stackIndex, cardIndex, distance, warpDestination));
-      });
+      const passes = stack.seal_mode === "overdrive" ? 2 : 1;
+      for (let pass = 0; pass < passes; pass += 1) {
+        selections.forEach(({ card, cardIndex, family }) => {
+          if (family !== "move") return;
+          const before = { ...preview };
+          const distance = previewSelectionMoveDistance(card, stack, cardIndex);
+          const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
+          if (warpDestination) {
+            applyPreviewWarp(game, player, preview, warpDestination);
+          } else {
+            applyPreviewMove(
+              preview,
+              distance,
+              stack.move_choices[cardIndex],
+            );
+          }
+          drawMovementPathPreview(svg, before, preview);
+          const label = `${previewMoveLabel(stackIndex, cardIndex, distance, warpDestination)}${pass ? " OD" : ""}`;
+          drawPositionPreview(svg, preview, label);
+        });
+      }
     } else if (family === "attack") {
       const firstAttack = selections.find(({ card, cardIndex, family }) => (
         family === "attack" && effectiveCardRequiresTarget(card, stack, cardIndex)
@@ -501,9 +505,8 @@ function renderActionPreview(svg, game) {
           ? [game.players[stack.targets[firstAttack.cardIndex]]]
           : [];
       targets.forEach((target) => {
-        const damage = selections
-          .filter((selection) => selection.family === "attack")
-          .reduce((total, { card, cardIndex }) => total + previewSelectionAttackDamage(card, stack, cardIndex), 0);
+        const attackSelections = selections.filter((selection) => selection.family === "attack");
+        const damage = previewVolleyDamage(attackSelections, stack);
         const aimBonus = selections
           .filter((selection) => selection.family === "attack")
           .reduce((total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex), 0);
@@ -511,6 +514,9 @@ function renderActionPreview(svg, game) {
           family === "attack" && previewSelectionAlwaysHits(card, stack, cardIndex)
         ));
         drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
+        if (stack.seal_mode === "overdrive") {
+          drawAttackPreview(svg, preview, target, `A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
+        }
       });
     }
   });
@@ -532,7 +538,7 @@ function firstUnresolvedStackIndex(phase) {
 
 function previewCardValue(card, sealMode) {
   const value = card.effect?.value ?? card.value ?? 0;
-  return value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
+  return value;
 }
 
 function previewSelectionMoveDistance(card, stack, cardIndex) {
@@ -552,14 +558,34 @@ function previewSelectionWarpDestination(card, stack, cardIndex) {
 }
 
 function previewSelectionAttackDamage(card, stack, cardIndex) {
+  return previewSelectionAttackBaseDamage(card, stack, cardIndex)
+    + previewSelectionAttackDamageBonus(card, stack, cardIndex);
+}
+
+function previewSelectionAttackBaseDamage(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
-    return card.desperate_face.value + (card.desperate_face.damage_bonus || 0);
+    return card.desperate_face.value;
   }
-  const family = card.effect?.family ?? card.family;
-  if (family === "attack") {
-    return 1;
+  return (card.effect?.family ?? card.family) === "attack" ? 1 : 0;
+}
+
+function previewSelectionAttackDamageBonus(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.damage_bonus || 0;
   }
-  return previewCardValue(card, stack.seal_mode);
+  return 0;
+}
+
+function previewVolleyDamage(attackSelections, stack) {
+  const baseDamage = Math.max(
+    1,
+    ...attackSelections.map(({ card, cardIndex }) => previewSelectionAttackBaseDamage(card, stack, cardIndex)),
+  );
+  const damageBonus = attackSelections.reduce(
+    (total, { card, cardIndex }) => total + previewSelectionAttackDamageBonus(card, stack, cardIndex),
+    0,
+  );
+  return baseDamage + damageBonus;
 }
 
 function previewSelectionAimBonus(card, stack, cardIndex) {

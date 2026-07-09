@@ -59,11 +59,11 @@ Implemented so far:
 Current rules target:
 
 - `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
-- Groups 1 through 4 of the 0.2 migration are complete.
-- The current implementation has 0.2-style hand/discard order submission, no cooldown phase, cleanup-time command-card destinations, and empty-deck draw behavior.
+- Groups 1 through 6 of the 0.2 migration are complete.
+- The current implementation has 0.2-style hand/discard order submission, no cooldown phase, cleanup-time command-card destinations, empty-deck draw behavior, 0.2 base deck/combat math, and overdrive-as-duplicate-orders.
 - Behavior-preserving card interpretation now lives in `backend/starshot/rules/card_effects.py`, and hand/discard/overheat helpers live in `backend/starshot/rules/card_piles.py`.
 - Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
-- Next rules work should start with Group 5: base deck and combat math.
+- Next rules work should start with Group 7: remaining 0.2 core rules.
 - Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
 
 Not implemented yet:

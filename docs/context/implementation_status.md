@@ -2,7 +2,7 @@
 
 ## Current Status
 
-`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. Groups 1 through 4 of the 0.2 migration are complete. The implementation now uses the 0.2 phase flow with no cooldown phase, cleanup-time command-card destinations, and 0.2 empty-deck draw behavior.
+`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. Groups 1 through 6 of the 0.2 migration are complete. The implementation now uses the 0.2 phase flow with no cooldown phase, cleanup-time command-card destinations, 0.2 empty-deck draw behavior, 0.2 base deck/combat math, and 0.2 overdrive-as-duplicate-orders.
 
 Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups. Card interpretation has been split into `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
 
@@ -45,14 +45,21 @@ Current phase progression:
 5. `award_baubles`
 6. `cleanup`
 
-Rules 0.2 still needs the Group 5 base deck/combat math update, then Group 6 overdrive-as-duplicate-orders. Groups 2 through 4 added behavior-preserving card-effect helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, and empty-deck draw behavior. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
+Rules 0.2 still needs Group 7: remaining visible core-rule deltas. Groups 2 through 6 added card-effect helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, empty-deck draw behavior, the 0.2 base deck/combat math update, and overdrive-as-duplicate-orders. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
 
 Movement behavior currently implemented:
 
 - Move cards advance along current facing unless orientation is `u_turn`.
 - `turn_left` and `turn_right` move first, then rotate.
 - `u_turn` rotates in place.
-- `overdrive` still adds 1 to move distance for now; Group 6 will change it to duplicate orders. Overdriven command cards are routed to overheat during cleanup.
+- `overdrive` duplicates the full stack. Move stacks execute once normally and then once as an immediate copy; both movement events include `overdrive_copy`.
+- Overdriven command cards are routed to overheat during cleanup.
+
+Combat behavior currently implemented:
+
+- Base attack cards are Targeted Attack Aim cards. Attack rolls use `2d6`.
+- A volley deals base 1 damage plus `Damage +X` modifiers; multiple base attack cards add Aim but do not add extra base damage.
+- Overdriven attack stacks resolve a normal volley, then an immediate duplicate volley before the next attacker. Volley events include `overdrive_copy`.
 
 ## Debug UI Notes
 
@@ -70,10 +77,11 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. Start `rules_0.2_migration_plan.md` Group 5: base deck and combat math.
-2. Change the base deck to the 0.2 10-card deck.
-3. Change attack rolls to `2d6` and damage to base 1 plus `Damage +X`.
-4. Improve the debug UI with a compact combat log that explains each resolved action.
+1. Start `rules_0.2_migration_plan.md` Group 7: remaining 0.2 core rules.
+2. Change numbered baubles 1-5 to 2 VP each.
+3. Remove the all-weapons-and-engines ship destruction condition.
+4. Replace the old desperation consequence with the automatic top-deck-to-overheat plus Desperation-card-on-top flow.
+5. Add untargeted forward-line attacks.
 
 ## Files To Read Before Rule Work
 

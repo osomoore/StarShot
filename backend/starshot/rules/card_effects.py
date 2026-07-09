@@ -138,7 +138,7 @@ def card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
         return desperate_face.value
-    return card.value + (1 if seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
+    return card.value
 
 
 def card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:

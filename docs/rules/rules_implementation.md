@@ -12,7 +12,7 @@ This document originally converted the prototype 0.1 rules into an implementatio
 
 Status for rules 0.2:
 
-- Groups 1 through 4 of the 0.2 migration are complete: documentation baseline, card-effect interpretation helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, and empty-deck draw behavior.
+- Groups 1 through 6 of the 0.2 migration are complete: documentation baseline, card-effect interpretation helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, empty-deck draw behavior, 0.2 base deck/combat math, and overdrive-as-duplicate-orders.
 - The implemented game is still partially 0.1-shaped: base deck composition, combat math, and overdrive behavior still need later migration groups.
 - The sections below describe the historical 0.1-derived implementation unless they explicitly mention rules 0.2.
 - Do not use the old round flow, base deck, attack math, overdrive, bauble VP, or ship-destruction rules below as 0.2 requirements. Use the migration plan's grouped 0.2 deltas instead.
