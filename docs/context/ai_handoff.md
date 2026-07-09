@@ -49,21 +49,20 @@ Implemented so far:
 - Start ships near board corners, 3 hexes in from the corner.
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
-- Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
+- Implement the 41-card 0.2 desperation deck, including no-basic-face return behavior, hybrid/modal basic faces, and the non-deferred Desperate faces.
 - Show all non-base desperation cards in one debug picker pile named Desperation.
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
 - Enforce desperation use-choice constraints in the debug builder.
-- Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
+- Preview implemented Desperate movement, Side Slip, U-turn movement, Warp destinations, damage, target roll, Aim, always-hit effects, and Lead the Target metadata.
 - Mini ship cards show pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
 - Target picker opens automatically when a Targeted Attack card is placed; skips if the stack already has a target from another card. Auto-fills in 2-player games.
 
-Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 7 groups of the 0.2 migration are complete.
+Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 8 groups of the 0.2 migration are complete.
 
 **Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 
 Not implemented yet:
 
-- Desperation Deck 0.2 overhaul: replace all 18 current cards with the 41-card 0.2 deck. See `docs/context/rules_0.2_migration_plan.md` Group 8 for the full plan.
 - Deferred desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, Overdrive 2x.
 - Real player accounts, sessions, or multiplayer lobby UX.
 - WebSocket/live updates; current UI is manual/poll-style HTTP.

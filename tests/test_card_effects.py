@@ -32,7 +32,7 @@ class CardEffectsTests(unittest.TestCase):
         self.assertTrue(effect.attack.requires_target)
 
     def test_hybrid_basic_face_uses_selected_mode(self):
-        card = desperation_card_by_id("desp_ace_shot_a")
+        card = desperation_card_by_id("desp_steady_shot_a")
         move_effect = interpret_card(card, OrderCardSelection(card.id, mode="move"), SealMode.SEALED)
         attack_effect = interpret_card(card, OrderCardSelection(card.id, mode="attack"), SealMode.SEALED)
 
@@ -49,9 +49,9 @@ class CardEffectsTests(unittest.TestCase):
         self.assertTrue(effect.is_desperate_face)
         self.assertEqual(effect.family, CardFamily.ATTACK)
         self.assertIsNotNone(effect.attack)
-        self.assertEqual(effect.attack.base_damage, 0)
+        self.assertEqual(effect.attack.base_damage, 1)
         self.assertEqual(effect.attack.damage_bonus, 1)
-        self.assertEqual(effect.attack.damage, 1)
+        self.assertEqual(effect.attack.damage, 2)
         self.assertEqual(effect.attack.aim_bonus, 2)
 
 

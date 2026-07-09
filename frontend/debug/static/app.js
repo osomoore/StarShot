@@ -19,7 +19,12 @@ const MOVE_CHOICES = [
   { value: "forward", label: "Forward", mark: "F" },
   { value: "turn_left", label: "Turn Left, Move", mark: "L" },
   { value: "turn_right", label: "Turn Right, Move", mark: "R" },
+  { value: "slip_left", label: "Side Slip Left", mark: "SL" },
+  { value: "slip_right", label: "Side Slip Right", mark: "SR" },
+  { value: "u_turn_move", label: "U-Turn Move", mark: "U" },
+  { value: "u_turn_attack", label: "U-Turn Attack", mark: "UA" },
 ];
+const MOVE_CHOICE_BY_VALUE = Object.fromEntries(MOVE_CHOICES.map((choice) => [choice.value, choice]));
 const PLAYER_ORDER = ["red", "blue", "green", "yellow"];
 const SHIP_COLORS = {
   red: "#c9433f",
@@ -484,6 +489,9 @@ function renderActionPreview(svg, game) {
               preview,
               distance,
               stack.move_choices[cardIndex],
+              card,
+              stack,
+              cardIndex,
             );
           }
           drawMovementPathPreview(svg, before, preview);
@@ -563,7 +571,7 @@ function previewSelectionAttackDamage(card, stack, cardIndex) {
 
 function previewSelectionAttackBaseDamage(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
-    return card.desperate_face.value;
+    return card.desperate_face.base_damage ?? card.desperate_face.value ?? 1;
   }
   return (card.effect?.family ?? card.family) === "attack" ? 1 : 0;
 }
@@ -612,13 +620,24 @@ function previewMoveLabel(stackIndex, cardIndex, distance, warpDestination = "")
   return distance > 0 ? `${base} M${distance}` : base;
 }
 
-function applyPreviewMove(preview, distance, choice) {
-  if (choice === "turn_left") {
+function applyPreviewMove(preview, distance, choice, card = null, stack = null, cardIndex = 0) {
+  const face = selectedFace(card, stack, cardIndex) === "desperate" ? card?.desperate_face : null;
+  if (choice === "u_turn_move" || face?.u_turn_move) {
+    preview.facing = (preview.facing + 3) % 6;
+  } else if (face?.double_turn_right) {
+    preview.facing = (preview.facing + 4) % 6;
+  } else if (choice === "turn_left") {
     preview.facing = (preview.facing + 1) % 6;
   } else if (choice === "turn_right") {
     preview.facing = (preview.facing + 5) % 6;
   }
-  const [dq, dr] = AXIAL_DIRECTIONS[preview.facing % 6];
+  let movementFacing = preview.facing;
+  if (choice === "slip_right") {
+    movementFacing = (preview.facing + 5) % 6;
+  } else if (choice === "slip_left") {
+    movementFacing = (preview.facing + 1) % 6;
+  }
+  const [dq, dr] = AXIAL_DIRECTIONS[movementFacing % 6];
   preview.q += dq * distance;
   preview.r += dr * distance;
   const clamped = clampToBoard(preview.q, preview.r);
@@ -974,11 +993,30 @@ function cardsForBuilder(player) {
 }
 
 function inferCardFromId(cardId) {
-  const isHybrid = cardId.startsWith("desp_ace_shot") || cardId.startsWith("desp_deadeye") || cardId.startsWith("desp_nightjammer") || cardId.startsWith("desp_self_destruct") || cardId.startsWith("desp_death_blossom") || cardId.startsWith("desp_steady_shot");
-  const family = isHybrid ? "hybrid" : cardId.startsWith("attack") || cardId.startsWith("desp_targeted_attack") ? "attack" : "move";
+  const hybridPrefixes = [
+    "desp_reconfigure",
+    "desp_hull_repair",
+    "desp_steady_shot",
+    "desp_side_slip",
+    "desp_drift_king",
+    "desp_thrust_ions",
+    "desp_crazy_ivan",
+    "desp_active_cooling",
+  ];
+  const hybridIds = new Set([
+    "desp_turbo_ions",
+    "desp_nightjammer",
+    "desp_holdo_maneuver",
+    "desp_starshot",
+    "desp_scattershot",
+    "desp_lead_the_target",
+    "desp_overdrive_2x",
+  ]);
+  const isHybrid = hybridPrefixes.some((prefix) => cardId.startsWith(prefix)) || hybridIds.has(cardId);
+  const family = isHybrid ? "hybrid" : cardId.startsWith("attack") || cardId.startsWith("desp_crack_shot") ? "attack" : "move";
   const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
   const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
-  const requiresTarget = cardId.startsWith("desp_targeted_attack") || cardId.startsWith("attack_");
+  const requiresTarget = cardId.startsWith("desp_crack_shot") || cardId.startsWith("attack_");
   return {
     id: cardId,
     name,
@@ -987,6 +1025,7 @@ function inferCardFromId(cardId) {
     is_base: !cardId.startsWith("desp_"),
     requires_target: requiresTarget,
     is_hybrid: isHybrid,
+    no_basic_face: cardId.startsWith("desp_afterburners") || cardId.startsWith("desp_crack_shot"),
     effect: { family, value, requires_target: requiresTarget, is_hybrid: isHybrid },
   };
 }
@@ -1111,6 +1150,10 @@ function selectedFace(card, stack, cardIndex) {
   return stack?.faces?.[cardIndex] === "desperate" ? "desperate" : "front";
 }
 
+function selectedOrientation(card, stack, cardIndex) {
+  return stack?.move_choices?.[cardIndex] || card?.orientation_options?.[0] || "forward";
+}
+
 function effectiveCardRequiresTarget(card, stack, cardIndex) {
   if (!card) return false;
   if (selectedFace(card, stack, cardIndex) === "desperate") {
@@ -1121,7 +1164,10 @@ function effectiveCardRequiresTarget(card, stack, cardIndex) {
 
 function effectiveCardFamily(card, stack, cardIndex) {
   if (!card) return "";
-  if (selectedFace(card, stack, cardIndex) === "desperate") return card.desperate_face?.family || "";
+  if (selectedFace(card, stack, cardIndex) === "desperate") {
+    if (selectedOrientation(card, stack, cardIndex) === "u_turn_attack") return "attack";
+    return card.desperate_face?.family || "";
+  }
   if (card.is_hybrid) return stack?.modes?.[cardIndex] || "";
   return card.effect?.family ?? card.family;
 }
@@ -1144,7 +1190,6 @@ function stackHasTargetedAttack(stack, cardById, excludingCardIndex = null) {
 
 function cardUseChoices(card, stack, cardById, cardIndex) {
   const lockedFamily = stackLockedFamily(stack, cardById, cardIndex);
-  const hasTargetedPartner = stackHasTargetedAttack(stack, cardById, cardIndex);
   const choices = [];
 
   function familyAllowed(family) {
@@ -1168,15 +1213,12 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       label: "Basic Attack",
       mark: "A",
       fill: "#c9433f",
-      disabled: !hasTargetedPartner || !familyAllowed("attack"),
+      disabled: !familyAllowed("attack"),
     });
   }
 
   if (card.desperate_face) {
     const family = card.desperate_face.family;
-    const requiresTarget = Boolean(card.desperate_face.requires_target);
-    const attacksAll = Boolean(card.desperate_face.attacks_all);
-    const needsTargetedPartner = family === "attack" && !requiresTarget && !attacksAll;
     choices.push({
       face: "desperate",
       mode: "",
@@ -1186,7 +1228,7 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       fill: family === "attack" ? "#c9433f" : "#3f9963",
       isDesperate: true,
       desperateFamily: family,
-      disabled: !familyAllowed(family) || (needsTargetedPartner && !hasTargetedPartner),
+      disabled: !familyAllowed(family),
     });
   }
 
@@ -1240,6 +1282,10 @@ function desperateFaceLabel(card) {
       return `Desperate: Warp ${destination}${defense}`;
     }
     if (face.movement_disabled) return `Desperate: +${face.defense_bonus} Defense`;
+    if (face.side_slip_direction) return `Desperate: Side Slip ${face.value}`;
+    if (face.double_turn_right) return `Desperate: Drift ${face.value}`;
+    if (face.u_turn_move) return `Desperate: U-Turn Move ${face.value}`;
+    if (face.active_cooling) return `Desperate: Move ${face.value}, Cool`;
     return `Desperate: Move ${face.value}`;
   }
   const parts = [];
@@ -1248,8 +1294,11 @@ function desperateFaceLabel(card) {
   if (face.max_range) parts.push(`Range ${face.max_range}`);
   if (face.aim_bonus) parts.push(`+${face.aim_bonus} Aim`);
   if (face.value) parts.push(`Damage ${face.value}`);
+  if (face.base_damage && face.base_damage !== 1) parts.push(`Base ${face.base_damage}`);
   if (face.damage_bonus) parts.push(`+${face.damage_bonus} Damage`);
   if (face.always_hits) parts.push("Always hits");
+  if (face.lead_the_target) parts.push("Lead target");
+  if (face.u_turn_attack) parts.push("U-Turn");
   return `Desperate: ${parts.join(", ") || "Attack mod"}`;
 }
 
@@ -1388,7 +1437,9 @@ function selectBuilderCardUse(stackIndex, cardIndex, cardId, choice) {
   applyDefaultAttackTarget(stack, cardIndex);
   hideCardPickerOverlay();
   renderAll();
-  showFollowupChoicePanel(stackIndex, cardIndex);
+  if (!showFollowupChoicePanel(stackIndex, cardIndex)) {
+    showNextCardPickerIfNeeded(stackIndex, cardIndex);
+  }
 }
 
 function clearActionStack(stackIndex) {
@@ -1404,15 +1455,13 @@ function clearActionStack(stackIndex) {
 }
 
 function moveChoicesForCard(card, stack = null, cardIndex = null) {
-  if (!card) return MOVE_CHOICES;
+  if (!card) return MOVE_CHOICES.slice(0, 3);
   const face = cardIndex === null ? "front" : selectedFace(card, stack, cardIndex);
   const options = face === "desperate"
     ? card.desperate_face?.orientation_options
     : (card.effect?.orientation_options ?? card.orientation_options);
-  if (options && options.length === 1) {
-    return [{ value: options[0], label: "Forward", mark: "F" }];
-  }
-  return MOVE_CHOICES;
+  return (options || ["forward"])
+    .map((value) => MOVE_CHOICE_BY_VALUE[value] || { value, label: titleCase(value.replaceAll("_", " ")), mark: "" });
 }
 
 function showCardUseChoicePanel(stackIndex, cardIndex, cardId) {
@@ -1460,19 +1509,28 @@ function showFollowupChoicePanel(stackIndex, cardIndex) {
   const player = game?.players?.[state.builderPlayerId];
   const stack = state.builderDraft.stacks[stackIndex];
   const card = cardLookupForPlayer(player)[stack?.cards?.[cardIndex]];
-  if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return;
+  if (!game || !player || !stack || !card || !canSubmit(state.builderPlayerId)) return false;
 
   const family = effectiveCardFamily(card, stack, cardIndex);
   if (family === "attack") {
     if (effectiveCardRequiresTarget(card, stack, cardIndex) && !stackHasTargetedAttack(stack, cardLookupForPlayer(player), cardIndex)) {
       showHexChoicePanel(stackIndex, cardIndex);
+      return true;
     }
-    return;
+    return false;
   }
 
   if (family === "move" && moveChoicesForCard(card, stack, cardIndex).length > 1) {
     showHexChoicePanel(stackIndex, cardIndex);
+    return true;
   }
+  return false;
+}
+
+function showNextCardPickerIfNeeded(stackIndex, cardIndex) {
+  const stack = state.builderDraft.stacks[stackIndex];
+  if (!stack || cardIndex !== 0 || stack.cards[1] || !canSubmit(state.builderPlayerId)) return;
+  showCardPicker(stackIndex, 1);
 }
 
 function showHexChoicePanel(stackIndex, cardIndex) {
@@ -1526,6 +1584,7 @@ function showHexChoicePanel(stackIndex, cardIndex) {
       }
       hideCardPickerOverlay();
       renderAll();
+      showNextCardPickerIfNeeded(stackIndex, cardIndex);
     });
     grid.append(button);
   });

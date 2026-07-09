@@ -98,6 +98,7 @@ def card_to_dict(card: Card) -> dict:
         "orientation_options": list(card.orientation_options),
         "requires_target": card.requires_target,
         "is_hybrid": card.is_hybrid,
+        "no_basic_face": card.no_basic_face,
         "desperate_face": desperate_face_to_dict(card.desperate_face) if card.desperate_face else None,
         "effect": static_card_effect_summary(card),
     }
@@ -113,6 +114,7 @@ def card_from_dict(data: dict) -> Card:
         orientation_options=tuple(data.get("orientation_options", ("forward", "turn_left", "turn_right", "u_turn"))),
         requires_target=data.get("requires_target", True),
         is_hybrid=data.get("is_hybrid", False),
+        no_basic_face=data.get("no_basic_face", False),
         desperate_face=desperate_face_from_dict(data["desperate_face"]) if data.get("desperate_face") else None,
     )
 
@@ -121,6 +123,7 @@ def desperate_face_to_dict(face: DesperateFace) -> dict:
     return {
         "family": face.family.value,
         "value": face.value,
+        "base_damage": face.base_damage,
         "orientation_options": list(face.orientation_options),
         "requires_target": face.requires_target,
         "aim_bonus": face.aim_bonus,
@@ -132,6 +135,12 @@ def desperate_face_to_dict(face: DesperateFace) -> dict:
         "max_range": face.max_range,
         "fixed_defense_threshold": face.fixed_defense_threshold,
         "attacks_all": face.attacks_all,
+        "side_slip_direction": face.side_slip_direction,
+        "double_turn_right": face.double_turn_right,
+        "u_turn_move": face.u_turn_move,
+        "u_turn_attack": face.u_turn_attack,
+        "active_cooling": face.active_cooling,
+        "lead_the_target": face.lead_the_target,
     }
 
 
@@ -139,6 +148,7 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
     return DesperateFace(
         family=CardFamily(data["family"]),
         value=data.get("value", 0),
+        base_damage=data.get("base_damage", 1),
         orientation_options=tuple(data.get("orientation_options", ("forward",))),
         requires_target=data.get("requires_target", False),
         aim_bonus=data.get("aim_bonus", 0),
@@ -150,6 +160,12 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
         max_range=data.get("max_range"),
         fixed_defense_threshold=data.get("fixed_defense_threshold"),
         attacks_all=data.get("attacks_all", False),
+        side_slip_direction=data.get("side_slip_direction"),
+        double_turn_right=data.get("double_turn_right", False),
+        u_turn_move=data.get("u_turn_move", False),
+        u_turn_attack=data.get("u_turn_attack", False),
+        active_cooling=data.get("active_cooling", False),
+        lead_the_target=data.get("lead_the_target", False),
     )
 
 

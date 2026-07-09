@@ -81,20 +81,37 @@ class SerializationTests(unittest.TestCase):
 
     def test_hybrid_desperation_cards_keep_metadata_across_serialization(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
-        state.players["blue"].deck.append(desperation_card_by_id("desp_homeward_bound"))
+        state.players["red"].deck.append(desperation_card_by_id("desp_steady_shot_a"))
+        state.players["red"].deck.append(desperation_card_by_id("desp_side_slip_a"))
+        state.players["red"].deck.append(desperation_card_by_id("desp_active_cooling_a"))
+        state.players["red"].deck.append(desperation_card_by_id("desp_afterburners_a"))
+        state.players["blue"].deck.append(desperation_card_by_id("desp_nightjammer"))
+        state.players["blue"].deck.append(desperation_card_by_id("desp_lead_the_target"))
         restored = state_from_dict(state_to_dict(state))
 
-        ace_shot = next(card for card in restored.players["red"].deck if card.id == "desp_ace_shot_a")
-        self.assertTrue(ace_shot.is_hybrid)
-        self.assertFalse(ace_shot.requires_target)
-        self.assertIsNotNone(ace_shot.desperate_face)
-        self.assertEqual(ace_shot.desperate_face.aim_bonus, 5)
+        steady_shot = next(card for card in restored.players["red"].deck if card.id == "desp_steady_shot_a")
+        self.assertTrue(steady_shot.is_hybrid)
+        self.assertFalse(steady_shot.requires_target)
+        self.assertIsNotNone(steady_shot.desperate_face)
+        self.assertEqual(steady_shot.desperate_face.aim_bonus, 2)
+        self.assertEqual(steady_shot.desperate_face.damage_bonus, 1)
 
-        homeward_bound = next(card for card in restored.players["blue"].deck if card.id == "desp_homeward_bound")
-        self.assertIsNotNone(homeward_bound.desperate_face)
-        self.assertEqual(homeward_bound.desperate_face.warp_destination, "home")
-        self.assertEqual(homeward_bound.desperate_face.defense_bonus, 5)
+        nightjammer = next(card for card in restored.players["blue"].deck if card.id == "desp_nightjammer")
+        self.assertIsNotNone(nightjammer.desperate_face)
+        self.assertEqual(nightjammer.desperate_face.warp_destination, "leader")
+        self.assertEqual(nightjammer.desperate_face.defense_bonus, 5)
+
+        side_slip = next(card for card in restored.players["red"].deck if card.id == "desp_side_slip_a")
+        self.assertEqual(side_slip.desperate_face.side_slip_direction, "right")
+
+        active_cooling = next(card for card in restored.players["red"].deck if card.id == "desp_active_cooling_a")
+        self.assertTrue(active_cooling.desperate_face.active_cooling)
+
+        afterburners = next(card for card in restored.players["red"].deck if card.id == "desp_afterburners_a")
+        self.assertTrue(afterburners.no_basic_face)
+
+        lead_the_target = next(card for card in restored.players["blue"].deck if card.id == "desp_lead_the_target")
+        self.assertTrue(lead_the_target.desperate_face.lead_the_target)
 
 
 if __name__ == "__main__":

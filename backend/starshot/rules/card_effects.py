@@ -12,6 +12,10 @@ class MoveDirective:
     defense_bonus: int = 0
     movement_disabled: bool = False
     warp_destination: str | None = None
+    side_slip_direction: str | None = None
+    double_turn_right: bool = False
+    u_turn_move: bool = False
+    active_cooling: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +28,8 @@ class AttackContribution:
     max_range: int | None = None
     fixed_defense_threshold: int | None = None
     attacks_all: bool = False
+    u_turn_attack: bool = False
+    lead_the_target: bool = False
 
     @property
     def damage(self) -> int:
@@ -56,6 +62,9 @@ def desperate_face_for(card: Card, selection: OrderCardSelection) -> DesperateFa
 def selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
+        # Crazy Ivan: orientation u_turn_attack means the desperate face acts as an attack
+        if selection.orientation == "u_turn_attack":
+            return CardFamily.ATTACK
         return desperate_face.family
     if card.is_hybrid:
         if selection.mode == "attack":
@@ -82,6 +91,10 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
             defense_bonus=card_defense_bonus(card, selection),
             movement_disabled=card_movement_disabled(card, selection),
             warp_destination=card_warp_destination(card, selection),
+            side_slip_direction=card_side_slip_direction(card, selection),
+            double_turn_right=card_double_turn_right(card, selection),
+            u_turn_move=card_u_turn_move(card, selection),
+            active_cooling=card_active_cooling(card, selection),
         )
     elif family == CardFamily.ATTACK:
         attack = AttackContribution(
@@ -93,6 +106,8 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
             max_range=card_max_range(card, selection),
             fixed_defense_threshold=card_fixed_defense_threshold(card, selection),
             attacks_all=card_attacks_all(card, selection),
+            u_turn_attack=card_u_turn_attack(card, selection),
+            lead_the_target=card_lead_the_target(card, selection),
         )
 
     return CardEffect(
@@ -109,13 +124,16 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
 def card_attack_base_damage(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
-        return desperate_face.value
+        return desperate_face.base_damage
     return 1
 
 
 def card_attack_aim_bonus(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
+        # Crazy Ivan u_turn_attack: 180° flip then attack with Aim +3
+        if selection.orientation == "u_turn_attack":
+            return 3
         return desperate_face.aim_bonus
     return card_value(card, selection, seal_mode)
 
@@ -184,6 +202,38 @@ def card_fixed_defense_threshold(card: Card, selection: OrderCardSelection) -> i
 def card_attacks_all(card: Card, selection: OrderCardSelection) -> bool:
     desperate_face = desperate_face_for(card, selection)
     return bool(desperate_face is not None and desperate_face.attacks_all)
+
+
+def card_side_slip_direction(card: Card, selection: OrderCardSelection) -> str | None:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.side_slip_direction if desperate_face is not None else None
+
+
+def card_double_turn_right(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.double_turn_right)
+
+
+def card_u_turn_move(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.u_turn_move)
+
+
+def card_u_turn_attack(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    if desperate_face is None:
+        return False
+    return bool(desperate_face.u_turn_attack or selection.orientation == "u_turn_attack")
+
+
+def card_active_cooling(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.active_cooling)
+
+
+def card_lead_the_target(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.lead_the_target)
 
 
 def static_card_effect_summary(card: Card) -> dict:

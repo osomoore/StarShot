@@ -2,7 +2,7 @@
 
 ## Current Status
 
-All 7 groups of the 0.2 migration are complete. The implementation uses the full 0.2 rule set.
+All 8 groups of the 0.2 migration are complete. The implementation uses the 0.2 core rule set, with the explicitly deferred Desperate faces still parked until their mechanics are clarified.
 
 Recent corrections made after reviewing `docs/rules/rules_0.2.txt` directly:
 
@@ -13,7 +13,7 @@ Recent corrections made after reviewing `docs/rules/rules_0.2.txt` directly:
 
 Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. Card interpretation lives in `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
 
-The core desperation-card work is in place for the basic-face flow, plus the normal action-stack Desperate-face slices. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, Warp movement, always-hit/+999 Aim, range-limited damage, attack-all volleys, and single-use return to the shared Desperation deck.
+The 0.2 desperation deck is in place with 41 cards. The backend recognizes no-basic-face return behavior for Afterburners and Crack Shot, hybrid/basic desperation attacks, and implemented Desperate faces for Steady Shot, Side Slip, Drift King, Thrust Ions, Crazy Ivan, Active Cooling, Turbo Ions, NightJammer, StarShot, and Lead the Target. Deferred Desperate faces still reject cleanly: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
 
 The debug builder has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack.
 
@@ -80,8 +80,9 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. **Group 8: Desperation Deck 0.2 Overhaul** — replace all 18 current cards with the 41-card 0.2 deck. See `docs/context/rules_0.2_migration_plan.md` Group 8 for the full plan, card table, new `DesperateFace` fields needed, and deferred list.
-2. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
+1. Review the debug UI in-browser for the completed 0.2 desperation deck flow.
+2. Design the deferred Desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
+3. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
 
 ## Files To Read Before Rule Work
 

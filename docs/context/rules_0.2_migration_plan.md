@@ -328,7 +328,7 @@ Verification:
 
 ### Group 8: Desperation Deck 0.2 Overhaul
 
-Status: next. Playable after: yes. Replaces all 18 current desperation cards with the 41-card 0.2 deck.
+Status: complete. Playable after: yes. Replaces all 18 previous desperation cards with the 41-card 0.2 deck.
 
 The 0.2 deck has a uniform basic face structure: most cards are hybrid Move/Attack with a named desperate face on the B side. Two card types (Afterburners, Crack Shot) have no basic face and always return to the Desperation deck regardless of which face is played.
 
@@ -405,6 +405,15 @@ Verification:
 - Each in-scope desperate face produces the correct movement or attack event.
 - Playing a deferred desperate face raises `RulesError`.
 - `python -m unittest discover -s tests` passes.
+
+Completed notes:
+
+- Added all 41 0.2 desperation cards, including `no_basic_face` handling for Afterburners and Crack Shot.
+- Implemented non-deferred Desperate faces: Steady Shot, Side Slip, Drift King, Thrust Ions, Crazy Ivan, Active Cooling, Turbo Ions, NightJammer, StarShot, and Lead the Target.
+- Deferred Desperate faces remain rejected until their ambiguous or larger mechanics are designed: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
+- Cleanup returns Desperate-face cards and no-basic-face cards to the shared Desperation deck.
+- Serialization preserves new desperation metadata, including side slip, double turn, U-turn, active cooling, lead target, base damage, and no-basic-face flags.
+- Debug UI fallback card inference and preview labels recognize the new 0.2 desperation cards.
 
 ## Open Design Questions To Resolve While Implementing
 

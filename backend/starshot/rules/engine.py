@@ -68,6 +68,11 @@ from starshot.rules.models import (
 )
 from starshot.rules.ship_layout import first_intact_component_for_lane, is_ship_destroyed
 
+# Lateral direction offsets for Side Slip (perpendicular to facing).
+# slip_right = facing - 1 (mod 6); slip_left = facing + 1 (mod 6).
+_SLIP_RIGHT_OFFSET = -1
+_SLIP_LEFT_OFFSET = 1
+
 
 class RulesError(ValueError):
     """Raised when a requested rules operation is illegal."""
@@ -97,7 +102,7 @@ def create_initial_state(config: GameConfig) -> GameState:
         from starshot.rules.desperation import desperation_card_by_id
 
         for player in players.values():
-            player.deck.append(desperation_card_by_id("desp_ace_shot_a"))
+            player.deck.append(desperation_card_by_id("desp_steady_shot_a"))
     for player in players.values():
         draw_hand(player)
 
@@ -407,6 +412,21 @@ def _resolve_stack_movement(
                 player.ship.facing = attempted_facing
         elif move_effect.movement_disabled:
             pass
+        elif move_effect.double_turn_right:
+            player.ship.facing = turn_right(turn_right(player.ship.facing))
+            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.q, player.ship.r = attempted_q, attempted_r
+            player.ship.movement_this_action += distance
+        elif move_effect.u_turn_move:
+            player.ship.facing = u_turn(player.ship.facing)
+            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.q, player.ship.r = attempted_q, attempted_r
+            player.ship.movement_this_action += distance
+        elif move_effect.side_slip_direction:
+            slip_facing = (player.ship.facing + (_SLIP_RIGHT_OFFSET if move_choice == "slip_right" else _SLIP_LEFT_OFFSET)) % 6
+            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, slip_facing, distance)
+            player.ship.q, player.ship.r = attempted_q, attempted_r
+            player.ship.movement_this_action += distance
         elif move_choice == "forward":
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
             player.ship.q, player.ship.r = attempted_q, attempted_r
@@ -426,6 +446,10 @@ def _resolve_stack_movement(
 
         player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
 
+        if move_effect.active_cooling:
+            player.discard.extend(player.overheat)
+            player.overheat = []
+
         movement_steps.append(
             {
                 "card_id": card.id,
@@ -434,6 +458,7 @@ def _resolve_stack_movement(
                 "distance": 0 if move_effect.movement_disabled or warp_destination else distance,
                 "warp_destination": warp_destination,
                 "defense_bonus": defense_bonus,
+                "active_cooling": move_effect.active_cooling,
                 "before": before,
                 "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
                 "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
@@ -461,7 +486,7 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
     returned_to_desperation_deck: list[str] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if _is_desperate_face(selection):
+        if _is_desperate_face(selection) or card.no_basic_face:
             return_desperation_card(state.desperation_deck, card)
             returned_to_desperation_deck.append(card.id)
         elif stack.seal_mode == SealMode.OVERDRIVE:
@@ -502,6 +527,11 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         attack_cards = _attack_cards_for_stack(stack)
         if not attack_cards:
             continue
+
+        # Crazy Ivan u_turn_attack: flip facing before resolving targets
+        attack_effects = [_card_effect(card, sel, stack.seal_mode) for card, sel in attack_cards]
+        if any(e.attack is not None and e.attack.u_turn_attack for e in attack_effects):
+            attacker.ship.facing = u_turn(attacker.ship.facing)
 
         target_ids = _target_player_ids_for_attack(state, attacker, stack, attack_cards)
         if not target_ids:
@@ -613,6 +643,8 @@ def _resolve_attack_volley(
     damage = base_damage + sum(effect.damage_bonus for effect in attack_effects)
     aim_bonus = sum(effect.aim_bonus for effect in attack_effects)
     always_hits = any(effect.always_hits for effect in attack_effects)
+    lead_the_target = any(effect.lead_the_target for effect in attack_effects)
+    u_turn_atk = any(effect.u_turn_attack for effect in attack_effects)
     distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
     fixed_defense_threshold = next(
         (effect.fixed_defense_threshold for effect in attack_effects if effect.fixed_defense_threshold is not None),
@@ -622,10 +654,11 @@ def _resolve_attack_volley(
         (effect.max_range for effect in attack_effects if effect.max_range is not None),
         None,
     )
+    target_movement = 0 if lead_the_target else target.ship.movement_this_action
     defense_threshold = (
         fixed_defense_threshold
         if fixed_defense_threshold is not None
-        else distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
+        else distance + target_movement + target.ship.defense_bonus_this_action
     )
     roll = _roll_2d6(state)
     roll_total = roll + aim_bonus
@@ -642,7 +675,7 @@ def _resolve_attack_volley(
         "damage": damage,
         "aim_bonus": aim_bonus,
         "distance": distance,
-        "target_movement": target.ship.movement_this_action,
+        "target_movement": target_movement,
         "target_defense_bonus": target.ship.defense_bonus_this_action,
         "defense_threshold": defense_threshold,
         "fixed_defense_threshold": fixed_defense_threshold,
@@ -651,6 +684,8 @@ def _resolve_attack_volley(
         "roll": roll,
         "roll_total": roll_total,
         "always_hits": always_hits,
+        "lead_the_target": lead_the_target,
+        "u_turn_attack": u_turn_atk,
         "hit": hit,
         "shielded": False,
         "damage_applied": 0,
@@ -1025,25 +1060,6 @@ def _validate_stack(
             if selection.target_player_id not in state.players:
                 raise RulesError(f"Unknown attack target: {selection.target_player_id}")
             target_player_ids.add(selection.target_player_id)
-
-    attack_cards = [
-        (card_by_id(selection.card_id), selection)
-        for selection in stack.cards
-        if selection.card_id
-    ]
-    desp_untargeted = [
-        (card, sel)
-        for card, sel in attack_cards
-        if not card.is_base
-        and _selected_card_family(card, sel) == CardFamily.ATTACK
-        and not _card_requires_target(card, sel)
-        and not _card_attacks_all(card, sel)
-    ]
-    if desp_untargeted and not any(
-        sel.target_player_id
-        for _card, sel in attack_cards
-    ):
-        raise RulesError("Untargeted desperation attack cards must be paired with a targeted attack card.")
 
     if len(families) > 1:
         raise RulesError("A stack cannot mix move and attack cards.")

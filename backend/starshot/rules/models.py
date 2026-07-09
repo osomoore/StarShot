@@ -29,6 +29,7 @@ class SealMode(StrEnum):
 class DesperateFace:
     family: CardFamily
     value: int = 0
+    base_damage: int = 1
     orientation_options: tuple[str, ...] = ("forward",)
     requires_target: bool = False
     aim_bonus: int = 0
@@ -40,6 +41,18 @@ class DesperateFace:
     max_range: int | None = None
     fixed_defense_threshold: int | None = None
     attacks_all: bool = False
+    # Side Slip: lateral move without turning; "right" or "left" relative to facing
+    side_slip_direction: str | None = None
+    # Drift King: turn right twice then move forward
+    double_turn_right: bool = False
+    # Crazy Ivan move face: 180° flip then move forward
+    u_turn_move: bool = False
+    # Crazy Ivan attack face: 180° flip then untargeted attack
+    u_turn_attack: bool = False
+    # Active Cooling: move Overheat pile to Discard after moving
+    active_cooling: bool = False
+    # Lead the Target: ignore target's movement_this_action in defense calc
+    lead_the_target: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +73,9 @@ class Card:
     requires_target: bool = True
     is_hybrid: bool = False
     desperate_face: DesperateFace | None = None
+    # True for cards with no basic face (Afterburners, Crack Shot);
+    # these always return to the Desperation deck regardless of which face is played.
+    no_basic_face: bool = False
 
 
 @dataclass(frozen=True, slots=True)
