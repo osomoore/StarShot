@@ -85,9 +85,9 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
         )
     elif family == CardFamily.ATTACK:
         attack = AttackContribution(
-            base_damage=value,
+            base_damage=card_attack_base_damage(card, selection, seal_mode),
             damage_bonus=card_damage_bonus(card, selection),
-            aim_bonus=card_aim_bonus(card, selection),
+            aim_bonus=card_attack_aim_bonus(card, selection, seal_mode),
             requires_target=requires_target,
             always_hits=card_always_hits(card, selection),
             max_range=card_max_range(card, selection),
@@ -104,6 +104,20 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
         move=move,
         attack=attack,
     )
+
+
+def card_attack_base_damage(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.value
+    return 1
+
+
+def card_attack_aim_bonus(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    if desperate_face is not None:
+        return desperate_face.aim_bonus
+    return card_value(card, selection, seal_mode)
 
 
 def card_requires_target(card: Card, selection: OrderCardSelection) -> bool:

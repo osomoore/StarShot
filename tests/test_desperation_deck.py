@@ -703,9 +703,9 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         state = resolve_next_step(state)
 
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
-        self.assertEqual(volley["aim_bonus"], 2)
+        self.assertEqual(volley["aim_bonus"], 3)
         self.assertEqual(volley["damage"], 2)
-        self.assertEqual(volley["roll_total"], volley["roll"] + 2)
+        self.assertEqual(volley["roll_total"], volley["roll"] + 3)
         state = self._resolve_through_cleanup(state)
         moved = [e for e in state.event_log if e["type"] == "action_cards_moved"
                  and e["player_id"] == "red"][0]
@@ -747,8 +747,8 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
         self.assertTrue(volley["always_hits"])
         self.assertTrue(volley["hit"])
-        self.assertEqual(volley["aim_bonus"], 999)
-        self.assertEqual(volley["roll_total"], volley["roll"] + 999)
+        self.assertEqual(volley["aim_bonus"], 1000)
+        self.assertEqual(volley["roll_total"], volley["roll"] + 1000)
         self.assertGreaterEqual(volley["roll_total"], volley["defense_threshold"])
 
     def test_desperate_self_destruct_is_targeted_range_two_damage_four(self):

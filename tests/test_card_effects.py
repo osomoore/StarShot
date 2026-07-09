@@ -26,8 +26,9 @@ class CardEffectsTests(unittest.TestCase):
 
         self.assertEqual(effect.family, CardFamily.ATTACK)
         self.assertIsNotNone(effect.attack)
-        self.assertEqual(effect.attack.base_damage, 3)
-        self.assertEqual(effect.attack.damage, 3)
+        self.assertEqual(effect.attack.base_damage, 1)
+        self.assertEqual(effect.attack.aim_bonus, 3)
+        self.assertEqual(effect.attack.damage, 1)
         self.assertTrue(effect.attack.requires_target)
 
     def test_hybrid_basic_face_uses_selected_mode(self):

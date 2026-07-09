@@ -555,12 +555,20 @@ function previewSelectionAttackDamage(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
     return card.desperate_face.value + (card.desperate_face.damage_bonus || 0);
   }
+  const family = card.effect?.family ?? card.family;
+  if (family === "attack") {
+    return 1;
+  }
   return previewCardValue(card, stack.seal_mode);
 }
 
 function previewSelectionAimBonus(card, stack, cardIndex) {
   if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
     return card.desperate_face.aim_bonus || 0;
+  }
+  const family = card.effect?.family ?? card.family;
+  if (family === "attack") {
+    return previewCardValue(card, stack.seal_mode);
   }
   return 0;
 }

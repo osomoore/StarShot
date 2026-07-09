@@ -25,7 +25,7 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.round_number, 1)
         self.assertEqual(state.phase, GamePhase.GIVE_ORDERS)
         self.assertIn(state.starting_player_id, {"red", "blue"})
-        self.assertEqual(len(state.players["red"].deck), 3)
+        self.assertEqual(len(state.players["red"].deck), 5)
         self.assertEqual(len(state.players["red"].hand), 5)
         self.assertEqual(len(state.players["red"].discard), 0)
         self.assertEqual(state.players["red"].ship.shields, 2)
@@ -393,19 +393,13 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
 
-        self.assertEqual(state.players["red"].ship.damage_taken, 3)
-        self.assertEqual(
-            state.players["red"].ship.destroyed_components,
-            {"port_outer_engines", "port_shields", "port_life_support"},
-        )
+        self.assertEqual(state.players["red"].ship.damage_taken, 1)
         self.assertEqual(state.players["blue"].victory_points, 1)
         self.assertNotIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
         volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
-        self.assertEqual(volley["damage_rolls"], [2, 5, 2])
-        self.assertEqual(
-            [shot["component_id"] for shot in volley["damage_shots"]],
-            ["port_outer_engines", "port_shields", "port_life_support"],
-        )
+        self.assertEqual(volley["damage_applied"], 1)
+        self.assertEqual(len(volley["damage_rolls"]), 1)
+        self.assertEqual(len(volley["damage_shots"]), 1)
 
     def test_multiple_attack_cards_create_one_combined_volley(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -450,9 +444,9 @@ class RulesEngineTests(unittest.TestCase):
         volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
         self.assertEqual(len(volleys), 1)
         self.assertEqual(volleys[0]["card_ids"], ["attack_1_a", "attack_2_a"])
-        self.assertEqual(volleys[0]["damage"], 3)
-        self.assertEqual(state.players["red"].ship.damage_taken, 3)
-        self.assertEqual(state.rng_step, 5)
+        self.assertEqual(volleys[0]["damage"], 1)
+        self.assertEqual(state.players["red"].ship.damage_taken, 1)
+        self.assertEqual(state.rng_step, 3)
 
     def test_bridge_damage_destroys_ship_and_awards_destroyed_ship_vp(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=2))

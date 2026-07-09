@@ -565,7 +565,10 @@ def _resolve_attack_volley(
         for card, selection in attack_cards
         if (effect := _card_effect(card, selection, stack.seal_mode)).attack is not None
     ]
-    damage = sum(effect.damage for effect in attack_effects)
+    base_damage = max((effect.base_damage for effect in attack_effects), default=1)
+    if base_damage <= 1:
+        base_damage = 1
+    damage = base_damage + sum(effect.damage_bonus for effect in attack_effects)
     aim_bonus = sum(effect.aim_bonus for effect in attack_effects)
     always_hits = any(effect.always_hits for effect in attack_effects)
     distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
