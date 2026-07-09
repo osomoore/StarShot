@@ -54,8 +54,10 @@ Implemented so far:
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
 - Enforce desperation use-choice constraints in the debug builder.
 - Preview implemented Desperate movement, Side Slip, U-turn movement, Warp destinations, damage, target roll, Aim, always-hit effects, and Lead the Target metadata.
+- Untargeted attack cards can be ordered alone; they shoot straight ahead at the first enemy on the forward line. If paired with a targeted attack, they join that volley and share its target.
 - Mini ship cards show pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
 - Target picker opens automatically when a Targeted Attack card is placed; skips if the stack already has a target from another card. Auto-fills in 2-player games.
+- After choosing card 1 for an order, the debug builder advances to card 2 after any required move/target choice. Move-choice panels only show orientations supported by the selected card.
 
 Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 8 groups of the 0.2 migration are complete.
 
@@ -77,7 +79,7 @@ Not implemented yet:
 - Move cards: `turn_left` rotates facing +1 then moves forward; `turn_right` rotates facing -1 (mod 6) then moves forward; `forward` moves straight. No U-Turn.
 - Overdrive duplicates the full order as an immediate copy. It does **not** boost card values.
 - One `overdrive_seals_pending` counter on `PlayerState` reduces the next round's draw by 1 per overdriven stack.
-- Base attack cards require `target_player_id`. Hybrid desperation attack cards on their basic face do not (they pair with a targeted card in the same stack).
+- Base attack cards require `target_player_id`. Untargeted desperation attacks do not; alone they shoot forward, and with a targeted partner they share the partner's target.
 - Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`.
 - Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck during cleanup.
 - Warp Desperate faces are deterministic: NightJammer warps to the hex behind the highest-VP active opponent using that ship's facing.
@@ -88,4 +90,4 @@ Not implemented yet:
 - When changing rules, update or add tests first or alongside the change.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - The debug UI is intentionally a development tool, not final game UX.
-- 84 tests passing as of last session.
+- 96 tests passing as of last session.
