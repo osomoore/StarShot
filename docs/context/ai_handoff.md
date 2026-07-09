@@ -50,10 +50,9 @@ Implemented so far:
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
 - Implement the basic desperation-deck flow: draw, placement, forward-only desperation moves, and hybrid/modal desperation attacks.
-- Implement the normal action-stack Desperate faces for Thrust Ions, Turbo Ions, Homeward Bound, Treasure Hound, Evasive Action, Ace Shot, Deadeye, Nightjammer, Self Destruct, Death Blossom, and Steady Shot.
 - Show all non-base desperation cards in one debug picker pile named Desperation.
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
-- Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
+- Enforce desperation use-choice constraints in the debug builder.
 - Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
 - Mini ship cards show pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
 - Target picker opens automatically when a Targeted Attack card is placed; skips if the stack already has a target from another card. Auto-fills in 2-player games.
@@ -64,7 +63,8 @@ Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 7 groups
 
 Not implemented yet:
 
-- Deferred Desperate faces: Hull Repair, Advanced Repair, and All She's Got.
+- Desperation Deck 0.2 overhaul: replace all 18 current cards with the 41-card 0.2 deck. See `docs/context/rules_0.2_migration_plan.md` Group 8 for the full plan.
+- Deferred desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, Overdrive 2x.
 - Real player accounts, sessions, or multiplayer lobby UX.
 - WebSocket/live updates; current UI is manual/poll-style HTTP.
 - Expansion content: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, mission systems.
@@ -81,7 +81,7 @@ Not implemented yet:
 - Base attack cards require `target_player_id`. Hybrid desperation attack cards on their basic face do not (they pair with a targeted card in the same stack).
 - Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`.
 - Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck during cleanup.
-- Warp Desperate faces are deterministic: Homeward Bound warps to the player's start tile, Treasure Hound warps to the nearest active numbered bauble (nearest-numbered fallback), Nightjammer warps to the hex behind the highest-VP active opponent using that ship's facing.
+- Warp Desperate faces are deterministic: NightJammer warps to the hex behind the highest-VP active opponent using that ship's facing.
 
 ## Collaboration Notes
 

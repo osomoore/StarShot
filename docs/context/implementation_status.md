@@ -80,8 +80,8 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
-2. Post-0.2 feature planning.
+1. **Group 8: Desperation Deck 0.2 Overhaul** — replace all 18 current cards with the 41-card 0.2 deck. See `docs/context/rules_0.2_migration_plan.md` Group 8 for the full plan, card table, new `DesperateFace` fields needed, and deferred list.
+2. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
 
 ## Files To Read Before Rule Work
 

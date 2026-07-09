@@ -326,6 +326,86 @@ Verification:
 - Bridge or both Life Supports still destroy a ship.
 - Untargeted attack misses if no enemy is directly ahead and hits the first enemy on the forward line.
 
+### Group 8: Desperation Deck 0.2 Overhaul
+
+Status: next. Playable after: yes. Replaces all 18 current desperation cards with the 41-card 0.2 deck.
+
+The 0.2 deck has a uniform basic face structure: most cards are hybrid Move/Attack with a named desperate face on the B side. Two card types (Afterburners, Crack Shot) have no basic face and always return to the Desperation deck regardless of which face is played.
+
+New card set (from `docs/rules/rules_0.2.txt` page 13-14 table):
+
+| Qty | Basic Face | Desperate Face |
+|-----|---|---|
+| 5 | Afterburners: Move 3 (fwd/turn-right/turn-left) | — (no-basic-face; always returns to deck) |
+| 5 | Crack Shot: Targeted Attack Damage +1 | — (no-basic-face; always returns to deck) |
+| 3 | Move 2 / Attack Aim +2 | Reconfigure 2 — **deferred** |
+| 3 | Move 2 / Attack Aim +2 | Hull Repair 1 — **deferred** |
+| 3 | Move 2 / Attack Aim +2 | Steady Shot: Aim +2, Damage +1 |
+| 3 | Move 2 / Attack Aim +2 | Side Slip: Move 4 Right / Move 4 Left |
+| 3 | Move 2 / Attack Aim +2 | Drift King: Move 4, turn right twice |
+| 3 | Move 2 / Attack Aim +2 | Thrust Ions: Move 5 |
+| 3 | Move 2 / Attack Aim +2 | Crazy Ivan: U-Turn Move 3 / U-Turn Attack Aim +3 |
+| 3 | Move 2 / Attack Aim +2 | Active Cooling: Move 1, move Overheat pile to Discard |
+| 1 | Move 3 / Attack Aim +3 | Turbo Ions: Move 10 |
+| 1 | Move 4 / Attack Aim +4 | NightJammer: Warp behind VP leader, Defense +5 |
+| 1 | Move 5 / Attack Aim +5 | Holdo Maneuver: Move 3, Collide 3 damage all — **deferred** |
+| 1 | Move 6 / Attack Aim +6 | StarShot: Attack Aim +999 |
+| 1 | Move 7 / Attack Aim +7 | ScatterShot: Target all in 120° cone — **deferred** |
+| 1 | Move 8 / Attack Aim +8 | Lead the Target: Attack ignores target's movement, Damage +1 |
+| 1 | Move 2 / Attack Aim +2 | Overdrive 2x — **deferred** |
+
+Deferred desperate faces (implement later):
+- Reconfigure 2 — effect unclear from rules text.
+- Hull Repair 1 — repairs a component; needs ship repair model.
+- Holdo Maneuver — collision damage to all; needs new damage path.
+- ScatterShot — 120° cone targeting; needs hex cone math.
+- Overdrive 2x — grants an extra overdrive; interaction with seal model unclear.
+
+Cards with deferred desperate faces are still added to the deck with their basic face fully functional. Playing their desperate face is rejected with a `RulesError` until implemented.
+
+Implementation steps:
+
+- Delete all 18 current desperation card definitions from `desperation.py`.
+- Add all 41 new cards. Cards with deferred desperate faces carry a `desperate_face=None` or a sentinel so the engine can reject them cleanly.
+- Add `no_basic_face: bool` flag to `Card` (or `DesperateFace`) for Afterburners and Crack Shot; cleanup always returns these to the Desperation deck.
+- Add new `DesperateFace` fields needed for in-scope effects:
+  - `side_slip_direction`: `"right"` or `"left"` for Side Slip.
+  - `double_turn_right: bool` for Drift King (turn right twice then move).
+  - `u_turn: bool` for Crazy Ivan move face (180° facing flip then move).
+  - `u_turn_attack: bool` for Crazy Ivan attack face (180° flip then attack).
+  - `active_cooling: bool` for Active Cooling (move Overheat → Discard).
+  - `lead_the_target: bool` for Lead the Target (strip movement from defense calc).
+  - Existing fields cover Steady Shot (aim_bonus + damage_bonus), Thrust Ions (value=5), Turbo Ions (value=10), NightJammer (warp_destination="leader", defense_bonus=5), and StarShot (aim_bonus=999, always_hits=True).
+- Implement each new desperate-face effect in `engine.py`:
+  - Side Slip: move laterally (right or left of current facing) without turning.
+  - Drift King: rotate facing right twice (−2 mod 6), then move forward 4.
+  - Crazy Ivan move: flip facing 180° (facing +3 mod 6), then move 3.
+  - Crazy Ivan attack: flip facing 180°, then resolve as an untargeted attack with Aim +3.
+  - Active Cooling: move 1 forward, then move all cards from `player.overheat` to `player.discard`.
+  - Lead the Target: resolve volley ignoring the target's `movement_this_action` in the defense calc.
+- Update `card_piles.py` cleanup to return no-basic-face cards to the Desperation deck even when played on their basic face.
+- Update `test_desperation_deck.py`: fix card count assertion (18 → 41), remove tests for deleted cards, add tests for each new in-scope desperate face and for the no-basic-face always-return behavior.
+- Update debug UI picker and previews for new card names and desperate-face effects.
+
+Likely files:
+
+- `backend/starshot/rules/desperation.py`
+- `backend/starshot/rules/models.py`
+- `backend/starshot/rules/card_effects.py`
+- `backend/starshot/rules/card_piles.py`
+- `backend/starshot/rules/engine.py`
+- `frontend/debug/static/app.js`
+- `tests/test_desperation_deck.py`
+
+Verification:
+
+- `all_desperation_cards()` returns 41 cards.
+- Basic face of every card resolves as Move 2 (or higher) or Targeted Attack Aim +2 (or higher) as appropriate.
+- Afterburners and Crack Shot return to the Desperation deck after basic-face play.
+- Each in-scope desperate face produces the correct movement or attack event.
+- Playing a deferred desperate face raises `RulesError`.
+- `python -m unittest discover -s tests` passes.
+
 ## Open Design Questions To Resolve While Implementing
 
 - Whether the one-minute hourglass/unsealed-actions timing should exist in the digital debug UI or remain a physical-table-only rule for now.
@@ -335,6 +415,10 @@ Verification:
 - Whether Fang should draw a Desperation card in 0.2. The Award Baubles summary says "and a Desperation card," but the Baubles section specifically only says numbered baubles draw. Default assumption: numbered baubles draw; Fang does not.
 - Whether targeted color/orientation should be physically modeled, or whether `target_player_id` remains the digital substitute. Default assumption: keep `target_player_id`.
 - How to represent untargeted attacks against multiple ships in the same first occupied hex. Current player ships probably cannot overlap; implement tie behavior only if overlap becomes possible.
+- Reconfigure 2 — effect not described in rules text. Needs clarification before implementation.
+- Holdo Maneuver — does collision damage apply to the user as well? Does it use the normal damage lane / desperation consequence flow?
+- ScatterShot — is the 120° cone the three forward-facing hex directions (forward + turn_left + turn_right), or is it range-limited?
+- Overdrive 2x — does this grant an extra Overdrive seal for the current round, or does the card itself act as an Overdrive seal?
 
 ## Fresh-Context Startup Checklist
 
