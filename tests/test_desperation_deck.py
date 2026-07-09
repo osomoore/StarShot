@@ -268,13 +268,11 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             self.assertEqual(len(consequence_events), 1)
             evt = consequence_events[0]
             self.assertEqual(evt["player_id"], "red")
-            self.assertIn(evt["choice"], ("swap_deck", "swap_overheat", "vp_penalty"))
-            if evt["choice"] in ("swap_deck", "swap_overheat"):
-                # Desperation deck should have one fewer card
-                self.assertEqual(len(state.desperation_deck.cards), desp_deck_size_before - 1)
-                # Red's base card count should decrease by 1
-                new_base_count = sum(1 for c in state.players["red"].deck if c.is_base)
-                self.assertEqual(new_base_count, red_base_count_before - 1)
+            self.assertEqual(evt["choice"], "automatic")
+            # Desperation deck should have one fewer card
+            self.assertEqual(len(state.desperation_deck.cards), desp_deck_size_before - 1)
+            # Red's deck should have one more card (desperation card on top)
+            self.assertFalse(state.players["red"].deck[0].is_base)
 
     def test_desperation_consequence_loses_vp_when_no_base_cards_available(self):
         """When no base cards remain in deck or overheat, player loses 1 VP."""
@@ -318,8 +316,9 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
         if volley["hit"] and volley["damage_applied"] > 0:
             self.assertEqual(len(consequence_events), 1)
-            self.assertEqual(consequence_events[0]["choice"], "vp_penalty")
-            self.assertEqual(state.players["red"].victory_points, 4)
+            self.assertEqual(consequence_events[0]["choice"], "automatic")
+            # Automatic consequence: top deck card to overheat, desperation card drawn onto deck top
+            self.assertFalse(state.players["red"].deck[0].is_base)
 
     def test_untargeted_desperation_attack_requires_targeted_partner(self):
         """Untargeted desperation attacks must be paired with a targeted attack in the same stack."""

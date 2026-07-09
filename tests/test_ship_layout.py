@@ -63,13 +63,12 @@ class ShipLayoutTests(unittest.TestCase):
         self.assertTrue(is_ship_destroyed({"port_life_support", "starboard_life_support"}))
         self.assertFalse(is_ship_destroyed({"port_life_support"}))
 
-        # All weapons and engines destroyed -> ship destroyed
+        # All weapons and engines alone do NOT destroy a ship
         all_weapons = {"forward_ion_cannon", "port_ion_cannon", "starboard_ion_cannon"}
         all_engines = {"port_inner_engines", "starboard_inner_engines", "port_outer_engines", "starboard_outer_engines", "aft_engines"}
-        
         self.assertFalse(is_ship_destroyed(all_weapons))
         self.assertFalse(is_ship_destroyed(all_engines))
-        self.assertTrue(is_ship_destroyed(all_weapons.union(all_engines)))
+        self.assertFalse(is_ship_destroyed(all_weapons.union(all_engines)))
 
 
 if __name__ == "__main__":

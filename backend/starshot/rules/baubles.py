@@ -5,7 +5,7 @@ from random import Random
 from starshot.rules.hex import hex_distance, is_within_board, iter_board_hexes
 from starshot.rules.models import BaubleState, PlayerState, ShipState
 
-BAUBLE_VP_BY_NUMBER = {1: 4, 2: 3, 3: 3, 4: 4, 5: 4}
+BAUBLE_VP_BY_NUMBER = {number: 2 for number in range(1, 6)}
 FANG_VP = 1
 FANG_FINAL_ROUND_VP = 6
 FINAL_ROUND_NUMBER = 6

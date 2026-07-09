@@ -29,9 +29,11 @@ def draw_hand(
     drawn: list[Card] = []
     reshuffled_discard: list[Card] = []
     moved_overheat_to_discard: list[Card] = []
-    while len(drawn) < hand_size_for_player(player) and player.deck:
+    target = max(0, hand_size_for_player(player) - player.overdrive_seals_pending)
+    player.overdrive_seals_pending = 0
+    while len(drawn) < target and player.deck:
         drawn.append(player.deck.pop(0))
-    while len(drawn) < hand_size_for_player(player):
+    while len(drawn) < target:
         if not player.deck:
             if not player.discard and not player.overheat:
                 break

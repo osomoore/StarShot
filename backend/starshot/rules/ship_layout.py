@@ -81,13 +81,7 @@ def first_intact_component_for_lane(lane_roll: int, destroyed_components: set[st
 def is_ship_destroyed(destroyed_components: set[str]) -> bool:
     if "command_bridge" in destroyed_components:
         return True
-
     life_support_ids = {
         component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "life_support"
     }
-    if life_support_ids.issubset(destroyed_components):
-        return True
-
-    weapon_ids = {component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "weapon"}
-    engine_ids = {component.id for component in BASE_SHIP_COMPONENTS if component.component_type == "engine"}
-    return weapon_ids.issubset(destroyed_components) and engine_ids.issubset(destroyed_components)
+    return life_support_ids.issubset(destroyed_components)

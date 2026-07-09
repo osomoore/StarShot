@@ -107,6 +107,7 @@ class PlayerState:
     victory_points: int = 0
     ship: ShipState = field(default_factory=ShipState)
     eliminated: bool = False
+    overdrive_seals_pending: int = 0
 
 
 @dataclass(slots=True)

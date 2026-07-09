@@ -299,17 +299,15 @@ Verification:
 
 ### Group 7: Remaining 0.2 Core Rules
 
-Playable after: yes. This group catches the smaller but visible core-rule deltas.
+Status: complete. Playable after: yes. This group catches the smaller but visible core-rule deltas.
 
-- Numbered baubles 1-5 become 2 VP each.
-- Ship destruction removes the all-weapons-and-engines condition.
-- Desperation consequence becomes automatic:
-  - move top deck card to overheat
-  - draw Desperation card onto top of defender deck
-  - shuffle discard first if defender deck is empty
-- Add untargeted forward-line attacks.
-- Keep Fang damage shieldable and no-desperation/no-overheat unless clarified otherwise.
-- Update docs/tests/debug log labels.
+Completed notes:
+
+- Numbered baubles 1-5 are 2 VP each (BAUBLE_VP_BY_NUMBER already set; test updated).
+- Removed the all-weapons-and-engines ship destruction condition from `is_ship_destroyed`; only Bridge or both Life Supports destroy a ship.
+- Desperation consequence is automatic: top deck card moves to overheat, Desperation card drawn onto top of defender deck (shuffles discard first if deck is empty). Old choice-model tests updated.
+- Added untargeted forward-line attacks: base attack cards now have `requires_target=False`; `_first_enemy_forward_target_id` already existed and is used when no `target_player_id` is set. Desperation untargeted cards still require a partner with an explicit `target_player_id`.
+- Fang damage remains shieldable with no desperation/overheat consequence.
 
 Likely files:
 

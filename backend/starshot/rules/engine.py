@@ -46,6 +46,7 @@ from starshot.rules.hex import (
     clamp_to_board,
     corner_start,
     hex_distance,
+    is_within_board,
     move_forward,
     turn_left,
     turn_right,
@@ -473,6 +474,9 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
             player.discard.append(card)
             discarded.append(card.id)
 
+    if stack.seal_mode == SealMode.OVERDRIVE:
+        player.overdrive_seals_pending += 1
+
     if discarded or overheated or returned_to_desperation_deck:
         state.event_log.append(
             {
@@ -556,7 +560,25 @@ def _target_player_ids_for_attack(
             if player.id != attacker.id and not player.eliminated and not player.ship.destroyed
         ]
     target_id = _target_player_id_for_attack(stack)
-    return [target_id] if target_id else []
+    if target_id:
+        return [target_id]
+    forward_target_id = _first_enemy_forward_target_id(state, attacker)
+    return [forward_target_id] if forward_target_id else []
+
+
+def _first_enemy_forward_target_id(state: GameState, attacker: PlayerState) -> str | None:
+    distance = 1
+    while True:
+        q, r = move_forward(attacker.ship.q, attacker.ship.r, attacker.ship.facing, distance)
+        if not is_within_board(q, r):
+            return None
+        for player_id in _player_order_from_starting_player(state):
+            candidate = state.players[player_id]
+            if candidate.id == attacker.id or candidate.eliminated or candidate.ship.destroyed:
+                continue
+            if (candidate.ship.q, candidate.ship.r) == (q, r):
+                return candidate.id
+        distance += 1
 
 
 def _resolve_attack_volley(
@@ -710,61 +732,33 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
 
 
 def _apply_desperation_consequence(state: GameState, player: PlayerState) -> None:
-    """Apply the desperation consequence when the first component is destroyed
-    in a volley.  Auto-choice priority (player preference: always prefer drawing
-    a desperation card):
-      1. Swap first base card in deck for a drawn desperation card.
-      2. Swap first base card in overheat for a drawn desperation card.
-      3. Lose 1 VP.
-    """
     rng = _make_rng(state)
 
-    # Option 1: swap a base card from deck.
-    base_in_deck = next((c for c in player.deck if c.is_base), None)
-    if base_in_deck is not None:
-        player.deck.remove(base_in_deck)
-        drawn = draw_desperation_card(state.desperation_deck, rng)
-        player.deck.insert(0, drawn)
-        state.event_log.append(
-            {
-                "type": "desperation_consequence",
-                "player_id": player.id,
-                "choice": "swap_deck",
-                "removed_card_id": base_in_deck.id,
-                "drawn_card_id": drawn.id,
-                "vp_lost": 0,
-            }
-        )
-        return
+    reshuffled_discard: list[str] = []
+    if not player.deck and player.discard:
+        reshuffled = list(player.discard)
+        _shuffle_cards(state, player.discard)
+        player.deck = list(player.discard)
+        player.discard = []
+        reshuffled_discard = [card.id for card in reshuffled]
 
-    # Option 2: swap a base card from overheat.
-    base_in_overheat = next((c for c in player.overheat if c.is_base), None)
-    if base_in_overheat is not None:
-        player.overheat.remove(base_in_overheat)
-        drawn = draw_desperation_card(state.desperation_deck, rng)
-        player.overheat.append(drawn)
-        state.event_log.append(
-            {
-                "type": "desperation_consequence",
-                "player_id": player.id,
-                "choice": "swap_overheat",
-                "removed_card_id": base_in_overheat.id,
-                "drawn_card_id": drawn.id,
-                "vp_lost": 0,
-            }
-        )
-        return
+    moved_to_overheat = player.deck.pop(0) if player.deck else None
+    if moved_to_overheat is not None:
+        player.overheat.append(moved_to_overheat)
 
-    # Option 3: lose 1 VP.
-    player.victory_points = max(0, player.victory_points - 1)
+    drawn = draw_desperation_card(state.desperation_deck, rng)
+    player.deck.insert(0, drawn)
     state.event_log.append(
         {
             "type": "desperation_consequence",
             "player_id": player.id,
-            "choice": "vp_penalty",
-            "removed_card_id": None,
-            "drawn_card_id": None,
-            "vp_lost": 1,
+            "choice": "automatic",
+            "moved_to_overheat_card_id": moved_to_overheat.id if moved_to_overheat is not None else None,
+            "desperation_card_id": drawn.id,
+            "reshuffled_discard": reshuffled_discard,
+            "deck_count": len(player.deck),
+            "discard_count": len(player.discard),
+            "overheat_count": len(player.overheat),
         }
     )
 
@@ -1028,11 +1022,7 @@ def _validate_stack(
             move_choice = _normalize_move_choice(selection.orientation)
             if move_choice not in _card_orientation_options(card, selection):
                 raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
-        if effective_family == CardFamily.ATTACK and _card_requires_target(card, selection):
-            if not selection.target_player_id:
-                raise RulesError("Attack cards require a target player.")
-            if selection.target_player_id == "":
-                raise RulesError("Attack cards require a target player.")
+        if effective_family == CardFamily.ATTACK and selection.target_player_id:
             if selection.target_player_id == player.id:
                 raise RulesError("Attack cards must target an enemy player.")
             if selection.target_player_id not in state.players:
@@ -1044,16 +1034,19 @@ def _validate_stack(
         for selection in stack.cards
         if selection.card_id
     ]
-    if any(
-        _selected_card_family(card, selection) == CardFamily.ATTACK
-        and not _card_requires_target(card, selection)
-        and not _card_attacks_all(card, selection)
-        for card, selection in attack_cards
-    ) and not any(
-        _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection)
-        for card, selection in attack_cards
+    desp_untargeted = [
+        (card, sel)
+        for card, sel in attack_cards
+        if not card.is_base
+        and _selected_card_family(card, sel) == CardFamily.ATTACK
+        and not _card_requires_target(card, sel)
+        and not _card_attacks_all(card, sel)
+    ]
+    if desp_untargeted and not any(
+        sel.target_player_id
+        for _card, sel in attack_cards
     ):
-        raise RulesError("Untargeted attack cards must be paired with a targeted attack card.")
+        raise RulesError("Untargeted desperation attack cards must be paired with a targeted attack card.")
 
     if len(families) > 1:
         raise RulesError("A stack cannot mix move and attack cards.")

@@ -249,7 +249,7 @@ class RulesEngineTests(unittest.TestCase):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.phase = GamePhase.AWARD_BAUBLES
         state.round_number = 1
-        state.baubles = [BaubleState(id="bauble_1_test", number=1, q=0, r=0, victory_points=4)]
+        state.baubles = [BaubleState(id="bauble_1_test", number=1, q=0, r=0, victory_points=2)]
         state.players["red"].ship.q = 1
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 2
@@ -258,7 +258,7 @@ class RulesEngineTests(unittest.TestCase):
         state = resolve_next_step(state)
 
         self.assertEqual(state.phase, GamePhase.CLEANUP)
-        self.assertEqual(state.players["red"].victory_points, 4)
+        self.assertEqual(state.players["red"].victory_points, 2)
         self.assertEqual(state.players["blue"].victory_points, 0)
         self.assertEqual(state.baubles[0].claimed_by, ["red"])
         award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]
@@ -497,6 +497,73 @@ class RulesEngineTests(unittest.TestCase):
         self.assertTrue(state.players["red"].ship.destroyed)
         self.assertIn("command_bridge", state.players["red"].ship.destroyed_components)
         self.assertEqual(state.players["blue"].victory_points, 3)
+
+    def test_overdrive_seal_card_placed_on_deck_and_drawn_next_round(self):
+        """One overdrive stack with 2 cards: both go to overheat, draw reduced by 1 next round.
+        Round 2 hand should have 4 playable cards (5 - 1 overdrive seal)."""
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "move_1_a", "move_2_a")
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (
+                    OrderCardSelection("move_1_a"),
+                    OrderCardSelection("move_2_a"),
+                )),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "red", red_orders)
+        state = submit_orders(state, "blue", blue_orders)
+        while state.phase != GamePhase.GIVE_ORDERS or state.round_number != 2:
+            state = resolve_next_step(state)
+
+        red = state.players["red"]
+        self.assertEqual(len(red.hand), 4)
+        hand_ids = {card.id for card in red.hand}
+        self.assertNotIn("move_1_a", hand_ids)
+        self.assertNotIn("move_2_a", hand_ids)
+        self.assertEqual(len(red.overheat), 2)
+
+    def test_two_overdrive_stacks_place_two_seal_cards_on_deck(self):
+        """Two overdrive stacks: draw reduced by 2 next round, hand has 3 playable cards."""
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "move_1_a", "move_2_a", "move_1_b", "move_2_b")
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (
+                    OrderCardSelection("move_1_a"),
+                    OrderCardSelection("move_2_a"),
+                )),
+                ActionStack(2, SealMode.OVERDRIVE, (
+                    OrderCardSelection("move_1_b"),
+                    OrderCardSelection("move_2_b"),
+                )),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "red", red_orders)
+        state = submit_orders(state, "blue", blue_orders)
+        while state.phase != GamePhase.GIVE_ORDERS or state.round_number != 2:
+            state = resolve_next_step(state)
+
+        red = state.players["red"]
+        self.assertEqual(len(red.hand), 3)
+        self.assertEqual(len(red.overheat), 4)
 
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

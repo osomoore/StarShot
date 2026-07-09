@@ -2,7 +2,7 @@
 
 ## Current Status
 
-`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. Groups 1 through 6 of the 0.2 migration are complete. The implementation now uses the 0.2 phase flow with no cooldown phase, cleanup-time command-card destinations, 0.2 empty-deck draw behavior, 0.2 base deck/combat math, and 0.2 overdrive-as-duplicate-orders.
+`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. All 7 groups of the 0.2 migration are complete. The implementation now uses the full 0.2 rule set: no cooldown phase, cleanup-time command-card destinations, 0.2 empty-deck draw behavior, 0.2 base deck/combat math, 0.2 overdrive-as-duplicate-orders, 2 VP numbered baubles, Bridge/both-Life-Supports-only ship destruction, automatic desperation consequence, and untargeted forward-line attacks for base attack cards.
 
 Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups. Card interpretation has been split into `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
 
@@ -45,7 +45,7 @@ Current phase progression:
 5. `award_baubles`
 6. `cleanup`
 
-Rules 0.2 still needs Group 7: remaining visible core-rule deltas. Groups 2 through 6 added card-effect helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, empty-deck draw behavior, the 0.2 base deck/combat math update, and overdrive-as-duplicate-orders. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
+Rules 0.2 migration is complete (all 7 groups). See `docs/context/rules_0.2_migration_plan.md` for the full history.
 
 Movement behavior currently implemented:
 
@@ -77,11 +77,8 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. Start `rules_0.2_migration_plan.md` Group 7: remaining 0.2 core rules.
-2. Change numbered baubles 1-5 to 2 VP each.
-3. Remove the all-weapons-and-engines ship destruction condition.
-4. Replace the old desperation consequence with the automatic top-deck-to-overheat plus Desperation-card-on-top flow.
-5. Add untargeted forward-line attacks.
+1. Frontend debug UI updates for Group 7 changes (bauble VP labels, ship destruction display, untargeted attack previews).
+2. Start planning post-0.2 features.
 
 ## Files To Read Before Rule Work
 

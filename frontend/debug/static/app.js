@@ -983,13 +983,13 @@ function inferCardFromId(cardId) {
   const family = isHybrid ? "hybrid" : cardId.startsWith("attack") || cardId.startsWith("desp_targeted_attack") ? "attack" : "move";
   const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
   const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
-  const requiresTarget = family === "attack" && !cardId.startsWith("desp_") ? true : cardId.startsWith("desp_targeted_attack");
+  const requiresTarget = cardId.startsWith("desp_targeted_attack") || cardId.startsWith("attack_");
   return {
     id: cardId,
     name,
     family,
     value,
-    is_base: true,
+    is_base: !cardId.startsWith("desp_"),
     requires_target: requiresTarget,
     is_hybrid: isHybrid,
     effect: { family, value, requires_target: requiresTarget, is_hybrid: isHybrid },
@@ -1084,7 +1084,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
       : selectedCard.family === "attack"
         ? effectiveCardRequiresTarget(selectedCard, stack, cardIndex)
           ? targetChoiceLabel(stack.targets[cardIndex])
-          : "Pairs with targeted attack"
+          : "Forward-line attack"
         : moveChoiceLabel(stack.move_choices[cardIndex])
     : "No card";
 
@@ -1108,7 +1108,7 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
 function cardNeedsTarget(card) {
   const family = card?.effect?.family ?? card?.family;
   const requiresTarget = card?.effect?.requires_target ?? card?.requires_target;
-  return Boolean(family === "attack" && requiresTarget !== false);
+  return Boolean(family === "attack" && requiresTarget === true);
 }
 
 function selectedFace(card, stack, cardIndex) {
@@ -1197,7 +1197,6 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
 
   if (!card.is_hybrid && !card.desperate_face) {
     const family = card.family;
-    const needsTargetedPartner = family === "attack" && card.requires_target === false;
     choices.push({
       face: "front",
       mode: "",
@@ -1205,7 +1204,7 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       label: family === "attack" ? "Attack" : "Move",
       mark: family === "attack" ? "A" : "M",
       fill: family === "attack" ? "#c9433f" : "#3f9963",
-      disabled: !familyAllowed(family) || (needsTargetedPartner && !hasTargetedPartner),
+      disabled: !familyAllowed(family),
     });
   } else if (!card.is_hybrid && card.family === "move") {
     choices.unshift({
@@ -1218,7 +1217,6 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       disabled: !familyAllowed("move"),
     });
   } else if (!card.is_hybrid && card.family === "attack") {
-    const needsTargetedPartner = card.requires_target === false;
     choices.unshift({
       face: "front",
       mode: "",
@@ -1226,7 +1224,7 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       label: "Basic Attack",
       mark: "A",
       fill: "#c9433f",
-      disabled: !familyAllowed("attack") || (needsTargetedPartner && !hasTargetedPartner),
+      disabled: !familyAllowed("attack"),
     });
   }
 
@@ -1471,7 +1469,9 @@ function showFollowupChoicePanel(stackIndex, cardIndex) {
 
   const family = effectiveCardFamily(card, stack, cardIndex);
   if (family === "attack") {
-    if (effectiveCardRequiresTarget(card, stack, cardIndex)) showHexChoicePanel(stackIndex, cardIndex);
+    if (effectiveCardRequiresTarget(card, stack, cardIndex) && !stackHasTargetedAttack(stack, cardLookupForPlayer(player), cardIndex)) {
+      showHexChoicePanel(stackIndex, cardIndex);
+    }
     return;
   }
 
