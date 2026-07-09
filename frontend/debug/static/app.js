@@ -170,7 +170,6 @@ async function createGame() {
     body: JSON.stringify({
       player_ids: ["red", "blue"],
       seed: 3,
-      debug_start_with_split_desperation_cards: true,
     }),
   });
   state.selectedGameId = payload.game_id;
@@ -245,7 +244,7 @@ function buildDemoOrders(playerId, preferredFamily) {
   const player = game?.players?.[playerId];
   if (!game || !player || !canSubmit(playerId)) return null;
 
-  const available = [...(player.deck || [])];
+  const available = [...(player.hand || [])];
   const opponentIds = Object.keys(game.players).filter((id) => id !== playerId);
   const attackTargetId = opponentIds.includes("red") ? "red" : opponentIds[0];
 
@@ -826,6 +825,8 @@ function renderPlayers(game) {
         <div><dt>VP</dt><dd>${player.victory_points}</dd></div>
         <div><dt>Shields</dt><dd>${player.ship.shields}</dd></div>
         <div><dt>Deck</dt><dd>${player.deck.length}</dd></div>
+        <div><dt>Hand</dt><dd>${player.hand?.length ?? 0}</dd></div>
+        <div><dt>Discard</dt><dd>${player.discard?.length ?? 0}</dd></div>
         <div><dt>Overheat</dt><dd>${player.overheat.length}</dd></div>
         <div><dt>Hex</dt><dd>${player.ship.q}, ${player.ship.r}</dd></div>
         <div><dt>Facing</dt><dd>${player.ship.facing}</dd></div>
@@ -902,7 +903,7 @@ function syncBuilderPlayer() {
 
 function rememberVisibleCards(game) {
   Object.values(game?.players || {}).forEach((player) => {
-    [...(player.deck || []), ...(player.overheat || [])].forEach((card) => {
+    [...(player.deck || []), ...(player.hand || []), ...(player.discard || []), ...(player.overheat || [])].forEach((card) => {
       state.knownCards[card.id] = card;
     });
     player.prepared_orders?.stacks?.forEach((stack) => {
@@ -916,7 +917,10 @@ function rememberVisibleCards(game) {
 }
 
 function cardLookupForPlayer(player) {
-  const visibleCards = Object.fromEntries([...(player?.deck || []), ...(player?.overheat || [])].map((card) => [card.id, card]));
+  const visibleCards = Object.fromEntries(
+    [...(player?.deck || []), ...(player?.hand || []), ...(player?.discard || []), ...(player?.overheat || [])]
+      .map((card) => [card.id, card]),
+  );
   const merged = { ...state.knownCards, ...visibleCards };
   Object.entries(merged).forEach(([cardId, card]) => {
     if (!card || cardId === undefined) return;
@@ -929,7 +933,7 @@ function cardLookupForPlayer(player) {
 
 function cardsForBuilder(player) {
   const byId = cardLookupForPlayer(player);
-  const cards = [...(player?.deck || [])];
+  const cards = [...(player?.hand || [])];
   state.builderDraft.stacks.forEach((stack) => {
     stack.cards.forEach((cardId) => {
       if (cardId && byId[cardId] && !cards.some((card) => card.id === cardId)) {
@@ -1552,7 +1556,7 @@ function validateBuiltOrders() {
   if (!game || !player) return { ok: false, message: "Select a game and player first." };
   if (!canSubmit(state.builderPlayerId)) return { ok: false, message: "This player cannot submit orders now." };
 
-  const cardById = Object.fromEntries(player.deck.map((card) => [card.id, card]));
+  const cardById = Object.fromEntries((player.hand || []).map((card) => [card.id, card]));
   const used = new Set();
   for (const stack of state.builderDraft.stacks) {
     const families = new Set();
@@ -1912,8 +1916,10 @@ function createMiniBoardCard(color, game) {
   const footer = document.createElement("div");
   footer.className = "mini-ship-footer";
   footer.innerHTML = `
-    <span class="mini-stat" title="Cards in deck"><span class="mini-icon deck-icon"></span>${player ? player.deck.length : 0}</span>
-    <span class="mini-stat" title="Cards in overheat"><span class="mini-icon overheat-icon"></span>${player ? player.overheat.length : 0}</span>
+    <span class="mini-stat" title="Cards in hand"><span class="mini-icon hand-icon">H</span>${player ? (player.hand?.length ?? 0) : 0}</span>
+    <span class="mini-stat" title="Cards in deck"><span class="mini-icon deck-icon">D</span>${player ? player.deck.length : 0}</span>
+    <span class="mini-stat" title="Cards in discard"><span class="mini-icon discard-icon">X</span>${player ? (player.discard?.length ?? 0) : 0}</span>
+    <span class="mini-stat" title="Cards in overheat"><span class="mini-icon overheat-icon">O</span>${player ? player.overheat.length : 0}</span>
   `;
   card.append(footer);
   return card;

@@ -185,34 +185,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         for player in state.players.values():
             self.assertTrue(any(card.id == "desp_ace_shot_a" for card in player.deck))
 
-    def test_debug_startup_can_split_desperation_types_between_players(self):
-        state = create_initial_state(
-            GameConfig(
-                player_ids=("red", "blue"),
-                seed=1,
-                debug_start_with_split_desperation_cards=True,
-            )
-        )
-
-        red_desperation_names = {card.name for card in state.players["red"].deck if not card.is_base}
-        blue_desperation_names = {card.name for card in state.players["blue"].deck if not card.is_base}
-
-        self.assertEqual(
-            red_desperation_names,
-            {"Ace Shot", "Deadeye", "Nightjammer", "Self Destruct", "Death Blossom", "Steady Shot"},
-        )
-        self.assertEqual(
-            blue_desperation_names,
-            {
-                "Thrust Ions",
-                "Turbo Ions",
-                "Homeward Bound",
-                "Treasure Hound",
-                "Evasive Action",
-                "Desperation Attack 1",
-            },
-        )
-
     def test_bauble_award_draws_desperation_card_into_player_deck(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.phase = GamePhase.AWARD_BAUBLES
@@ -232,8 +204,8 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         self.assertEqual(len(state.players["red"].deck), deck_before + 1)
         # Desperation deck should shrink by one
         self.assertEqual(len(state.desperation_deck.cards), desp_deck_before - 1)
-        # The drawn card should be non-base
-        drawn_card = state.players["red"].deck[-1]
+        # The drawn card should be non-base and placed on top of the deck.
+        drawn_card = state.players["red"].deck[0]
         self.assertFalse(drawn_card.is_base)
         # The award event should record the card id
         award = [e for e in state.event_log if e["type"] == "bauble_awarded"][0]
@@ -264,6 +236,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "attack_1_a")
 
         red_base_count_before = sum(1 for c in state.players["red"].deck if c.is_base)
         desp_count_before = sum(1 for c in state.players["red"].deck if not c.is_base)
@@ -321,6 +294,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             desperation_card_by_id("desp_turbo_ions"),
         ]
         state.players["red"].overheat = []  # no base cards in overheat either
+        self._set_hand(state, "blue", "attack_1_a")
 
         state = submit_orders(
             state, "red",
@@ -352,7 +326,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_untargeted_desperation_attack_requires_targeted_partner(self):
         """Untargeted desperation attacks must be paired with a targeted attack in the same stack."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        self._set_hand(state, "red", "desp_ace_shot_a")
 
         with self.assertRaises(RulesError):
             submit_orders(
@@ -374,7 +348,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_hybrid_desperation_attack_allows_move_mode(self):
         """Hybrid desperation attacks can be selected as a move mode for the builder UI."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        self._set_hand(state, "red", "desp_ace_shot_a")
 
         submit_orders(
             state,
@@ -394,7 +368,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_hybrid_desperation_move_mode_is_forward_only(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        self._set_hand(state, "red", "desp_ace_shot_a")
 
         with self.assertRaises(RulesError):
             submit_orders(
@@ -416,7 +390,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_hybrid_desperation_attack_allows_attack_mode_with_targeted_partner(self):
         """Hybrid attack mode is legal when paired with a targeted attack."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        self._set_hand(state, "red", "attack_1_a", "desp_ace_shot_a")
 
         submit_orders(
             state,
@@ -440,7 +414,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_hybrid_desperation_move_mode_rejects_targeted_attack_partner(self):
         """A hybrid card cannot use move mode in a targeted attack stack."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        self._set_hand(state, "red", "attack_1_a", "desp_ace_shot_a")
 
         with self.assertRaises(RulesError):
             submit_orders(
@@ -465,8 +439,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_desperation_move_card_requires_forward_orientation(self):
         """Desperation move cards should be forward-only and reject other move orientations."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        desp_card = desperation_card_by_id("desp_thrust_ions_a")
-        state.players["red"].deck.append(desp_card)
+        self._set_hand(state, "red", "desp_thrust_ions_a")
 
         with self.assertRaises(RulesError):
             submit_orders(
@@ -488,9 +461,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
     def test_desperation_card_not_boosted_by_overdrive(self):
         """Desperation move card played with overdrive keeps value=1 and returns to deck (not overheat)."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        # Give red a desperation move card
-        desp_card = desperation_card_by_id("desp_thrust_ions_a")
-        state.players["red"].deck.append(desp_card)
+        self._set_hand(state, "red", "desp_thrust_ions_a")
 
         state = submit_orders(
             state, "red",
@@ -524,7 +495,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_move_uses_single_use_face_and_returns_to_desperation_deck(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_thrust_ions_a"))
+        self._set_hand(state, "red", "desp_thrust_ions_a")
         desperation_deck_size_before = len(state.desperation_deck.cards)
 
         state = submit_orders(
@@ -558,7 +529,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_evasive_action_adds_defense_without_movement(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_evasive_action"))
+        self._set_hand(state, "red", "desp_evasive_action")
 
         state = submit_orders(
             state,
@@ -591,7 +562,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_homeward_bound_warps_home_without_counting_as_movement(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_homeward_bound"))
+        self._set_hand(state, "red", "desp_homeward_bound")
         state.players["red"].ship.q = 4
         state.players["red"].ship.r = -2
         state.players["red"].ship.facing = 2
@@ -628,7 +599,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_treasure_hound_warps_to_nearest_active_numbered_bauble(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_treasure_hound"))
+        self._set_hand(state, "red", "desp_treasure_hound")
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
         state.baubles = [
@@ -665,7 +636,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_nightjammer_warps_to_vp_leader_without_targeted_attack_partner(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_nightjammer"))
+        self._set_hand(state, "red", "desp_nightjammer")
         state.players["blue"].victory_points = 8
         state.players["blue"].ship.q = 5
         state.players["blue"].ship.r = -2
@@ -705,7 +676,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_steady_shot_adds_aim_and_damage(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_steady_shot_a"))
+        self._set_hand(state, "red", "attack_1_a", "desp_steady_shot_a")
         state.players["blue"].ship.shields = 0
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
@@ -747,7 +718,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_deadeye_always_hits(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_deadeye"))
+        self._set_hand(state, "red", "attack_1_a", "desp_deadeye")
         state.players["blue"].ship.shields = 0
         state.players["red"].ship.q = -14
         state.players["red"].ship.r = 0
@@ -788,7 +759,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_self_destruct_is_targeted_range_two_damage_four(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_self_destruct"))
+        self._set_hand(state, "red", "desp_self_destruct")
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 2
@@ -826,7 +797,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_self_destruct_misses_outside_range_two(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_self_destruct"))
+        self._set_hand(state, "red", "desp_self_destruct")
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 3
@@ -862,7 +833,7 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
 
     def test_desperate_death_blossom_attacks_all_opponents_at_fixed_defense_ten(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green"), seed=1))
-        state.players["red"].deck.append(desperation_card_by_id("desp_death_blossom"))
+        self._set_hand(state, "red", "desp_death_blossom")
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
         state.players["green"].ship.q = 5
@@ -900,6 +871,14 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             self.assertEqual(volley["defense_threshold"], 10)
         moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
         self.assertIn("desp_death_blossom", moved["returned_to_desperation_deck"])
+
+    def _set_hand(self, state, player_id, *card_ids):
+        player = state.players[player_id]
+        requested = set(card_ids)
+        player.deck = [card for card in player.deck if card.id not in requested]
+        player.discard = [card for card in player.discard if card.id not in requested]
+        player.overheat = [card for card in player.overheat if card.id not in requested]
+        player.hand = [card_by_id(card_id) for card_id in card_ids]
 
 
 if __name__ == "__main__":

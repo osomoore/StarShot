@@ -57,6 +57,8 @@ def player_to_dict(player: PlayerState, *, reveal_orders: bool) -> dict:
     return {
         "id": player.id,
         "deck": [card_to_dict(card) for card in player.deck],
+        "hand": [card_to_dict(card) for card in player.hand],
+        "discard": [card_to_dict(card) for card in player.discard],
         "overheat": [card_to_dict(card) for card in player.overheat],
         "prepared_orders": (
             orders_to_dict(player.prepared_orders)
@@ -74,6 +76,8 @@ def player_from_dict(data: dict) -> PlayerState:
     return PlayerState(
         id=data["id"],
         deck=[card_from_dict(card) for card in data["deck"]],
+        hand=[card_from_dict(card) for card in data.get("hand", [])],
+        discard=[card_from_dict(card) for card in data.get("discard", [])],
         overheat=[card_from_dict(card) for card in data.get("overheat", [])],
         prepared_orders=(
             orders_from_dict(data["prepared_orders"]) if data.get("prepared_orders") else None

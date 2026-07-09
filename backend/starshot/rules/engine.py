@@ -10,6 +10,12 @@ from starshot.rules.baubles import (
     fang_vp_for_round,
     ship_inside_bauble,
 )
+from starshot.rules.card_piles import (
+    available_order_cards,
+    discard_hand,
+    draw_hand,
+    remove_ordered_cards_from_hand,
+)
 from starshot.rules.card_effects import (
     card_aim_bonus as _effect_card_aim_bonus,
     card_always_hits as _effect_card_always_hits,
@@ -32,7 +38,6 @@ from starshot.rules.decks import (
     create_base_deck,
 )
 from starshot.rules.desperation import (
-    all_desperation_cards,
     create_desperation_deck,
     draw_desperation_card,
     return_desperation_card,
@@ -92,8 +97,8 @@ def create_initial_state(config: GameConfig) -> GameState:
 
         for player in players.values():
             player.deck.append(desperation_card_by_id("desp_ace_shot_a"))
-    if config.debug_start_with_split_desperation_cards:
-        _seed_split_debug_desperation_cards(players, player_ids)
+    for player in players.values():
+        draw_hand(player)
 
     try:
         baubles = create_baubles(setup_rng, players)
@@ -118,28 +123,20 @@ def create_initial_state(config: GameConfig) -> GameState:
             "baubles": [bauble_event_payload(bauble) for bauble in baubles],
         }
     )
+    for player in state.players.values():
+        if player.hand:
+            state.event_log.append(
+                {
+                    "type": "hand_drawn",
+                    "round": state.round_number,
+                    "player_id": player.id,
+                    "card_ids": [card.id for card in player.hand],
+                    "deck_count": len(player.deck),
+                    "hand_count": len(player.hand),
+                    "discard_count": len(player.discard),
+                }
+            )
     return state
-
-
-def _seed_split_debug_desperation_cards(players: dict[str, PlayerState], player_ids: tuple[str, ...]) -> None:
-    if len(player_ids) < 2:
-        return
-
-    hybrid_cards = _first_card_of_each_name(card for card in all_desperation_cards() if card.is_hybrid)
-    non_hybrid_cards = _first_card_of_each_name(card for card in all_desperation_cards() if not card.is_hybrid)
-    players[player_ids[0]].deck.extend(hybrid_cards)
-    players[player_ids[1]].deck.extend(non_hybrid_cards)
-
-
-def _first_card_of_each_name(cards) -> list[Card]:
-    seen_names: set[str] = set()
-    unique_cards: list[Card] = []
-    for card in cards:
-        if card.name in seen_names:
-            continue
-        seen_names.add(card.name)
-        unique_cards.append(card)
-    return unique_cards
 
 
 def legal_actions(state: GameState, player_id: str) -> list[str]:
@@ -159,7 +156,8 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
     player = _player(next_state, player_id)
     _validate_orders(next_state, player, orders)
     player.prepared_orders = orders
-    _remove_ordered_cards_from_deck(player, orders)
+    _remove_ordered_cards_from_hand(player, orders)
+    _discard_unused_hand(next_state, player)
     next_state.event_log.append(
         {
             "type": "orders_submitted",
@@ -726,7 +724,7 @@ def _apply_desperation_consequence(state: GameState, player: PlayerState) -> Non
     if base_in_deck is not None:
         player.deck.remove(base_in_deck)
         drawn = draw_desperation_card(state.desperation_deck, rng)
-        player.deck.append(drawn)
+        player.deck.insert(0, drawn)
         state.event_log.append(
             {
                 "type": "desperation_consequence",
@@ -818,7 +816,7 @@ def _resolve_award_baubles(state: GameState) -> None:
             drawn_card_id: str | None = None
             if not bauble.is_fang:
                 drawn = draw_desperation_card(state.desperation_deck, rng)
-                player.deck.append(drawn)
+                player.deck.insert(0, drawn)
                 drawn_card_id = drawn.id
 
             award = {
@@ -889,6 +887,22 @@ def _resolve_cleanup(state: GameState) -> None:
 
     state.round_number += 1
     state.starting_player_id = _next_starting_player_id(state)
+    for player in state.players.values():
+        if player.eliminated:
+            continue
+        drawn = draw_hand(player)
+        if drawn:
+            state.event_log.append(
+                {
+                    "type": "hand_drawn",
+                    "round": state.round_number,
+                    "player_id": player.id,
+                    "card_ids": [card.id for card in drawn],
+                    "deck_count": len(player.deck),
+                    "hand_count": len(player.hand),
+                    "discard_count": len(player.discard),
+                }
+            )
     state.event_log.append(
         {
             "type": "round_advanced",
@@ -950,7 +964,7 @@ def _validate_orders(state: GameState, player: PlayerState, orders: OrdersSubmis
     if actual_numbers != expected_numbers:
         raise RulesError("Action stacks must be ordered 1, 2, 3.")
 
-    available = {card.id: card for card in player.deck}
+    available = available_order_cards(player)
     used_card_ids: set[str] = set()
     for stack in orders.stacks:
         _validate_stack(state, player, stack, available, used_card_ids)
@@ -973,7 +987,7 @@ def _validate_stack(
             raise RulesError(f"Card is already used in this order set: {selection.card_id}")
         card = available.get(selection.card_id)
         if card is None:
-            raise RulesError(f"Card is not available in deck: {selection.card_id}")
+            raise RulesError(f"Card is not available in hand: {selection.card_id}")
         if selection.face not in {"front", "desperate"}:
             raise RulesError(f"Unsupported card face: {selection.face}")
         if selection.face == "desperate" and card.desperate_face is None:
@@ -1018,6 +1032,23 @@ def _validate_stack(
         raise RulesError("All targeted attacks in a stack must target the same player.")
 
 
-def _remove_ordered_cards_from_deck(player: PlayerState, orders: OrdersSubmission) -> None:
+def _remove_ordered_cards_from_hand(player: PlayerState, orders: OrdersSubmission) -> None:
     ordered_ids = {selection.card_id for stack in orders.stacks for selection in stack.cards}
-    player.deck = [card for card in player.deck if card.id not in ordered_ids]
+    remove_ordered_cards_from_hand(player, ordered_ids)
+
+
+def _discard_unused_hand(state: GameState, player: PlayerState) -> None:
+    discarded = discard_hand(player)
+    if not discarded:
+        return
+    state.event_log.append(
+        {
+            "type": "hand_discarded",
+            "round": state.round_number,
+            "player_id": player.id,
+            "card_ids": [card.id for card in discarded],
+            "deck_count": len(player.deck),
+            "hand_count": len(player.hand),
+            "discard_count": len(player.discard),
+        }
+    )

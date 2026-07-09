@@ -9,6 +9,7 @@ from starshot.rules import (
     create_initial_state,
     submit_orders,
 )
+from starshot.rules.desperation import desperation_card_by_id
 from starshot.rules.serialization import orders_from_dict, state_from_dict, state_to_dict
 
 
@@ -19,7 +20,9 @@ class SerializationTests(unittest.TestCase):
 
         self.assertEqual(restored.round_number, state.round_number)
         self.assertEqual(restored.phase, state.phase)
-        self.assertEqual(restored.players["red"].deck[0].id, "move_1_a")
+        self.assertEqual(restored.players["red"].hand[0].id, "move_1_a")
+        self.assertEqual(len(restored.players["red"].deck), 3)
+        self.assertEqual(restored.players["red"].discard, [])
         self.assertEqual(restored.players["red"].ship.q, -11)
         self.assertEqual(restored.players["red"].ship.r, 0)
         self.assertEqual(restored.players["red"].ship.facing, 0)
@@ -36,7 +39,7 @@ class SerializationTests(unittest.TestCase):
         self.assertIn("component_layout", serialized_ship)
         self.assertEqual(serialized_ship["damage_lanes"]["1"][0], "aft_engines")
 
-        serialized_card = state_to_dict(state)["players"]["red"]["deck"][0]
+        serialized_card = state_to_dict(state)["players"]["red"]["hand"][0]
         self.assertEqual(serialized_card["effect"]["family"], "move")
         self.assertEqual(serialized_card["effect"]["value"], 1)
 
@@ -77,13 +80,9 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(orders.stacks[2].seal_mode, SealMode.OVERDRIVE)
 
     def test_hybrid_desperation_cards_keep_metadata_across_serialization(self):
-        state = create_initial_state(
-            GameConfig(
-                player_ids=("red", "blue"),
-                seed=1,
-                debug_start_with_split_desperation_cards=True,
-            )
-        )
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].deck.append(desperation_card_by_id("desp_ace_shot_a"))
+        state.players["blue"].deck.append(desperation_card_by_id("desp_homeward_bound"))
         restored = state_from_dict(state_to_dict(state))
 
         ace_shot = next(card for card in restored.players["red"].deck if card.id == "desp_ace_shot_a")

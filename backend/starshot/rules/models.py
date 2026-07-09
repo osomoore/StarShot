@@ -48,7 +48,6 @@ class GameConfig:
     player_ids: tuple[str, ...]
     seed: int | None = None
     debug_start_with_attack_desperation_card: bool = False
-    debug_start_with_split_desperation_cards: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +101,8 @@ class ShipState:
 class PlayerState:
     id: str
     deck: list[Card]
+    hand: list[Card] = field(default_factory=list)
+    discard: list[Card] = field(default_factory=list)
     overheat: list[Card] = field(default_factory=list)
     prepared_orders: OrdersSubmission | None = None
     victory_points: int = 0

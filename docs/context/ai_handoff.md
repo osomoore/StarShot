@@ -54,14 +54,16 @@ Implemented so far:
 - Choose Basic/Desperate face at pick time before loading a desperation card into a stack.
 - Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
 - Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
+- Mini ship cards show pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
 
 Current rules target:
 
 - `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
-- Groups 1 and 2 of the 0.2 migration are complete.
-- The current implementation is still mostly 0.1-shaped, with behavior-preserving card interpretation now split into `backend/starshot/rules/card_effects.py`.
+- Groups 1, 2, and 3 of the 0.2 migration are complete.
+- The current implementation has 0.2-style hand/discard order submission, but still keeps the legacy cooldown/action-card return loop until Group 4.
+- Behavior-preserving card interpretation now lives in `backend/starshot/rules/card_effects.py`, and hand/discard helpers live in `backend/starshot/rules/card_piles.py`.
 - Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
-- Next rules work should start with Group 3: hand/discard economy behind the legacy phase flow.
+- Next rules work should start with Group 4: 0.2 phase flow and cleanup card destinations.
 - Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
 
 Not implemented yet:

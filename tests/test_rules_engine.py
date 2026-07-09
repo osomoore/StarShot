@@ -14,6 +14,7 @@ from starshot.rules import (
     submit_orders,
 )
 from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, bauble_hexes
+from starshot.rules.decks import card_by_id
 from starshot.rules.hex import BOARD_RADIUS, hex_distance
 
 
@@ -24,7 +25,9 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.round_number, 1)
         self.assertEqual(state.phase, GamePhase.GIVE_ORDERS)
         self.assertIn(state.starting_player_id, {"red", "blue"})
-        self.assertEqual(len(state.players["red"].deck), 8)
+        self.assertEqual(len(state.players["red"].deck), 3)
+        self.assertEqual(len(state.players["red"].hand), 5)
+        self.assertEqual(len(state.players["red"].discard), 0)
         self.assertEqual(state.players["red"].ship.shields, 2)
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-11, 0))
         self.assertEqual(state.players["red"].ship.facing, 0)
@@ -66,8 +69,9 @@ class RulesEngineTests(unittest.TestCase):
         state = self._state_with_submitted_orders()
 
         self.assertEqual(state.phase, GamePhase.COOLDOWN)
-        self.assertEqual(len(state.players["red"].deck), 5)
-        self.assertEqual(len(state.players["blue"].deck), 5)
+        self.assertEqual(len(state.players["red"].hand), 0)
+        self.assertEqual(len(state.players["red"].discard), 2)
+        self.assertEqual(len(state.players["blue"].hand), 0)
 
     def test_resolve_advances_action_phases_and_moves_cards(self):
         state = self._state_with_submitted_orders()
@@ -276,6 +280,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "attack_1_a")
         state = submit_orders(
             state,
             "red",
@@ -316,6 +321,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "attack_2_a")
         state = submit_orders(
             state,
             "red",
@@ -363,6 +369,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "attack_1_a", "attack_2_a")
         state = submit_orders(
             state,
             "red",
@@ -414,6 +421,7 @@ class RulesEngineTests(unittest.TestCase):
             {"port_outer_engines", "port_life_support"}
         )
         state.players["red"].ship.damage_taken = 2
+        self._set_hand(state, "blue", "attack_1_a")
         state = submit_orders(
             state,
             "red",
@@ -446,6 +454,7 @@ class RulesEngineTests(unittest.TestCase):
 
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "blue", "attack_1_a", "attack_1_b", "attack_2_a")
         red_orders = OrdersSubmission(
             stacks=(
                 ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a"),)),
@@ -462,6 +471,14 @@ class RulesEngineTests(unittest.TestCase):
         )
         state = submit_orders(state, "red", red_orders)
         return submit_orders(state, "blue", blue_orders)
+
+    def _set_hand(self, state, player_id, *card_ids):
+        player = state.players[player_id]
+        requested = set(card_ids)
+        player.deck = [card for card in player.deck if card.id not in requested]
+        player.discard = [card for card in player.discard if card.id not in requested]
+        player.overheat = [card for card in player.overheat if card.id not in requested]
+        player.hand = [card_by_id(card_id) for card_id in card_ids]
 
 
 if __name__ == "__main__":

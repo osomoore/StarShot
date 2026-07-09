@@ -30,7 +30,6 @@ class CreateGameRequest(BaseModel):
     player_ids: list[str] = Field(min_length=2, max_length=4)
     seed: int | None = None
     debug_start_with_attack_desperation_card: bool = False
-    debug_start_with_split_desperation_cards: bool = False
 
 
 class SubmitOrdersRequest(BaseModel):
@@ -106,7 +105,6 @@ def create_game(request: CreateGameRequest) -> dict:
                 player_ids=tuple(request.player_ids),
                 seed=request.seed,
                 debug_start_with_attack_desperation_card=request.debug_start_with_attack_desperation_card,
-                debug_start_with_split_desperation_cards=request.debug_start_with_split_desperation_cards,
             )
         )
         game_id = get_store().create_game(state)

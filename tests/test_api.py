@@ -27,13 +27,16 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.json()["games"][0]["id"], game_id)
 
+        state = created.json()["state"]
+        red_cards = [card["id"] for card in state["players"]["red"]["hand"]]
+        blue_cards = [card["id"] for card in state["players"]["blue"]["hand"]]
         red_orders = {
             "player_id": "red",
             "orders": {
                 "stacks": [
-                    {"action_number": 1, "seal_mode": "sealed", "cards": [{"card_id": "move_1_a"}]},
-                    {"action_number": 2, "seal_mode": "sealed", "cards": [{"card_id": "move_1_b"}]},
-                    {"action_number": 3, "seal_mode": "overdrive", "cards": [{"card_id": "move_2_a"}]},
+                    {"action_number": 1, "seal_mode": "sealed", "cards": [{"card_id": red_cards[0]}]},
+                    {"action_number": 2, "seal_mode": "sealed", "cards": [{"card_id": red_cards[1]}]},
+                    {"action_number": 3, "seal_mode": "overdrive", "cards": [{"card_id": red_cards[2]}]},
                 ]
             },
         }
@@ -41,21 +44,9 @@ class ApiTests(unittest.TestCase):
             "player_id": "blue",
             "orders": {
                 "stacks": [
-                    {
-                        "action_number": 1,
-                        "seal_mode": "sealed",
-                        "cards": [{"card_id": "attack_1_a", "target_player_id": "red"}],
-                    },
-                    {
-                        "action_number": 2,
-                        "seal_mode": "sealed",
-                        "cards": [{"card_id": "attack_1_b", "target_player_id": "red"}],
-                    },
-                    {
-                        "action_number": 3,
-                        "seal_mode": "sealed",
-                        "cards": [{"card_id": "attack_2_a", "target_player_id": "red"}],
-                    },
+                    {"action_number": 1, "seal_mode": "sealed", "cards": [{"card_id": blue_cards[0]}]},
+                    {"action_number": 2, "seal_mode": "sealed", "cards": [{"card_id": blue_cards[1]}]},
+                    {"action_number": 3, "seal_mode": "sealed", "cards": [{"card_id": blue_cards[2]}]},
                 ]
             },
         }

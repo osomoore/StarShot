@@ -148,7 +148,7 @@ Verification:
 
 ### Group 3: Hand and Discard Economy Behind Legacy Phase Flow
 
-Playable after: yes. Card economy starts feeling like 0.2, while cooldown/overdrive can remain legacy for one group.
+Status: complete. Playable after: yes. Card economy starts feeling like 0.2, while cooldown/overdrive can remain legacy for one group.
 
 - Add `hand` and `discard` to `PlayerState`.
 - Add `card_piles.py`.
@@ -159,6 +159,17 @@ Playable after: yes. Card economy starts feeling like 0.2, while cooldown/overdr
 - Debug builder reads from `player.hand`.
 - Show deck, hand, discard, and overheat counts in the debug UI.
 - Keep cooldown and current post-action card movement temporarily if needed to avoid combining too many changes.
+
+Completed notes:
+
+- Added `hand` and `discard` to `PlayerState`.
+- Added `backend/starshot/rules/card_piles.py` for drawing hands, discarding unused hand cards, and removing submitted cards from hand.
+- New games draw a 5-card hand from the player deck; submitted cards leave hand and unsubmitted hand cards move to discard.
+- Order validation now uses hand cards, not deck cards.
+- Debug UI builder/demo orders use `player.hand` and show deck, hand, discard, and overheat counts.
+- Mini ship cards display pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
+- Removed the split-debug startup option that seeded many desperation cards for immediate testing. Desperation cards gained/debug-seeded into a player pile remain in the deck until drawn.
+- Legacy cooldown and per-action resolved-card destinations remain in place for Group 4.
 
 Likely files:
 

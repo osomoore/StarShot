@@ -602,21 +602,36 @@ select {
 }
 
 .mini-icon {
-  border-radius: 3px;
-  display: inline-block;
+  align-items: center;
+  border-radius: 4px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 900;
   height: 16px;
-  width: 12px;
+  justify-content: center;
+  line-height: 1;
+  width: 16px;
+}
+
+.hand-icon {
+  background: #24794a;
+  border: 1px solid #145432;
 }
 
 .deck-icon {
-  background: #f6faf8;
-  border: 2px solid #2f6f78;
-  box-shadow: 3px 2px 0 #d5e3df;
+  background: #2f6f78;
+  border: 1px solid #18464c;
+}
+
+.discard-icon {
+  background: #5c6663;
+  border: 1px solid #343c3a;
 }
 
 .overheat-icon {
-  background: linear-gradient(180deg, #ffd8a8, #c9433f);
-  border: 2px solid #87312d;
+  background: #c9433f;
+  border: 1px solid #87312d;
 }
 
 .mini-ship-svg-container {
