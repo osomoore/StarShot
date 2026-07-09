@@ -30,6 +30,7 @@ Windows shortcuts:
 Useful direct test command:
 
 ```powershell
+set PYTHONPATH=backend
 python -m unittest discover -s tests
 ```
 
@@ -40,10 +41,10 @@ The local server is expected at `http://127.0.0.1:8000`.
 Implemented so far:
 
 - Create 2 to 4 player games.
-- Build base player decks.
+- Build base player decks (10 cards: 3× Move 1, 4× Move 2, 2× Targeted Attack Aim +1, 1× Targeted Attack Aim +2).
 - Submit hidden orders.
 - Resolve phases from `give_orders` through cleanup.
-- Move ships on an axial hex grid.
+- Move ships on an axial hex grid. Move cards turn first, then move forward in the new facing. No U-Turn on base move cards.
 - Render a radius-12 hex board in the debug UI.
 - Start ships near board corners, 3 hexes in from the corner.
 - Preview all three planned action stacks on the hex board.
@@ -55,42 +56,37 @@ Implemented so far:
 - Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
 - Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
 - Mini ship cards show pile counts in Hand, Deck, Discard, Overheat order with distinct icons.
+- Target picker opens automatically when a Targeted Attack card is placed; skips if the stack already has a target from another card. Auto-fills in 2-player games.
 
-Current rules target:
+Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 7 groups of the 0.2 migration are complete.
 
-- `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
-- Groups 1 through 6 of the 0.2 migration are complete.
-- The current implementation has 0.2-style hand/discard order submission, no cooldown phase, cleanup-time command-card destinations, empty-deck draw behavior, 0.2 base deck/combat math, and overdrive-as-duplicate-orders.
-- Behavior-preserving card interpretation now lives in `backend/starshot/rules/card_effects.py`, and hand/discard/overheat helpers live in `backend/starshot/rules/card_piles.py`.
-- Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
-- Next rules work should start with Group 7: remaining 0.2 core rules.
-- Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
+**Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 
 Not implemented yet:
 
 - Deferred Desperate faces: Hull Repair, Advanced Repair, and All She's Got.
-- Full combat damage/shield rules.
-- Bauble placement/collection scoring details beyond placeholder phase flow.
-- Collision, obstacles, board boundaries, and any rule-specific movement edge cases not yet extracted into code.
 - Real player accounts, sessions, or multiplayer lobby UX.
 - WebSocket/live updates; current UI is manual/poll-style HTTP.
+- Expansion content: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, mission systems.
 
 ## Important Conventions
 
 - Hex coordinates are axial `(q, r)`.
-- Board radius is `12`.
+- Board radius is `14` (code constant `BOARD_RADIUS`).
 - Hex direction indexes live in `backend/starshot/rules/hex.py` and are mirrored in `frontend/debug/static/app.js`.
-- Ship facing should point toward hex faces, not corners.
-- `Turn Left` and `Turn Right` were corrected after visual testing; keep server resolution and JS preview in sync.
-- In 2-player games, attack target selection should default to the only opponent where practical.
-- Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
+- Ship facing points toward hex faces, not corners.
+- Move cards: `turn_left` rotates facing +1 then moves forward; `turn_right` rotates facing -1 (mod 6) then moves forward; `forward` moves straight. No U-Turn.
+- Overdrive duplicates the full order as an immediate copy. It does **not** boost card values.
+- One `overdrive_seals_pending` counter on `PlayerState` reduces the next round's draw by 1 per overdriven stack.
+- Base attack cards require `target_player_id`. Hybrid desperation attack cards on their basic face do not (they pair with a targeted card in the same stack).
+- Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`.
 - Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck during cleanup.
-- Warp Desperate faces are deterministic until a richer UI exists: Homeward Bound warps to the player's start tile, Treasure Hound warps to the nearest active numbered bauble with a nearest-numbered fallback, and Nightjammer warps to the hex behind the highest-VP active opponent using that ship's facing, then matches that facing. Ties use turn order.
+- Warp Desperate faces are deterministic: Homeward Bound warps to the player's start tile, Treasure Hound warps to the nearest active numbered bauble (nearest-numbered fallback), Nightjammer warps to the hex behind the highest-VP active opponent using that ship's facing.
 
 ## Collaboration Notes
 
 - Prefer small working increments that can be tried in the browser.
-- For the 0.2 rules update, land changes by migration group so the game remains playable after each group.
-- Keep commits frequent after coherent milestones.
 - When changing rules, update or add tests first or alongside the change.
+- Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - The debug UI is intentionally a development tool, not final game UX.
+- 84 tests passing as of last session.
