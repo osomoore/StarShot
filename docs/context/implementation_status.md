@@ -2,22 +2,22 @@
 
 ## Current Status
 
-`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. All 7 groups of the 0.2 migration are complete. The implementation now uses the full 0.2 rule set: no cooldown phase, cleanup-time command-card destinations, 0.2 empty-deck draw behavior, 0.2 base deck/combat math, 0.2 overdrive-as-duplicate-orders, 2 VP numbered baubles, Bridge/both-Life-Supports-only ship destruction, automatic desperation consequence, and untargeted forward-line attacks for base attack cards.
+All 7 groups of the 0.2 migration are complete. The implementation uses the full 0.2 rule set.
 
-Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups. Card interpretation has been split into `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
+Recent corrections made after reviewing `docs/rules/rules_0.2.txt` directly:
+
+- **Base deck corrected to 10 cards**: 3× Controlled Move 1, 4× Controlled Move 2, 2× Targeted Attack Aim +1, 1× Targeted Attack Aim +2. Previous implementation had wrong counts (3+4+2+1 was correct but names and `requires_target` were wrong).
+- **Base attack cards are targeted**: All base attack cards (`attack_1_a`, `attack_1_b`, `attack_2_a`) now have `requires_target=True` (default). They are proper Targeted Attack cards that require the player to choose a target.
+- **Move cards turn before moving**: `turn_left` and `turn_right` orientations now rotate the ship first, then move forward in the new facing direction. Previously the ship moved first then turned.
+- **No U-Turn on base move cards**: `orientation_options` default is now `("forward", "turn_left", "turn_right")`. U-turn has been removed from base move cards and from the frontend move picker.
+
+Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. Card interpretation lives in `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
 
 The core desperation-card work is in place for the basic-face flow, plus the normal action-stack Desperate-face slices. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, Warp movement, always-hit/+999 Aim, range-limited damage, attack-all volleys, and single-use return to the shared Desperation deck.
 
-The debug builder now has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack:
+The debug builder has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack.
 
-- Empty stack or Move stack: hybrid cards can choose Basic Move; Basic Attack and Desperate Attack Mod choices are disabled until a targeted attack partner exists.
-- Targeted Attack stack: hybrid cards can choose Basic Attack or their Desperate Attack Mod; Basic Move is disabled.
-- Basic Move desperation choices are forward-only and do not show a direction modal.
-- Desperate Move selections use bright green styling; Desperate Attack selections use bright orange styling.
-- Attack previews show target roll after Aim, with Aim shown in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
-- Warp previews jump to the deterministic server destination: Home, nearest active numbered Bauble, or current VP Leader.
-
-Current focus is the rules 0.2 migration. Especially Desperate abilities should wait unless they become part of a chosen 0.2 migration group.
+Current focus is post-0.2 polish and any remaining UI/rules discrepancies.
 
 ## Recent Commits Of Interest
 
@@ -45,21 +45,22 @@ Current phase progression:
 5. `award_baubles`
 6. `cleanup`
 
-Rules 0.2 migration is complete (all 7 groups). See `docs/context/rules_0.2_migration_plan.md` for the full history.
-
 Movement behavior currently implemented:
 
-- Move cards advance along current facing unless orientation is `u_turn`.
-- `turn_left` and `turn_right` move first, then rotate.
-- `u_turn` rotates in place.
-- `overdrive` duplicates the full stack. Move stacks execute once normally and then once as an immediate copy; both movement events include `overdrive_copy`.
-- Overdriven command cards are routed to overheat during cleanup.
+- Move cards turn first, then move forward in the new facing direction.
+- `turn_left` rotates facing +1, then moves forward X.
+- `turn_right` rotates facing -1 (mod 6), then moves forward X.
+- `forward` moves straight ahead without turning.
+- No U-Turn on base move cards.
+- `overdrive` duplicates the full stack as an immediate copy. Both movement events include `overdrive_copy`. Overdrive does not boost card values — it duplicates the order.
+- Overdriven command cards are routed to overheat during cleanup. One `overdrive_seals_pending` counter per player reduces the next round's draw by 1 per overdriven stack.
 
 Combat behavior currently implemented:
 
-- Base attack cards are Targeted Attack Aim cards. Attack rolls use `2d6`.
+- Base attack cards (`attack_1_a`, `attack_1_b`, `attack_2_a`) are Targeted Attacks and require `target_player_id`.
+- Attack rolls use `2d6`.
 - A volley deals base 1 damage plus `Damage +X` modifiers; multiple base attack cards add Aim but do not add extra base damage.
-- Overdriven attack stacks resolve a normal volley, then an immediate duplicate volley before the next attacker. Volley events include `overdrive_copy`.
+- Overdriven attack stacks resolve a normal volley then an immediate duplicate volley before the next attacker.
 
 ## Debug UI Notes
 
@@ -73,15 +74,18 @@ Current board behavior:
 - Order previews only show during `give_orders` before the selected player submits orders.
 - Preview markers are labeled by action/card slot, e.g. `A1.1`, `A2.1`, `A3.1`.
 - Attack preview bursts are drawn at the shooter location, colored by target player.
-- Order previews use selected face/mode as the effective card family, so Basic Move/Attack and implemented Desperate faces preview movement, damage, target roll, Aim, and always-hit effects.
+- Move preview applies turn-before-move to match backend behavior.
+- Target picker opens automatically when a Targeted Attack card is placed, unless the stack already has a target set from another card.
+- In 2-player games, target auto-fills to the only opponent.
 
 ## Good Next Implementation Candidates
 
-1. Frontend debug UI updates for Group 7 changes (bauble VP labels, ship destruction display, untargeted attack previews).
-2. Start planning post-0.2 features.
+1. Verify move card orientation art/labels match the physical card (Face A = straight, Face B = turn options).
+2. Post-0.2 feature planning.
 
 ## Files To Read Before Rule Work
 
+- `docs/rules/rules_0.2.txt` (canonical — always prefer this over `rules_implementation.md` for 0.2 rules)
 - `docs/rules/rules_implementation.md`
 - `docs/context/rules_0.2_migration_plan.md`
 - `backend/starshot/rules/models.py`
