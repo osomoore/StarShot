@@ -2,14 +2,24 @@ from __future__ import annotations
 
 from random import Random
 
-from starshot.rules.models import (
-    Card,
-    CardFamily,
-    DesperateFace,
-    DesperationDeck,
-    OrderCardSelection,
-    SealMode,
+from starshot.rules.card_effects import (
+    card_aim_bonus,
+    card_always_hits,
+    card_attacks_all,
+    card_damage_bonus,
+    card_defense_bonus,
+    card_fixed_defense_threshold,
+    card_max_range,
+    card_movement_disabled,
+    card_orientation_options,
+    card_requires_target,
+    card_value,
+    card_warp_destination,
+    desperate_face_for,
+    is_desperate_face,
+    selected_card_family,
 )
+from starshot.rules.models import Card, CardFamily, DesperateFace, DesperationDeck
 
 
 # Basic faces of all desperation cards that are in-scope for the first slice.
@@ -95,93 +105,3 @@ def return_desperation_card(deck: DesperationDeck, card: Card) -> None:
     deck.cards.append(card)
     deck.shuffle_marker_on_top = False
 
-
-def is_desperate_face(selection: OrderCardSelection) -> bool:
-    return selection.face == "desperate"
-
-
-def desperate_face_for(card: Card, selection: OrderCardSelection) -> DesperateFace | None:
-    if not is_desperate_face(selection):
-        return None
-    if card.desperate_face is None:
-        raise ValueError(f"Card {card.id} does not have an implemented desperate face.")
-    return card.desperate_face
-
-
-def selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
-    desperate_face = desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.family
-    if card.is_hybrid:
-        if selection.mode == "attack":
-            return CardFamily.ATTACK
-        if selection.mode == "move":
-            return CardFamily.MOVE
-        raise ValueError(f"Hybrid card {card.id} requires a mode selection.")
-    return card.family
-
-
-def card_requires_target(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.requires_target
-    return card.requires_target
-
-
-def card_orientation_options(card: Card, selection: OrderCardSelection) -> tuple[str, ...]:
-    desperate_face = desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.orientation_options
-    return card.orientation_options
-
-
-def card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
-    desperate_face = desperate_face_for(card, selection)
-    if desperate_face is not None:
-        return desperate_face.value
-    return card.value + (1 if seal_mode == SealMode.OVERDRIVE and card.is_base else 0)
-
-
-def card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.aim_bonus if desperate_face is not None else 0
-
-
-def card_damage_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.damage_bonus if desperate_face is not None else 0
-
-
-def card_defense_bonus(card: Card, selection: OrderCardSelection) -> int:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.defense_bonus if desperate_face is not None else 0
-
-
-def card_always_hits(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = desperate_face_for(card, selection)
-    return bool(desperate_face is not None and desperate_face.always_hits)
-
-
-def card_movement_disabled(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = desperate_face_for(card, selection)
-    return bool(desperate_face is not None and desperate_face.movement_disabled)
-
-
-def card_warp_destination(card: Card, selection: OrderCardSelection) -> str | None:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.warp_destination if desperate_face is not None else None
-
-
-def card_max_range(card: Card, selection: OrderCardSelection) -> int | None:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.max_range if desperate_face is not None else None
-
-
-def card_fixed_defense_threshold(card: Card, selection: OrderCardSelection) -> int | None:
-    desperate_face = desperate_face_for(card, selection)
-    return desperate_face.fixed_defense_threshold if desperate_face is not None else None
-
-
-def card_attacks_all(card: Card, selection: OrderCardSelection) -> bool:
-    desperate_face = desperate_face_for(card, selection)
-    return bool(desperate_face is not None and desperate_face.attacks_all)

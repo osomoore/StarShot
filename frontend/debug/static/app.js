@@ -532,7 +532,8 @@ function firstUnresolvedStackIndex(phase) {
 }
 
 function previewCardValue(card, sealMode) {
-  return card.value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
+  const value = card.effect?.value ?? card.value ?? 0;
+  return value + (sealMode === "overdrive" && card.is_base ? 1 : 0);
 }
 
 function previewSelectionMoveDistance(card, stack, cardIndex) {
@@ -945,7 +946,16 @@ function inferCardFromId(cardId) {
   const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
   const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
   const requiresTarget = family === "attack" && !cardId.startsWith("desp_") ? true : cardId.startsWith("desp_targeted_attack");
-  return { id: cardId, name, family, value, is_base: true, requires_target: requiresTarget, is_hybrid: isHybrid };
+  return {
+    id: cardId,
+    name,
+    family,
+    value,
+    is_base: true,
+    requires_target: requiresTarget,
+    is_hybrid: isHybrid,
+    effect: { family, value, requires_target: requiresTarget, is_hybrid: isHybrid },
+  };
 }
 
 function renderOrdersBuilder(game) {
@@ -1058,7 +1068,9 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
 }
 
 function cardNeedsTarget(card) {
-  return Boolean(card?.family === "attack" && card.requires_target !== false);
+  const family = card?.effect?.family ?? card?.family;
+  const requiresTarget = card?.effect?.requires_target ?? card?.requires_target;
+  return Boolean(family === "attack" && requiresTarget !== false);
 }
 
 function selectedFace(card, stack, cardIndex) {
@@ -1078,7 +1090,7 @@ function effectiveCardFamily(card, stack, cardIndex) {
   if (!card) return "";
   if (selectedFace(card, stack, cardIndex) === "desperate") return card.desperate_face?.family || "";
   if (card.is_hybrid) return stack?.modes?.[cardIndex] || "";
-  return card.family;
+  return card.effect?.family ?? card.family;
 }
 
 function stackLockedFamily(stack, cardById, excludingCardIndex = null) {
@@ -1365,7 +1377,7 @@ function moveChoicesForCard(card, stack = null, cardIndex = null) {
   const face = cardIndex === null ? "front" : selectedFace(card, stack, cardIndex);
   const options = face === "desperate"
     ? card.desperate_face?.orientation_options
-    : card.orientation_options;
+    : (card.effect?.orientation_options ?? card.orientation_options);
   if (options && options.length === 1) {
     return [{ value: options[0], label: "Forward", mark: "F" }];
   }

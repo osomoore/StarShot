@@ -2,9 +2,9 @@
 
 ## Current Status
 
-`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. The implementation has not yet migrated to 0.2; it is still mostly based on the earlier 0.1 rules shape.
+`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. Groups 1 and 2 of the 0.2 migration are complete. The implementation has not yet migrated behavior to 0.2; it is still mostly based on the earlier 0.1 rules shape.
 
-Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups and recommends splitting card interpretation and card-zone movement out of `engine.py`.
+Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups. Card interpretation has been split into `backend/starshot/rules/card_effects.py`; card-zone movement still needs the planned `card_piles.py` split.
 
 The core desperation-card work is in place for the basic-face flow, plus the normal action-stack Desperate-face slices. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, Warp movement, always-hit/+999 Aim, range-limited damage, attack-all volleys, and single-use return to the shared Desperation deck.
 
@@ -46,7 +46,7 @@ Current phase progression:
 6. `award_baubles`
 7. `cleanup`
 
-Rules 0.2 will remove `cooldown`, add hand/discard piles, change overdrive to duplicate orders, and change attacks to `2d6` with base 1 damage plus `Damage +X`. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
+Rules 0.2 will remove `cooldown`, add hand/discard piles, change overdrive to duplicate orders, and change attacks to `2d6` with base 1 damage plus `Damage +X`. Group 2 added behavior-preserving card-effect helpers; the current outcomes remain legacy for now. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
 
 Movement behavior currently implemented:
 
@@ -70,11 +70,10 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. Start `rules_0.2_migration_plan.md` Group 1 or Group 2.
-2. Split card interpretation into `backend/starshot/rules/card_effects.py`.
-3. Split card-zone movement into `backend/starshot/rules/card_piles.py`.
-4. Add hand/discard state and make the debug builder use hand cards.
-5. Improve the debug UI with a compact combat log that explains each resolved action.
+1. Start `rules_0.2_migration_plan.md` Group 3.
+2. Split card-zone movement into `backend/starshot/rules/card_piles.py`.
+3. Add hand/discard state and make the debug builder use hand cards.
+4. Improve the debug UI with a compact combat log that explains each resolved action.
 
 ## Files To Read Before Rule Work
 

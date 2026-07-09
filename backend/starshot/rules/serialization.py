@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from starshot.rules.card_effects import static_card_effect_summary
 from starshot.rules.models import (
     ActionStack,
     BaubleState,
@@ -94,6 +95,7 @@ def card_to_dict(card: Card) -> dict:
         "requires_target": card.requires_target,
         "is_hybrid": card.is_hybrid,
         "desperate_face": desperate_face_to_dict(card.desperate_face) if card.desperate_face else None,
+        "effect": static_card_effect_summary(card),
     }
 
 

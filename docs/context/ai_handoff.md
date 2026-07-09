@@ -58,8 +58,10 @@ Implemented so far:
 Current rules target:
 
 - `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
-- The current implementation is still mostly 0.1-shaped.
+- Groups 1 and 2 of the 0.2 migration are complete.
+- The current implementation is still mostly 0.1-shaped, with behavior-preserving card interpretation now split into `backend/starshot/rules/card_effects.py`.
 - Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
+- Next rules work should start with Group 3: hand/discard economy behind the legacy phase flow.
 - Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
 
 Not implemented yet:

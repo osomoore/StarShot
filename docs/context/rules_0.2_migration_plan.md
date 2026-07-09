@@ -94,12 +94,18 @@ Each group should end with `python -m unittest discover -s tests` passing and th
 
 ### Group 1: Documentation Baseline
 
-Playable after: yes. No behavior change.
+Status: complete. Playable after: yes. No behavior change.
 
 - Add or refresh `docs/rules/rules_0.2.txt`.
 - Update `docs/rules/rules_implementation.md` to identify 0.2 as the target and 0.1 as historical.
 - Keep this migration plan current as implementation decisions change.
 - Do not change rules code in this group.
+
+Completed notes:
+
+- `docs/rules/rules_0.2.pdf` and `docs/rules/rules_0.2.txt` are present.
+- `docs/rules/rules_implementation.md` now labels 0.2 as the target and the old 0.1-derived sections as historical context.
+- Next implementation work should start with Group 3.
 
 Verification:
 
@@ -108,13 +114,21 @@ Verification:
 
 ### Group 2: Card Schema and Effect Helpers, Preserve Current Behavior
 
-Playable after: yes. Existing gameplay should behave the same.
+Status: complete. Playable after: yes. Existing gameplay should behave the same.
 
 - Add `card_effects.py`.
 - Add richer card fields or helper return objects for move value, aim bonus, damage bonus, base attack damage, targeting, and orientation options.
 - Route existing engine card interpretation through helper functions.
 - Keep current 0.1-style outcomes for now: `2d12`, summed attack values, `+1` overdrive.
 - Update serialization and frontend tolerance for new card fields without requiring them.
+
+Completed notes:
+
+- Added `backend/starshot/rules/card_effects.py` with structured `MoveDirective`, `AttackContribution`, and `CardEffect` helpers.
+- Routed engine movement and combat interpretation through card-effect helpers while preserving current 0.1-style behavior.
+- Kept `desperation.py` helper exports as compatibility wrappers for existing callers/tests.
+- Added additive serialized card `effect` metadata and debug UI fallbacks for that metadata.
+- Added focused card-effect tests.
 
 Likely files:
 
@@ -302,4 +316,3 @@ Verification:
 6. Run `python -m unittest discover -s tests` before editing if the group is behavioral.
 7. Make the smallest complete group or subgroup that leaves the game playable.
 8. Update this file and `implementation_status.md` if the group status changes.
-

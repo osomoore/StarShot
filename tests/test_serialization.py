@@ -36,6 +36,10 @@ class SerializationTests(unittest.TestCase):
         self.assertIn("component_layout", serialized_ship)
         self.assertEqual(serialized_ship["damage_lanes"]["1"][0], "aft_engines")
 
+        serialized_card = state_to_dict(state)["players"]["red"]["deck"][0]
+        self.assertEqual(serialized_card["effect"]["family"], "move")
+        self.assertEqual(serialized_card["effect"]["value"], 1)
+
     def test_hidden_orders_can_be_suppressed(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=5))
         orders = OrdersSubmission(

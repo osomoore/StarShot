@@ -8,7 +8,14 @@ Source files:
 - Historical implemented baseline text: `docs/rules/rules_0.1.txt`
 - Migration plan: `docs/context/rules_0.2_migration_plan.md`
 
-This document originally converted the prototype 0.1 rules into an implementation baseline. The repository is now planning a migration to rules 0.2. Until this file is fully rewritten for 0.2, treat `docs/context/rules_0.2_migration_plan.md` as the working plan for new rules work and this file as historical implementation context.
+This document originally converted the prototype 0.1 rules into an implementation baseline. The repository is now migrating to rules 0.2. Until this file is fully rewritten for 0.2, treat `docs/context/rules_0.2_migration_plan.md` as the working plan for new rules work and this file as historical implementation context.
+
+Status for rules 0.2:
+
+- Group 1 documentation baseline is complete: the 0.2 PDF and extracted text are present, and this document identifies 0.2 as the current target.
+- The implemented game is still mostly 0.1-shaped.
+- The sections below describe the historical 0.1-derived implementation unless they explicitly mention rules 0.2.
+- Do not use the old round flow, base deck, attack math, overdrive, bauble VP, or ship-destruction rules below as 0.2 requirements. Use the migration plan's grouped 0.2 deltas instead.
 
 ## Core Game
 

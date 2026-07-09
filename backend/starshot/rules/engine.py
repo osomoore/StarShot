@@ -10,29 +10,32 @@ from starshot.rules.baubles import (
     fang_vp_for_round,
     ship_inside_bauble,
 )
+from starshot.rules.card_effects import (
+    card_aim_bonus as _effect_card_aim_bonus,
+    card_always_hits as _effect_card_always_hits,
+    card_attacks_all as _effect_card_attacks_all,
+    card_damage_bonus as _effect_card_damage_bonus,
+    card_defense_bonus as _effect_card_defense_bonus,
+    card_fixed_defense_threshold as _effect_card_fixed_defense_threshold,
+    card_max_range as _effect_card_max_range,
+    card_movement_disabled as _effect_card_movement_disabled,
+    card_orientation_options as _effect_card_orientation_options,
+    card_requires_target as _effect_card_requires_target,
+    card_value as _effect_card_value,
+    card_warp_destination as _effect_card_warp_destination,
+    interpret_card,
+    is_desperate_face,
+    selected_card_family as _effect_selected_card_family,
+)
 from starshot.rules.decks import (
     card_by_id,
     create_base_deck,
 )
 from starshot.rules.desperation import (
     all_desperation_cards,
-    card_aim_bonus as _desperation_card_aim_bonus,
-    card_always_hits as _desperation_card_always_hits,
-    card_attacks_all as _desperation_card_attacks_all,
-    card_damage_bonus as _desperation_card_damage_bonus,
-    card_defense_bonus as _desperation_card_defense_bonus,
-    card_fixed_defense_threshold as _desperation_card_fixed_defense_threshold,
-    card_max_range as _desperation_card_max_range,
-    card_movement_disabled as _desperation_card_movement_disabled,
-    card_orientation_options as _desperation_card_orientation_options,
-    card_requires_target as _desperation_card_requires_target,
-    card_value as _desperation_card_value,
-    card_warp_destination as _desperation_card_warp_destination,
     create_desperation_deck,
     draw_desperation_card,
-    is_desperate_face,
     return_desperation_card,
-    selected_card_family as _desperation_selected_card_family,
 )
 from starshot.rules.hex import (
     clamp_to_board,
@@ -291,55 +294,59 @@ def _is_desperate_face(selection: OrderCardSelection) -> bool:
 
 
 def _selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
-    return _translate_card_error(_desperation_selected_card_family, card, selection)
+    return _translate_card_error(_effect_selected_card_family, card, selection)
 
 
 def _card_requires_target(card: Card, selection: OrderCardSelection) -> bool:
-    return _translate_card_error(_desperation_card_requires_target, card, selection)
+    return _translate_card_error(_effect_card_requires_target, card, selection)
 
 
 def _card_orientation_options(card: Card, selection: OrderCardSelection) -> tuple[str, ...]:
-    return _translate_card_error(_desperation_card_orientation_options, card, selection)
+    return _translate_card_error(_effect_card_orientation_options, card, selection)
 
 
 def _card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
-    return _translate_card_error(_desperation_card_value, card, selection, seal_mode)
+    return _translate_card_error(_effect_card_value, card, selection, seal_mode)
 
 
 def _card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:
-    return _translate_card_error(_desperation_card_aim_bonus, card, selection)
+    return _translate_card_error(_effect_card_aim_bonus, card, selection)
 
 
 def _card_damage_bonus(card: Card, selection: OrderCardSelection) -> int:
-    return _translate_card_error(_desperation_card_damage_bonus, card, selection)
+    return _translate_card_error(_effect_card_damage_bonus, card, selection)
 
 
 def _card_defense_bonus(card: Card, selection: OrderCardSelection) -> int:
-    return _translate_card_error(_desperation_card_defense_bonus, card, selection)
+    return _translate_card_error(_effect_card_defense_bonus, card, selection)
 
 
 def _card_always_hits(card: Card, selection: OrderCardSelection) -> bool:
-    return _translate_card_error(_desperation_card_always_hits, card, selection)
+    return _translate_card_error(_effect_card_always_hits, card, selection)
 
 
 def _card_movement_disabled(card: Card, selection: OrderCardSelection) -> bool:
-    return _translate_card_error(_desperation_card_movement_disabled, card, selection)
+    return _translate_card_error(_effect_card_movement_disabled, card, selection)
 
 
 def _card_warp_destination(card: Card, selection: OrderCardSelection) -> str | None:
-    return _translate_card_error(_desperation_card_warp_destination, card, selection)
+    return _translate_card_error(_effect_card_warp_destination, card, selection)
 
 
 def _card_max_range(card: Card, selection: OrderCardSelection) -> int | None:
-    return _translate_card_error(_desperation_card_max_range, card, selection)
+    return _translate_card_error(_effect_card_max_range, card, selection)
 
 
 def _card_fixed_defense_threshold(card: Card, selection: OrderCardSelection) -> int | None:
-    return _translate_card_error(_desperation_card_fixed_defense_threshold, card, selection)
+    return _translate_card_error(_effect_card_fixed_defense_threshold, card, selection)
 
 
 def _card_attacks_all(card: Card, selection: OrderCardSelection) -> bool:
-    return _translate_card_error(_desperation_card_attacks_all, card, selection)
+    return _translate_card_error(_effect_card_attacks_all, card, selection)
+
+
+def _card_effect(card: Card, selection: OrderCardSelection, seal_mode: SealMode):
+    return _translate_card_error(interpret_card, card, selection, seal_mode)
 
 
 def _resolve_warp_destination(state: GameState, player: PlayerState, destination: str) -> tuple[int, int, int | None]:
@@ -392,30 +399,32 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
     movement_steps: list[dict] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if _selected_card_family(card, selection) != CardFamily.MOVE:
+        effect = _card_effect(card, selection, stack.seal_mode)
+        if effect.family != CardFamily.MOVE or effect.move is None:
             continue
 
-        defense_bonus = _card_defense_bonus(card, selection)
+        move_effect = effect.move
+        defense_bonus = move_effect.defense_bonus
         if defense_bonus:
             player.ship.defense_bonus_this_action += defense_bonus
 
         move_choice = _normalize_move_choice(selection.orientation)
-        orientation_options = _card_orientation_options(card, selection)
+        orientation_options = move_effect.orientation_options
         if move_choice not in orientation_options:
             raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
 
-        distance = _card_value(card, selection, stack.seal_mode)
+        distance = move_effect.distance
         before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
         attempted_q = player.ship.q
         attempted_r = player.ship.r
-        warp_destination = _card_warp_destination(card, selection)
+        warp_destination = move_effect.warp_destination
 
         if warp_destination:
             attempted_q, attempted_r, attempted_facing = _resolve_warp_destination(state, player, warp_destination)
             player.ship.q, player.ship.r = attempted_q, attempted_r
             if attempted_facing is not None:
                 player.ship.facing = attempted_facing
-        elif _card_movement_disabled(card, selection):
+        elif move_effect.movement_disabled:
             pass
         elif move_choice == "forward":
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
@@ -444,7 +453,7 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
                 "card_id": card.id,
                 "face": selection.face,
                 "choice": move_choice,
-                "distance": 0 if move_choice == "u_turn" or _card_movement_disabled(card, selection) or warp_destination else distance,
+                "distance": 0 if move_choice == "u_turn" or move_effect.movement_disabled or warp_destination else distance,
                 "warp_destination": warp_destination,
                 "defense_bonus": defense_bonus,
                 "before": before,
@@ -533,7 +542,8 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
 def _target_player_id_for_attack(stack: ActionStack) -> str | None:
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if _selected_card_family(card, selection) == CardFamily.ATTACK and _card_requires_target(card, selection):
+        effect = _card_effect(card, selection, stack.seal_mode)
+        if effect.family == CardFamily.ATTACK and effect.requires_target:
             return selection.target_player_id
     return None
 
@@ -544,7 +554,8 @@ def _target_player_ids_for_attack(
     stack: ActionStack,
     attack_cards: list[tuple[Card, OrderCardSelection]],
 ) -> list[str]:
-    if any(_card_attacks_all(card, selection) for card, selection in attack_cards):
+    attack_effects = [_card_effect(card, selection, stack.seal_mode) for card, selection in attack_cards]
+    if any(effect.attack is not None and effect.attack.attacks_all for effect in attack_effects):
         return [
             player.id
             for player in state.players.values()
@@ -577,19 +588,21 @@ def _resolve_attack_volley(
         )
         return
 
-    damage = sum(
-        _card_value(card, selection, stack.seal_mode) + _card_damage_bonus(card, selection)
+    attack_effects = [
+        effect.attack
         for card, selection in attack_cards
-    )
-    aim_bonus = sum(_card_aim_bonus(card, selection) for card, selection in attack_cards)
-    always_hits = any(_card_always_hits(card, selection) for card, selection in attack_cards)
+        if (effect := _card_effect(card, selection, stack.seal_mode)).attack is not None
+    ]
+    damage = sum(effect.damage for effect in attack_effects)
+    aim_bonus = sum(effect.aim_bonus for effect in attack_effects)
+    always_hits = any(effect.always_hits for effect in attack_effects)
     distance = hex_distance(attacker.ship.q, attacker.ship.r, target.ship.q, target.ship.r)
     fixed_defense_threshold = next(
-        (threshold for card, selection in attack_cards if (threshold := _card_fixed_defense_threshold(card, selection)) is not None),
+        (effect.fixed_defense_threshold for effect in attack_effects if effect.fixed_defense_threshold is not None),
         None,
     )
     max_range = next(
-        (max_card_range for card, selection in attack_cards if (max_card_range := _card_max_range(card, selection)) is not None),
+        (effect.max_range for effect in attack_effects if effect.max_range is not None),
         None,
     )
     defense_threshold = (
@@ -648,7 +661,8 @@ def _attack_cards_for_stack(stack: ActionStack) -> list[tuple[Card, OrderCardSel
     attack_cards: list[tuple[Card, OrderCardSelection]] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
-        if _selected_card_family(card, selection) == CardFamily.ATTACK:
+        effect = _card_effect(card, selection, stack.seal_mode)
+        if effect.family == CardFamily.ATTACK:
             attack_cards.append((card, selection))
     return attack_cards
 
