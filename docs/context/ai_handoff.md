@@ -55,6 +55,13 @@ Implemented so far:
 - Enforce desperation use-choice constraints in the debug builder: Basic Move in empty/Move stacks, Basic Attack and Desperate Attack Mods only with a targeted attack partner.
 - Preview implemented Desperate movement, Warp destinations, damage, target roll, Aim, and always-hit effects.
 
+Current rules target:
+
+- `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
+- The current implementation is still mostly 0.1-shaped.
+- Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
+- Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
+
 Not implemented yet:
 
 - Deferred Desperate faces: Hull Repair, Advanced Repair, and All She's Got.
@@ -79,6 +86,7 @@ Not implemented yet:
 ## Collaboration Notes
 
 - Prefer small working increments that can be tried in the browser.
+- For the 0.2 rules update, land changes by migration group so the game remains playable after each group.
 - Keep commits frequent after coherent milestones.
 - When changing rules, update or add tests first or alongside the change.
 - The debug UI is intentionally a development tool, not final game UX.

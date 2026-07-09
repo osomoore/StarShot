@@ -2,10 +2,13 @@
 
 Source files:
 
-- Canonical rules PDF: `docs/rules/rules_0.1.pdf`
-- Extracted implementation text: `docs/rules/rules_0.1.txt`
+- Current target rules PDF: `docs/rules/rules_0.2.pdf`
+- Current target extracted text: `docs/rules/rules_0.2.txt`
+- Historical implemented baseline PDF: `docs/rules/rules_0.1.pdf`
+- Historical implemented baseline text: `docs/rules/rules_0.1.txt`
+- Migration plan: `docs/context/rules_0.2_migration_plan.md`
 
-This document converts the prototype rules into an implementation baseline. It is not a replacement for the PDF; it is the contract the first server-side rules engine should follow.
+This document originally converted the prototype 0.1 rules into an implementation baseline. The repository is now planning a migration to rules 0.2. Until this file is fully rewritten for 0.2, treat `docs/context/rules_0.2_migration_plan.md` as the working plan for new rules work and this file as historical implementation context.
 
 ## Core Game
 

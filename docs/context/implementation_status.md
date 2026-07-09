@@ -2,6 +2,10 @@
 
 ## Current Status
 
+`docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`. The implementation has not yet migrated to 0.2; it is still mostly based on the earlier 0.1 rules shape.
+
+Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. It organizes the 0.2 migration into playable groups and recommends splitting card interpretation and card-zone movement out of `engine.py`.
+
 The core desperation-card work is in place for the basic-face flow, plus the normal action-stack Desperate-face slices. The backend recognizes desperation moves, hybrid/basic desperation attacks, and implemented Desperate faces for bonus movement, aim, damage, defense-only movement, Warp movement, always-hit/+999 Aim, range-limited damage, attack-all volleys, and single-use return to the shared Desperation deck.
 
 The debug builder now has Move, Attack, and Desperation picker piles. All non-base desperation cards live in the Desperation pile. Clicking a desperation card opens a use-choice panel before the card is loaded into the stack:
@@ -13,7 +17,7 @@ The debug builder now has Move, Attack, and Desperation picker piles. All non-ba
 - Attack previews show target roll after Aim, with Aim shown in parentheses, e.g. `ROLL 3+ (+5 Aim)`.
 - Warp previews jump to the deterministic server destination: Home, nearest active numbered Bauble, or current VP Leader.
 
-Current focus is the next slice: especially desperate abilities.
+Current focus is the rules 0.2 migration. Especially Desperate abilities should wait unless they become part of a chosen 0.2 migration group.
 
 ## Recent Commits Of Interest
 
@@ -42,6 +46,8 @@ Current phase progression:
 6. `award_baubles`
 7. `cleanup`
 
+Rules 0.2 will remove `cooldown`, add hand/discard piles, change overdrive to duplicate orders, and change attacks to `2d6` with base 1 damage plus `Damage +X`. See `docs/context/rules_0.2_migration_plan.md` for the grouped plan.
+
 Movement behavior currently implemented:
 
 - Move cards advance along current facing unless orientation is `u_turn`.
@@ -64,15 +70,16 @@ Current board behavior:
 
 ## Good Next Implementation Candidates
 
-1. Implement the next concrete combat slice: attack range/arc, shield interaction, or damage markers, depending on the rules doc.
-2. Add board-boundary validation and tests for illegal movement if the rules define it.
-3. Add collision/overlap handling if ships cannot share hexes.
-4. Improve the debug UI with a compact combat log that explains each resolved action.
-5. Add API/UI support to reload and continue an existing game cleanly after server restart.
+1. Start `rules_0.2_migration_plan.md` Group 1 or Group 2.
+2. Split card interpretation into `backend/starshot/rules/card_effects.py`.
+3. Split card-zone movement into `backend/starshot/rules/card_piles.py`.
+4. Add hand/discard state and make the debug builder use hand cards.
+5. Improve the debug UI with a compact combat log that explains each resolved action.
 
 ## Files To Read Before Rule Work
 
 - `docs/rules/rules_implementation.md`
+- `docs/context/rules_0.2_migration_plan.md`
 - `backend/starshot/rules/models.py`
 - `backend/starshot/rules/engine.py`
 - `backend/starshot/rules/hex.py`
