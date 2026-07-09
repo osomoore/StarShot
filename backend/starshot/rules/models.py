@@ -6,7 +6,6 @@ from enum import StrEnum
 
 class GamePhase(StrEnum):
     GIVE_ORDERS = "give_orders"
-    COOLDOWN = "cooldown"
     ACTION_1 = "action_1"
     ACTION_2 = "action_2"
     ACTION_3 = "action_3"

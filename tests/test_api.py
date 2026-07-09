@@ -57,11 +57,11 @@ class ApiTests(unittest.TestCase):
 
         second_submit = self.client.post(f"/api/games/{game_id}/orders", json=blue_orders)
         self.assertEqual(second_submit.status_code, 200)
-        self.assertEqual(second_submit.json()["state"]["phase"], "cooldown")
+        self.assertEqual(second_submit.json()["state"]["phase"], "action_1")
 
         resolved = self.client.post(f"/api/games/{game_id}/resolve")
         self.assertEqual(resolved.status_code, 200)
-        self.assertEqual(resolved.json()["state"]["phase"], "action_1")
+        self.assertEqual(resolved.json()["state"]["phase"], "action_2")
 
         shown = self.client.get(f"/api/games/{game_id}")
         self.assertEqual(shown.status_code, 200)

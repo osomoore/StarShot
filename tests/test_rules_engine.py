@@ -65,31 +65,28 @@ class RulesEngineTests(unittest.TestCase):
         with self.assertRaises(RulesError):
             submit_orders(state, "red", orders)
 
-    def test_orders_advance_to_cooldown_when_all_players_submit(self):
+    def test_orders_advance_to_action_one_when_all_players_submit(self):
         state = self._state_with_submitted_orders()
 
-        self.assertEqual(state.phase, GamePhase.COOLDOWN)
+        self.assertEqual(state.phase, GamePhase.ACTION_1)
         self.assertEqual(len(state.players["red"].hand), 0)
         self.assertEqual(len(state.players["red"].discard), 2)
         self.assertEqual(len(state.players["blue"].hand), 0)
 
-    def test_resolve_advances_action_phases_and_moves_cards(self):
+    def test_resolve_advances_action_phases_and_moves_cards_at_cleanup(self):
         state = self._state_with_submitted_orders()
 
         state = resolve_next_step(state)
-        self.assertEqual(state.phase, GamePhase.ACTION_1)
-
-        state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.ACTION_2)
-        self.assertIn("move_1_a", {card.id for card in state.players["red"].deck})
-        self.assertIn("attack_1_a", {card.id for card in state.players["blue"].deck})
+        self.assertNotIn("move_1_a", {card.id for card in state.players["red"].discard})
+        self.assertNotIn("attack_1_a", {card.id for card in state.players["blue"].discard})
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.ACTION_3)
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.AWARD_BAUBLES)
-        self.assertIn("move_2_a", {card.id for card in state.players["red"].overheat})
+        self.assertNotIn("move_2_a", {card.id for card in state.players["red"].overheat})
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.CLEANUP)
@@ -98,6 +95,58 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.phase, GamePhase.GIVE_ORDERS)
         self.assertEqual(state.round_number, 2)
         self.assertIsNone(state.players["red"].prepared_orders)
+        red_moves = [
+            event for event in state.event_log
+            if event["type"] == "action_cards_moved" and event["player_id"] == "red"
+        ]
+        blue_moves = [
+            event for event in state.event_log
+            if event["type"] == "action_cards_moved" and event["player_id"] == "blue"
+        ]
+        self.assertIn("move_1_a", red_moves[0]["moved_to_discard"])
+        self.assertIn("attack_1_a", blue_moves[0]["moved_to_discard"])
+        self.assertIn("move_2_a", red_moves[2]["moved_to_overheat"])
+
+    def test_overheated_cards_wait_until_deck_exhausts(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.CLEANUP
+        red = state.players["red"]
+        red.deck = [
+            card_by_id("move_1_a"),
+            card_by_id("move_1_b"),
+            card_by_id("move_2_b"),
+            card_by_id("move_2_c"),
+            card_by_id("attack_1_a"),
+        ]
+        red.hand = []
+        red.discard = [card_by_id("attack_1_b")]
+        red.overheat = [card_by_id("move_2_a")]
+
+        state = resolve_next_step(state)
+        red = state.players["red"]
+
+        self.assertEqual({card.id for card in red.hand}, {"move_1_a", "move_1_b", "move_2_b", "move_2_c", "attack_1_a"})
+        self.assertEqual([card.id for card in red.overheat], ["move_2_a"])
+        self.assertEqual([card.id for card in red.discard], ["attack_1_b"])
+
+    def test_deck_exhaustion_shuffles_discard_then_moves_overheat_to_discard(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.CLEANUP
+        red = state.players["red"]
+        red.deck = []
+        red.hand = []
+        red.discard = [card_by_id("move_1_a")]
+        red.overheat = [card_by_id("move_2_a")]
+
+        state = resolve_next_step(state)
+        red = state.players["red"]
+
+        self.assertEqual({card.id for card in red.hand}, {"move_1_a", "move_2_a"})
+        self.assertEqual(red.overheat, [])
+        self.assertEqual(red.discard, [])
+        refresh = [event for event in state.event_log if event["type"] == "deck_refreshed" and event["player_id"] == "red"][0]
+        self.assertEqual(refresh["reshuffled_discard"], ["move_1_a", "move_2_a"])
+        self.assertEqual(refresh["moved_overheat_to_discard"], ["move_2_a"])
 
     def test_movement_resolves_from_move_orientation(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -118,7 +167,6 @@ class RulesEngineTests(unittest.TestCase):
         state = submit_orders(state, "red", red_orders)
         state = submit_orders(state, "blue", blue_orders)
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
         self.assertEqual(state.players["red"].ship.facing, 5)
@@ -156,7 +204,6 @@ class RulesEngineTests(unittest.TestCase):
         state = submit_orders(state, "red", red_orders)
         state = submit_orders(state, "blue", blue_orders)
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (14, 0))
@@ -305,7 +352,6 @@ class RulesEngineTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         self.assertEqual(state.players["red"].ship.shields, 1)
         self.assertEqual(state.players["red"].ship.damage_taken, 0)
@@ -346,7 +392,6 @@ class RulesEngineTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         self.assertEqual(state.players["red"].ship.damage_taken, 3)
         self.assertEqual(
@@ -354,7 +399,7 @@ class RulesEngineTests(unittest.TestCase):
             {"port_outer_engines", "port_shields", "port_life_support"},
         )
         self.assertEqual(state.players["blue"].victory_points, 1)
-        self.assertIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
+        self.assertNotIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
         volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
         self.assertEqual(volley["damage_rolls"], [2, 5, 2])
         self.assertEqual(
@@ -401,7 +446,6 @@ class RulesEngineTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
         self.assertEqual(len(volleys), 1)
@@ -445,7 +489,6 @@ class RulesEngineTests(unittest.TestCase):
             ),
         )
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         self.assertTrue(state.players["red"].ship.destroyed)

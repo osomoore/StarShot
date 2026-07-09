@@ -259,7 +259,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)  # cooldown
         state = resolve_next_step(state)  # action_1
 
         consequence_events = [e for e in state.event_log if e["type"] == "desperation_consequence"]
@@ -313,7 +312,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)  # cooldown
         state = resolve_next_step(state)  # action_1
 
         consequence_events = [e for e in state.event_log if e["type"] == "desperation_consequence"]
@@ -458,8 +456,8 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
                 ),
             )
 
-    def test_desperation_card_not_boosted_by_overdrive(self):
-        """Desperation move card played with overdrive keeps value=1 and returns to deck (not overheat)."""
+    def test_desperation_basic_face_not_boosted_by_overdrive(self):
+        """Desperation move card played with overdrive keeps value=1."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "desp_thrust_ions_a")
 
@@ -480,11 +478,8 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)  # cooldown
         state = resolve_next_step(state)  # action_1
 
-        # Desperation card should return to deck, NOT go to overheat
-        self.assertIn("desp_thrust_ions_a", {c.id for c in state.players["red"].deck})
         self.assertNotIn("desp_thrust_ions_a", {c.id for c in state.players["red"].overheat})
 
         # Check movement distance was 1 (not boosted to 2)
@@ -492,6 +487,9 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
                            and e["player_id"] == "red"]
         if movement_events:
             self.assertEqual(movement_events[0]["steps"][0]["distance"], 1)
+        state = self._resolve_through_cleanup(state)
+        moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
+        self.assertIn("desp_thrust_ions_a", moved["moved_to_overheat"])
 
     def test_desperate_move_uses_single_use_face_and_returns_to_desperation_deck(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -518,11 +516,11 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         movement_events = [e for e in state.event_log if e["type"] == "movement_resolved"
                            and e["player_id"] == "red"]
         self.assertEqual(movement_events[0]["steps"][0]["distance"], 5)
+        state = self._resolve_through_cleanup(state)
         self.assertNotIn("desp_thrust_ions_a", {c.id for c in state.players["red"].deck})
         self.assertIn("desp_thrust_ions_a", {c.id for c in state.desperation_deck.cards})
         self.assertEqual(len(state.desperation_deck.cards), desperation_deck_size_before + 1)
@@ -550,7 +548,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
@@ -586,7 +583,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-11, 0))
@@ -628,7 +624,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (2, 0))
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
@@ -664,12 +659,12 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (4, -1))
         self.assertEqual(state.players["red"].ship.facing, 1)
         self.assertEqual(state.players["red"].ship.movement_this_action, 0)
         self.assertEqual(state.players["red"].ship.defense_bonus_this_action, 5)
+        state = self._resolve_through_cleanup(state)
         self.assertNotIn("desp_nightjammer", {c.id for c in state.players["red"].deck})
         self.assertIn("desp_nightjammer", {c.id for c in state.desperation_deck.cards})
         self.assertEqual(len(state.desperation_deck.cards), desperation_deck_size_before + 1)
@@ -706,12 +701,12 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
         self.assertEqual(volley["aim_bonus"], 2)
         self.assertEqual(volley["damage"], 2)
         self.assertEqual(volley["roll_total"], volley["roll"] + 2)
+        state = self._resolve_through_cleanup(state)
         moved = [e for e in state.event_log if e["type"] == "action_cards_moved"
                  and e["player_id"] == "red"][0]
         self.assertIn("desp_steady_shot_a", moved["returned_to_desperation_deck"])
@@ -747,7 +742,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
@@ -786,12 +780,12 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
         )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
         self.assertEqual(volley["damage"], 4)
         self.assertEqual(volley["max_range"], 2)
         self.assertTrue(volley["in_range"])
+        state = self._resolve_through_cleanup(state)
         moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
         self.assertIn("desp_self_destruct", moved["returned_to_desperation_deck"])
 
@@ -823,7 +817,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )),
         )
 
-        state = resolve_next_step(state)
         state = resolve_next_step(state)
 
         volley = [e for e in state.event_log if e["type"] == "volley_resolved"][0]
@@ -860,7 +853,6 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             )
 
         state = resolve_next_step(state)
-        state = resolve_next_step(state)
 
         volleys = [e for e in state.event_log if e["type"] == "volley_resolved"]
         self.assertEqual({volley["target_id"] for volley in volleys}, {"blue", "green"})
@@ -869,8 +861,14 @@ class DesperationDeckGameIntegrationTests(unittest.TestCase):
             self.assertEqual(volley["damage"], 1)
             self.assertEqual(volley["fixed_defense_threshold"], 10)
             self.assertEqual(volley["defense_threshold"], 10)
+        state = self._resolve_through_cleanup(state)
         moved = [e for e in state.event_log if e["type"] == "action_cards_moved" and e["player_id"] == "red"][0]
         self.assertIn("desp_death_blossom", moved["returned_to_desperation_deck"])
+
+    def _resolve_through_cleanup(self, state):
+        while state.phase != GamePhase.CLEANUP:
+            state = resolve_next_step(state)
+        return resolve_next_step(state)
 
     def _set_hand(self, state, player_id, *card_ids):
         player = state.players[player_id]

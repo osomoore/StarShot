@@ -12,8 +12,8 @@ This document originally converted the prototype 0.1 rules into an implementatio
 
 Status for rules 0.2:
 
-- Group 1 documentation baseline is complete: the 0.2 PDF and extracted text are present, and this document identifies 0.2 as the current target.
-- The implemented game is still mostly 0.1-shaped.
+- Groups 1 through 4 of the 0.2 migration are complete: documentation baseline, card-effect interpretation helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, and empty-deck draw behavior.
+- The implemented game is still partially 0.1-shaped: base deck composition, combat math, and overdrive behavior still need later migration groups.
 - The sections below describe the historical 0.1-derived implementation unless they explicitly mention rules 0.2.
 - Do not use the old round flow, base deck, attack math, overdrive, bauble VP, or ship-destruction rules below as 0.2 requirements. Use the migration plan's grouped 0.2 deltas instead.
 

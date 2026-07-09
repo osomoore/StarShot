@@ -59,11 +59,11 @@ Implemented so far:
 Current rules target:
 
 - `docs/rules/rules_0.2.pdf` has been added and extracted to `docs/rules/rules_0.2.txt`.
-- Groups 1, 2, and 3 of the 0.2 migration are complete.
-- The current implementation has 0.2-style hand/discard order submission, but still keeps the legacy cooldown/action-card return loop until Group 4.
-- Behavior-preserving card interpretation now lives in `backend/starshot/rules/card_effects.py`, and hand/discard helpers live in `backend/starshot/rules/card_piles.py`.
+- Groups 1 through 4 of the 0.2 migration are complete.
+- The current implementation has 0.2-style hand/discard order submission, no cooldown phase, cleanup-time command-card destinations, and empty-deck draw behavior.
+- Behavior-preserving card interpretation now lives in `backend/starshot/rules/card_effects.py`, and hand/discard/overheat helpers live in `backend/starshot/rules/card_piles.py`.
 - Use `docs/context/rules_0.2_migration_plan.md` before making rules changes. It groups the 0.2 migration into playable checkpoints and lists the files/tests likely needed for each group.
-- Next rules work should start with Group 4: 0.2 phase flow and cleanup card destinations.
+- Next rules work should start with Group 5: base deck and combat math.
 - Expansion content in 0.2 is out of scope for now: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, and mission systems.
 
 Not implemented yet:
@@ -84,7 +84,7 @@ Not implemented yet:
 - `Turn Left` and `Turn Right` were corrected after visual testing; keep server resolution and JS preview in sync.
 - In 2-player games, attack target selection should default to the only opponent where practical.
 - Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`; validation uses the selected mode as the card's effective family.
-- Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck after resolution.
+- Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck during cleanup.
 - Warp Desperate faces are deterministic until a richer UI exists: Homeward Bound warps to the player's start tile, Treasure Hound warps to the nearest active numbered bauble with a nearest-numbered fallback, and Nightjammer warps to the hex behind the highest-VP active opponent using that ship's facing, then matches that facing. Ties use turn order.
 
 ## Collaboration Notes

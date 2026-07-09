@@ -191,19 +191,21 @@ Verification:
 
 ### Group 4: 0.2 Phase Flow and Cleanup Card Destinations
 
-Playable after: yes. This group fully replaces the old cooldown/card-return loop.
+Status: complete. Playable after: yes. This group fully replaces the old cooldown/card-return loop.
 
-- Remove `GamePhase.COOLDOWN` from normal flow.
+Implemented:
+
+- Removed `GamePhase.COOLDOWN` from normal flow.
 - All players submitted -> `action_1`.
-- Remove or retire `_resolve_cooldown`.
-- Move resolved cards at cleanup, not immediately after each action, unless a small resolved-card bookkeeping structure is introduced.
+- Retired `_resolve_cooldown`.
+- Moved resolved command-card destinations to cleanup. `prepared_orders` acts as the round's play area until cleanup.
 - Cleanup destinations:
   - sealed/basic command cards -> discard
   - overdriven command cards -> overheat
   - desperate-face cards -> bottom of shared Desperation deck
-  - modeled overdrive seal card effect -> top of player's deck, if represented
-- Start the next round by drawing the next hand.
-- Implement empty-deck draw behavior: shuffle discard into deck, then move overheat to discard, then continue drawing.
+  - modeled overdrive seal card effect -> skipped for now because seal cards are not represented as player cards
+- Starts the next round by drawing the next hand.
+- Implements empty-deck draw behavior: shuffle discard into deck, then move overheat to discard, then continue drawing.
 
 Likely files:
 
@@ -219,6 +221,7 @@ Verification:
 - Phase sequence contains no cooldown.
 - Overheated cards are not available next round unless the deck exhausts.
 - Cleanup leaves players ready for a new `give_orders` hand.
+- `python -m unittest discover -s tests` passes.
 
 ### Group 5: Base Deck and Combat Math
 

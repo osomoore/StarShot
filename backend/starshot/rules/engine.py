@@ -168,7 +168,7 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
     )
 
     if all(p.prepared_orders is not None or p.eliminated for p in next_state.players.values()):
-        next_state.phase = GamePhase.COOLDOWN
+        next_state.phase = GamePhase.ACTION_1
         next_state.event_log.append({"type": "phase_changed", "phase": next_state.phase})
 
     return next_state
@@ -187,9 +187,7 @@ def resolve_next_step(state: GameState) -> GameState:
         raise RulesError("Cannot resolve a completed game.")
 
     next_state = deepcopy(state)
-    if next_state.phase == GamePhase.COOLDOWN:
-        _resolve_cooldown(next_state)
-    elif next_state.phase in ACTION_PHASES:
+    if next_state.phase in ACTION_PHASES:
         _resolve_action_phase(next_state)
     elif next_state.phase == GamePhase.AWARD_BAUBLES:
         _resolve_award_baubles(next_state)
@@ -211,24 +209,6 @@ def is_game_over(state: GameState) -> GameResult | None:
         winners = tuple(player.id for player in state.players.values() if player.victory_points == top_vp)
         return GameResult(winner_ids=winners, reason="round_six_victory_points", is_tie=len(winners) > 1)
     return None
-
-
-def _resolve_cooldown(state: GameState) -> None:
-    for player in state.players.values():
-        if not player.overheat:
-            continue
-        cooled_ids = [card.id for card in player.overheat]
-        player.deck.extend(player.overheat)
-        player.overheat = []
-        state.event_log.append(
-            {
-                "type": "cards_cooled",
-                "round": state.round_number,
-                "player_id": player.id,
-                "card_ids": cooled_ids,
-            }
-        )
-    _change_phase(state, GamePhase.ACTION_1)
 
 
 def _resolve_action_phase(state: GameState) -> None:
@@ -266,12 +246,6 @@ def _resolve_action_phase(state: GameState) -> None:
         _resolve_stack_movement(state, player, action_number, stack)
 
     _resolve_combat(state, action_number, revealed_stacks)
-
-    for player_id in _player_order_from_starting_player(state):
-        player = state.players[player_id]
-        stack = revealed_stacks.get(player_id)
-        if stack is not None:
-            _move_resolved_stack_cards(state, player, action_number, stack)
 
     _change_phase(state, NEXT_PHASE[state.phase])
 
@@ -475,7 +449,7 @@ def _resolve_stack_movement(state: GameState, player: PlayerState, action_number
 
 
 def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
-    returned: list[str] = []
+    discarded: list[str] = []
     overheated: list[str] = []
     returned_to_desperation_deck: list[str] = []
     for selection in stack.cards:
@@ -483,21 +457,21 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
         if _is_desperate_face(selection):
             return_desperation_card(state.desperation_deck, card)
             returned_to_desperation_deck.append(card.id)
-        elif stack.seal_mode == SealMode.OVERDRIVE and card.is_base:
+        elif stack.seal_mode == SealMode.OVERDRIVE:
             player.overheat.append(card)
             overheated.append(card.id)
         else:
-            player.deck.append(card)
-            returned.append(card.id)
+            player.discard.append(card)
+            discarded.append(card.id)
 
-    if returned or overheated or returned_to_desperation_deck:
+    if discarded or overheated or returned_to_desperation_deck:
         state.event_log.append(
             {
                 "type": "action_cards_moved",
                 "round": state.round_number,
                 "player_id": player.id,
                 "action_number": action_number,
-                "returned_to_deck": returned,
+                "moved_to_discard": discarded,
                 "moved_to_overheat": overheated,
                 "returned_to_desperation_deck": returned_to_desperation_deck,
             }
@@ -779,6 +753,12 @@ def _make_rng(state: GameState) -> Random:
     return rng
 
 
+def _shuffle_cards(state: GameState, cards: list[Card]) -> None:
+    rng = _make_rng(state)
+    rng.shuffle(cards)
+    state.rng_step += len(cards)
+
+
 def _roll_2d12(state: GameState) -> int:
     rng = _make_rng(state)
     first = rng.randint(1, 12)
@@ -881,6 +861,8 @@ def _resolve_cleanup(state: GameState) -> None:
         return
 
     for player in state.players.values():
+        if player.prepared_orders is not None:
+            _move_resolved_order_cards(state, player)
         player.prepared_orders = None
         player.ship.movement_this_action = 0
         player.ship.defense_bonus_this_action = 0
@@ -890,14 +872,29 @@ def _resolve_cleanup(state: GameState) -> None:
     for player in state.players.values():
         if player.eliminated:
             continue
-        drawn = draw_hand(player)
-        if drawn:
+        draw_result = draw_hand(player, shuffle_cards=lambda cards: _shuffle_cards(state, cards))
+        if draw_result.reshuffled_discard or draw_result.moved_overheat_to_discard:
+            state.event_log.append(
+                {
+                    "type": "deck_refreshed",
+                    "round": state.round_number,
+                    "player_id": player.id,
+                    "reshuffled_discard": [card.id for card in draw_result.reshuffled_discard],
+                    "moved_overheat_to_discard": [
+                        card.id for card in draw_result.moved_overheat_to_discard
+                    ],
+                    "deck_count": len(player.deck),
+                    "discard_count": len(player.discard),
+                    "overheat_count": len(player.overheat),
+                }
+            )
+        if draw_result.drawn:
             state.event_log.append(
                 {
                     "type": "hand_drawn",
                     "round": state.round_number,
                     "player_id": player.id,
-                    "card_ids": [card.id for card in drawn],
+                    "card_ids": [card.id for card in draw_result.drawn],
                     "deck_count": len(player.deck),
                     "hand_count": len(player.hand),
                     "discard_count": len(player.discard),
@@ -911,6 +908,12 @@ def _resolve_cleanup(state: GameState) -> None:
         }
     )
     _change_phase(state, GamePhase.GIVE_ORDERS)
+
+
+def _move_resolved_order_cards(state: GameState, player: PlayerState) -> None:
+    assert player.prepared_orders is not None
+    for stack in player.prepared_orders.stacks:
+        _move_resolved_stack_cards(state, player, stack.action_number, stack)
 
 
 def _round_completion_result(state: GameState) -> GameResult | None:
