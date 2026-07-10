@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StarShot Debug</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=action-log-2" />
   </head>
   <body>
     <main class="app-shell">
@@ -21,12 +21,13 @@
       </header>
 
       <section class="workspace">
-        <aside class="sidebar" aria-label="Saved games">
+        <aside class="sidebar" aria-label="Action log">
           <div class="panel-header">
-            <h2>Games</h2>
+            <h2>Action Log</h2>
             <span id="gameCount">0</span>
           </div>
-          <div id="gamesList" class="games-list"></div>
+          <div id="actionLog" class="action-log"></div>
+          <div id="gamesList" class="games-list legacy-games-list" hidden></div>
         </aside>
 
         <section class="inspector" aria-label="Game inspector">
@@ -130,6 +131,6 @@
         </section>
       </section>
     </main>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=action-log-2"></script>
   </body>
 </html>

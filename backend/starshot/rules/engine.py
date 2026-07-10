@@ -170,6 +170,23 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
             "round": next_state.round_number,
             "player_id": player_id,
             "stack_count": len(orders.stacks),
+            "stacks": [
+                {
+                    "action_number": stack.action_number,
+                    "seal_mode": stack.seal_mode,
+                    "cards": [
+                        {
+                            "card_id": selection.card_id,
+                            "face": selection.face,
+                            "orientation": selection.orientation,
+                            "target_player_id": selection.target_player_id,
+                            "mode": selection.mode,
+                        }
+                        for selection in stack.cards
+                    ],
+                }
+                for stack in orders.stacks
+            ],
         }
     )
 

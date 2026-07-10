@@ -97,14 +97,18 @@ select {
 .workspace {
   align-items: start;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   min-height: calc(100vh - 82px);
 }
 
 .sidebar {
   background: #ffffff;
   border-right: 1px solid #d4d8d4;
+  height: calc(100vh - 82px);
+  overflow: auto;
   padding: 16px;
+  position: sticky;
+  top: 0;
 }
 
 .panel-header {
@@ -137,6 +141,61 @@ select {
 
 .game-row small {
   color: #5c6765;
+}
+
+.legacy-games-list,
+#gamesList[hidden] {
+  display: none !important;
+}
+
+.action-log {
+  display: grid;
+  gap: 10px;
+}
+
+.action-log-empty {
+  color: #66716f;
+  font-size: 0.92rem;
+}
+
+.action-log-item {
+  border: 1px solid #d4d8d4;
+  border-left: 4px solid #8b9693;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.action-log-item.orders {
+  border-left-color: #2f6f78;
+}
+
+.action-log-item.hit {
+  border-left-color: #c9433f;
+}
+
+.action-log-item.miss {
+  border-left-color: #8b9693;
+}
+
+.action-log-item.award {
+  border-left-color: #c49b22;
+}
+
+.action-log-kicker {
+  color: #66716f;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.action-log-body {
+  color: #43504d;
+  display: grid;
+  font-size: 0.82rem;
+  gap: 3px;
+  line-height: 1.35;
 }
 
 .inspector {

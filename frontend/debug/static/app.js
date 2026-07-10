@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   games: [],
   selectedGameId: null,
   selectedState: null,
@@ -67,7 +67,7 @@ const START_CORNER_DIRECTIONS = [3, 0, 2, 5];
 const elements = {
   createButton: document.querySelector("#createButton"),
   refreshButton: document.querySelector("#refreshButton"),
-  gamesList: document.querySelector("#gamesList"),
+  actionLog: document.querySelector("#actionLog") || document.querySelector("#gamesList"),
   gameCount: document.querySelector("#gameCount"),
   selectedGameId: document.querySelector("#selectedGameId"),
   roundValue: document.querySelector("#roundValue"),
@@ -213,6 +213,7 @@ async function submitOrders(playerId, orders) {
     method: "POST",
     body: JSON.stringify({ player_id: playerId, orders }),
   });
+  elements.revealOrdersToggle.checked = true;
   state.selectedState = payload.state;
   await refreshGames();
 }
@@ -685,21 +686,10 @@ function demoCardSelection(card, actionNumber, attackTargetId) {
 }
 
 function renderGames() {
-  elements.gameCount.textContent = state.games.length.toString();
-  elements.gamesList.replaceChildren(
-    ...state.games.map((game) => {
-      const button = document.createElement("button");
-      button.className = "game-row";
-      if (game.id === state.selectedGameId) button.classList.add("selected");
-      button.type = "button";
-      button.innerHTML = `
-        <span>${game.id.slice(0, 8)}</span>
-        <small>Round ${game.round_number} · ${game.phase}</small>
-      `;
-      button.addEventListener("click", () => selectGame(game.id));
-      return button;
-    }),
-  );
+  const events = state.selectedState?.event_log || [];
+  elements.gameCount.textContent = events.length.toString();
+  if (!elements.actionLog) return;
+  elements.actionLog.replaceChildren(...actionLogItems(state.selectedState));
 }
 
 function renderAll() {
@@ -721,6 +711,110 @@ function renderAll() {
   renderPlayers(game);
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
+}
+
+function actionLogItems(game) {
+  const events = game?.event_log || [];
+  if (!events.length) {
+    const empty = document.createElement("div");
+    empty.className = "action-log-empty";
+    empty.textContent = "No actions yet.";
+    return [empty];
+  }
+  return events.map((event) => {
+    const item = document.createElement("article");
+    item.className = `action-log-item ${actionLogTone(event)}`;
+    item.innerHTML = `
+      <div class="action-log-kicker">${actionLogKicker(event)}</div>
+      <strong>${actionLogTitle(event)}</strong>
+      <div class="action-log-body">${actionLogBody(event)}</div>
+    `;
+    return item;
+  });
+}
+
+function actionLogTone(event) {
+  if (event.type === "volley_resolved") return event.hit ? "hit" : "miss";
+  if (event.type === "bauble_awarded") return "award";
+  if (event.type === "orders_submitted" || event.type === "action_revealed") return "orders";
+  return "";
+}
+
+function actionLogKicker(event) {
+  const round = event.round ? `Round ${event.round}` : "Game";
+  const action = event.action_number ? ` Action ${event.action_number}` : "";
+  return `${round}${action}`;
+}
+
+function actionLogTitle(event) {
+  if (event.type === "orders_submitted") return `${titleCase(event.player_id)} submitted orders`;
+  if (event.type === "action_revealed") return `${titleCase(event.player_id)} revealed Action ${event.action_number}`;
+  if (event.type === "movement_resolved") return `${titleCase(event.player_id)} moved`;
+  if (event.type === "volley_resolved") return `${titleCase(event.attacker_id)} ${event.hit ? "hit" : "missed"} ${titleCase(event.target_id)}`;
+  if (event.type === "bauble_awarded") return `${event.bauble?.is_fang ? "Fang" : `Bauble ${event.bauble?.number}`} awarded`;
+  if (event.type === "baubles_awarded") return "No baubles awarded";
+  if (event.type === "phase_changed") return `Phase: ${event.phase}`;
+  if (event.type === "hand_discarded") return `${titleCase(event.player_id)} discarded hand`;
+  if (event.type === "action_cards_moved") return `${titleCase(event.player_id)} cleared action cards`;
+  return titleCase((event.type || "event").replaceAll("_", " "));
+}
+
+function actionLogBody(event) {
+  if (event.type === "orders_submitted") {
+    return orderStacksSummary(event.stacks || []);
+  }
+  if (event.type === "action_revealed") {
+    return `<span>${titleCase(event.seal_mode || "sealed")}</span>${cardSelectionsSummary(event.cards || [])}`;
+  }
+  if (event.type === "movement_resolved") {
+    return (event.steps || []).map((step) => {
+      const before = step.before || {};
+      const after = step.after || {};
+      const mode = step.overdrive_copy ? "Overdrive copy" : "Move";
+      return `<span>${mode}: ${step.card_id} (${before.q}, ${before.r}) -> (${after.q}, ${after.r})</span>`;
+    }).join("");
+  }
+  if (event.type === "volley_resolved") {
+    const hitText = event.hit ? `${event.damage_applied} damage` : "miss";
+    const overdrive = event.overdrive_copy ? "Overdrive copy, " : "";
+    return `<span>${overdrive}${event.roll}+${event.aim_bonus} vs ${event.defense_threshold}: ${hitText}</span>`;
+  }
+  if (event.type === "bauble_awarded") {
+    return (event.awards || []).map((award) => {
+      const cardText = award.desperation_card_drawn ? `, drew ${award.desperation_card_id || "card"}` : "";
+      return `<span>${titleCase(award.player_id)} +${award.vp_awarded} VP${cardText}</span>`;
+    }).join("");
+  }
+  if (event.type === "baubles_awarded") return `<span>${event.message || "No ships were in range."}</span>`;
+  if (event.type === "hand_discarded") return `<span>${(event.card_ids || []).join(", ") || "No cards"}</span>`;
+  if (event.type === "action_cards_moved") {
+    const discarded = event.moved_to_discard?.length ? `Discard: ${event.moved_to_discard.join(", ")}` : "";
+    const overheated = event.moved_to_overheat?.length ? `Overheat: ${event.moved_to_overheat.join(", ")}` : "";
+    return [discarded, overheated].filter(Boolean).map((line) => `<span>${line}</span>`).join("");
+  }
+  return "";
+}
+
+function orderStacksSummary(stacks) {
+  if (!stacks.length) return "<span>Orders hidden.</span>";
+  return stacks.map((stack) => `
+    <span>Action ${stack.action_number}: ${titleCase(stack.seal_mode || "sealed")} ${cardSelectionsPlain(stack.cards || [])}</span>
+  `).join("");
+}
+
+function cardSelectionsSummary(cards) {
+  const plain = cardSelectionsPlain(cards);
+  return plain ? `<span>${plain}</span>` : "<span>No cards.</span>";
+}
+
+function cardSelectionsPlain(cards) {
+  if (!cards.length) return "No cards";
+  return cards.map((selection) => {
+    const target = selection.target_player_id ? ` -> ${titleCase(selection.target_player_id)}` : "";
+    const mode = selection.mode ? ` (${selection.mode})` : "";
+    const orientation = selection.orientation && selection.orientation !== "up" ? ` ${moveChoiceLabel(selection.orientation)}` : "";
+    return `${selection.card_id}${mode}${orientation}${target}`;
+  }).join(", ");
 }
 
 function canSubmit(playerId) {
@@ -853,6 +947,7 @@ function renderShipToken(svg, player, className) {
 
 function renderActionPreview(svg, game) {
   const player = game?.players?.[state.builderPlayerId];
+  if (renderSubmittedOrdersPreview(svg, game)) return;
   if (!player || !shouldShowBuilderDraft(game, player)) return;
 
   const cardById = cardLookupForPlayer(player);
@@ -926,6 +1021,87 @@ function renderActionPreview(svg, game) {
       });
     }
   });
+}
+
+function renderSubmittedOrdersPreview(svg, game) {
+  const players = Object.values(game?.players || {}).filter((player) => player.prepared_orders);
+  if (!players.length) return false;
+  const firstUnresolvedStack = firstUnresolvedStackIndex(game.phase);
+  players.forEach((player) => {
+    const cardById = cardLookupForPlayer(player);
+    const preview = {
+      q: player.ship.q,
+      r: player.ship.r,
+      facing: player.ship.facing,
+    };
+    (player.prepared_orders?.stacks || []).forEach((orderStack, stackIndex) => {
+      if (stackIndex < firstUnresolvedStack) return;
+      renderStackPreview(svg, game, player, preview, stackFromSubmittedOrder(orderStack), stackIndex, cardById);
+    });
+  });
+  return true;
+}
+
+function stackFromSubmittedOrder(orderStack) {
+  return {
+    action_number: orderStack.action_number,
+    seal_mode: orderStack.seal_mode,
+    cards: (orderStack.cards || []).map((selection) => selection.card_id),
+    faces: (orderStack.cards || []).map((selection) => selection.face || "front"),
+    targets: (orderStack.cards || []).map((selection) => selection.target_player_id || ""),
+    move_choices: (orderStack.cards || []).map((selection) => selection.orientation || "forward"),
+    modes: (orderStack.cards || []).map((selection) => selection.mode || ""),
+  };
+}
+
+function renderStackPreview(svg, game, player, preview, stack, stackIndex, cardById) {
+  const selections = stack.cards
+    .map((cardId, cardIndex) => {
+      const card = cardById[cardId] || inferCardFromId(cardId);
+      return { card, cardIndex, family: effectiveCardFamily(card, stack, cardIndex) };
+    })
+    .filter((selection) => selection.card && selection.family);
+  const family = selections[0]?.family;
+  if (family === "move") {
+    const passes = stack.seal_mode === "overdrive" ? 2 : 1;
+    for (let pass = 0; pass < passes; pass += 1) {
+      selections.forEach(({ card, cardIndex, family: selectionFamily }) => {
+        if (selectionFamily !== "move") return;
+        const before = { ...preview };
+        const distance = previewSelectionMoveDistance(card, stack, cardIndex);
+        const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
+        if (warpDestination) {
+          applyPreviewWarp(game, player, preview, warpDestination);
+        } else {
+          applyPreviewMove(preview, distance, stack.move_choices[cardIndex], card, stack, cardIndex);
+        }
+        drawMovementPathPreview(svg, before, preview);
+        const label = `${player.id[0].toUpperCase()}${stackIndex + 1}.${cardIndex + 1}${pass ? " OD" : ""}`;
+        drawPositionPreview(svg, preview, label);
+      });
+    }
+  } else if (family === "attack") {
+    const attackSelections = selections.filter((selection) => selection.family === "attack");
+    const firstAttack = attackSelections.find(({ card, cardIndex }) => effectiveCardRequiresTarget(card, stack, cardIndex));
+    const attacksAll = attackSelections.some(({ card, cardIndex }) => previewSelectionAttacksAll(card, stack, cardIndex));
+    const targets = attacksAll
+      ? Object.values(game.players || {}).filter((candidate) => candidate.id !== player.id)
+      : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
+        ? [game.players[stack.targets[firstAttack.cardIndex]]]
+        : [];
+    targets.forEach((target) => {
+      const damage = previewVolleyDamage(attackSelections, stack);
+      const aimBonus = attackSelections.reduce(
+        (total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex),
+        0,
+      );
+      const alwaysHits = attackSelections.some(({ card, cardIndex }) => previewSelectionAlwaysHits(card, stack, cardIndex));
+      drawAttackPreview(svg, preview, target, `${player.id[0].toUpperCase()}A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
+      if (stack.seal_mode === "overdrive") {
+        drawAttackPreview(svg, preview, target, `${player.id[0].toUpperCase()}A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
+      }
+    });
+  }
 }
 
 function shouldShowBuilderDraft(game, player) {
@@ -1330,6 +1506,7 @@ function renderDestroyedComponentMarkers(componentIds, layout) {
 }
 
 function renderEvents(game) {
+  if (!elements.eventsView) return;
   const events = game?.event_log || [];
   elements.eventsView.replaceChildren(
     ...events.map((event) => {
@@ -1431,6 +1608,7 @@ function inferCardFromId(cardId) {
 
 function renderOrdersBuilder(game) {
   renderBuilderPlayerSelect(game);
+  if (!elements.ordersBuilderView || !elements.ordersPreview || !elements.submitBuiltOrdersButton) return;
   elements.ordersBuilderView.replaceChildren();
   if (!game || !state.builderPlayerId) {
     elements.ordersPreview.textContent = "{}";
@@ -1452,6 +1630,7 @@ function renderOrdersBuilder(game) {
 }
 
 function renderBuilderPlayerSelect(game) {
+  if (!elements.builderPlayerSelect) return;
   const players = Object.keys(game?.players || {});
   elements.builderPlayerSelect.replaceChildren(
     ...players.map((playerId) => {
