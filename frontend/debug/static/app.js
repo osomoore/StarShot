@@ -263,7 +263,7 @@ async function submitAiOrders(playerId) {
 
 function buildAiOrders(playerId, aiType) {
   if (aiType === "bauble_runner") return buildBaubleRunnerOrders(playerId);
-  if (aiType === "hunter_killer") return buildDemoOrders(playerId, "attack");
+  if (aiType === "hunter_killer") return buildHunterKillerOrders(playerId);
   if (aiType === "blaster") return buildDemoOrders(playerId, "attack");
   return buildDemoOrders(playerId, "move");
 }
@@ -337,6 +337,59 @@ function buildBaubleRunnerOrders(playerId) {
       return {
         action_number: actionNumber,
         seal_mode: "sealed",
+        cards: attackPlan ? [attackPlan.selection] : [],
+      };
+    }),
+  };
+}
+
+function buildHunterKillerOrders(playerId) {
+  const game = state.selectedState;
+  const player = game?.players?.[playerId];
+  if (!game || !player || !canSubmit(playerId)) return null;
+
+  const targetId = nearestOpponentId(game, player);
+  const target = game.players[targetId];
+  if (!target) return buildDemoOrders(playerId, "attack");
+
+  const available = [...(player.hand || [])];
+  const preview = {
+    q: player.ship.q,
+    r: player.ship.r,
+    facing: player.ship.facing,
+  };
+  const attackCount = available.filter(aiCanUseAsAttack).length;
+  const attackSlots = new Set(
+    [0, 1, 2].slice(Math.max(0, 3 - Math.min(3, attackCount))),
+  );
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber, stackIndex) => {
+      if (attackSlots.has(stackIndex)) {
+        const attackPlan = takeAiAttack(available, targetId, "overdrive");
+        if (attackPlan) {
+          return {
+            action_number: actionNumber,
+            seal_mode: attackPlan.sealMode,
+            cards: [attackPlan.selection],
+          };
+        }
+      }
+
+      const movePlan = takeBestOpponentMove(available, preview, target);
+      if (movePlan) {
+        applyAiMovePreview(preview, movePlan);
+        return {
+          action_number: actionNumber,
+          seal_mode: movePlan.sealMode,
+          cards: [movePlan.selection],
+        };
+      }
+
+      const attackPlan = takeAiAttack(available, targetId, "overdrive");
+      return {
+        action_number: actionNumber,
+        seal_mode: attackPlan ? attackPlan.sealMode : "sealed",
         cards: attackPlan ? [attackPlan.selection] : [],
       };
     }),
@@ -448,15 +501,52 @@ function takePlannedAiMove(available, plannedMove) {
   };
 }
 
-function takeAiAttack(available, attackTargetId) {
+function takeBestOpponentMove(available, preview, target) {
+  let best = null;
+  available.forEach((card, index) => {
+    aiMoveChoices(card).forEach((choice) => {
+      const candidate = {
+        q: preview.q,
+        r: preview.r,
+        facing: preview.facing,
+      };
+      applyAiMoveCandidatePreview(candidate, card, choice, "sealed");
+      const currentDistance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
+      const candidateDistance = hexDistance(candidate.q, candidate.r, target.ship.q, target.ship.r);
+      const improvement = currentDistance - candidateDistance;
+      const score = [
+        improvement,
+        -candidateDistance,
+        previewCardValue(card, "sealed"),
+        -index,
+      ];
+      if (!best || compareAiScores(score, best.score) > 0) {
+        best = {
+          card,
+          index,
+          choice,
+          sealMode: "sealed",
+          score,
+          selection: aiSelectionForMove(card, choice),
+        };
+      }
+    });
+  });
+  if (!best || best.score[0] < 0) return null;
+  available.splice(best.index, 1);
+  return best;
+}
+
+function takeAiAttack(available, attackTargetId, sealMode = "sealed") {
   let best = null;
   available.forEach((card, index) => {
     if (!aiCanUseAsAttack(card)) return;
-    const score = [previewCardValue(card, "sealed"), -index];
+    const score = [previewCardValue(card, sealMode), -index];
     if (!best || compareAiScores(score, best.score) > 0) {
       best = {
         card,
         index,
+        sealMode,
         score,
         selection: aiSelectionForAttack(card, attackTargetId),
       };
