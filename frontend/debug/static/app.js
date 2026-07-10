@@ -6,10 +6,16 @@
   builderDraft: createEmptyDraft(),
   knownCards: {},
   selectedAiType: "bauble_runner",
+  selectedAiTypes: {
+    red: "bauble_runner",
+    blue: "bauble_runner",
+  },
+  dismissedEndGameFor: null,
   // New properties for board interaction
   zoomScale: 1,
   panOffsetX: 0,
   panOffsetY: 0,
+  resolving: false,
 };
 
 const BOARD_RADIUS = 14;
@@ -68,6 +74,7 @@ const elements = {
   createButton: document.querySelector("#createButton"),
   refreshButton: document.querySelector("#refreshButton"),
   actionLog: document.querySelector("#actionLog") || document.querySelector("#gamesList"),
+  exportLogButton: document.querySelector("#exportLogButton"),
   gameCount: document.querySelector("#gameCount"),
   selectedGameId: document.querySelector("#selectedGameId"),
   roundValue: document.querySelector("#roundValue"),
@@ -76,6 +83,8 @@ const elements = {
   redOrdersButton: document.querySelector("#redOrdersButton"),
   blueOrdersButton: document.querySelector("#blueOrdersButton"),
   aiTypeSelect: document.querySelector("#aiTypeSelect"),
+  redAiTypeSelect: document.querySelector("#redAiTypeSelect"),
+  blueAiTypeSelect: document.querySelector("#blueAiTypeSelect"),
   resolveButton: document.querySelector("#resolveButton"),
   revealOrdersToggle: document.querySelector("#revealOrdersToggle"),
   builderPlayerSelect: document.querySelector("#builderPlayerSelect"),
@@ -90,7 +99,9 @@ const elements = {
   eventsView: document.querySelector("#eventsView"),
   stateJson: document.querySelector("#stateJson"),
   combatOverlay: null,
+  endGameOverlay: null,
   cardPickerOverlay: null,
+  resolutionCallout: null,
   // Zoom button handlers
   boardZoomOutButton: document.querySelector("#boardZoomOutButton"),
   boardZoomInButton: document.querySelector("#boardZoomInButton"),
@@ -186,6 +197,7 @@ async function createGame() {
   state.selectedGameId = payload.game_id;
   state.builderDraft = createEmptyDraft();
   state.knownCards = {};
+  state.dismissedEndGameFor = null;
   await refreshGames();
 }
 
@@ -199,6 +211,7 @@ async function selectGame(gameId) {
   if (previousGameId !== gameId) {
     state.builderDraft = createEmptyDraft();
     state.knownCards = {};
+    state.dismissedEndGameFor = null;
   } else if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
     state.builderDraft = createEmptyDraft();
   }
@@ -219,17 +232,34 @@ async function submitOrders(playerId, orders) {
 }
 
 async function resolveNextStep() {
-  if (!state.selectedGameId) return;
-  const previousPhase = state.selectedState?.phase;
-  const previousEventCount = state.selectedState?.event_log?.length ?? 0;
-  const payload = await api(`/api/games/${state.selectedGameId}/resolve`, { method: "POST" });
-  state.selectedState = payload.state;
-  rememberVisibleCards(payload.state);
-  if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
-    state.builderDraft = createEmptyDraft();
+  if (!state.selectedGameId || state.resolving) return;
+  state.resolving = true;
+  renderAll();
+  const previousState = state.selectedState;
+  try {
+    const previousPhase = state.selectedState?.phase;
+    const previousEventCount = state.selectedState?.event_log?.length ?? 0;
+    const payload = await api(`/api/games/${state.selectedGameId}/resolve`, { method: "POST" });
+    rememberVisibleCards(payload.state);
+    const cleanupAnimations = await showResolutionCallouts(payload.state, previousEventCount, previousState);
+    let resolvedState = payload.state;
+    if (previousPhase === "award_baubles" && payload.state.phase === "cleanup") {
+      const cleanupPayload = await api(`/api/games/${state.selectedGameId}/resolve`, { method: "POST" });
+      rememberVisibleCards(cleanupPayload.state);
+      resolvedState = cleanupPayload.state;
+      if (resolvedState.phase === "give_orders") {
+        state.builderDraft = createEmptyDraft();
+      }
+    } else if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
+      state.builderDraft = createEmptyDraft();
+    }
+    state.selectedState = resolvedState;
+    await refreshGames();
+    cleanupAnimations?.();
+  } finally {
+    state.resolving = false;
+    renderAll();
   }
-  showCombatResultOverlay(payload.state, previousEventCount);
-  await refreshGames();
 }
 
 async function submitBuiltOrders() {
@@ -252,7 +282,7 @@ async function submitDemoOrders(playerId, preferredFamily) {
 }
 
 async function submitAiOrders(playerId) {
-  const aiType = state.selectedAiType;
+  const aiType = selectedAiTypeForPlayer(playerId);
   const orders = buildAiOrders(playerId, aiType);
   if (!orders) {
     const label = AI_TYPES[aiType] || "AI";
@@ -260,6 +290,10 @@ async function submitAiOrders(playerId) {
     return;
   }
   await submitOrders(playerId, orders);
+}
+
+function selectedAiTypeForPlayer(playerId) {
+  return state.selectedAiTypes[playerId] || state.selectedAiType || "bauble_runner";
 }
 
 function buildAiOrders(playerId, aiType) {
@@ -326,11 +360,11 @@ function buildBaubleRunnerOrders(playerId) {
           ? null
           : takeBestBaubleMove(targetBaubles, available, preview);
       if (movePlan) {
-        applyAiMovePreview(preview, movePlan);
+        applyAiMoveStackPreview(preview, movePlan);
         return {
           action_number: actionNumber,
           seal_mode: movePlan.sealMode,
-          cards: [movePlan.selection],
+          cards: movePlan.selections,
         };
       }
 
@@ -360,14 +394,27 @@ function buildHunterKillerOrders(playerId) {
     facing: player.ship.facing,
   };
   const attackCount = available.filter(aiCanUseAsAttack).length;
+  if (attackCount === 0) {
+    return buildHunterKillerNoAttackOrders(game, available, preview, target);
+  }
   const attackSlots = new Set(
     [0, 1, 2].slice(Math.max(0, 3 - Math.min(3, attackCount))),
   );
 
   return {
     stacks: [1, 2, 3].map((actionNumber, stackIndex) => {
+      const positionMove = takeHunterKillerPositionMove(available, game, preview, target);
+      if (positionMove) {
+        applyAiMoveStackPreview(preview, positionMove);
+        return {
+          action_number: actionNumber,
+          seal_mode: positionMove.sealMode,
+          cards: positionMove.selections,
+        };
+      }
+
       if (attackSlots.has(stackIndex)) {
-        const attackPlan = takeAiAttack(available, targetId, "overdrive");
+        const attackPlan = takeHunterKillerAttack(available, game, preview, targetId, target);
         if (attackPlan) {
           return {
             action_number: actionNumber,
@@ -379,19 +426,81 @@ function buildHunterKillerOrders(playerId) {
 
       const movePlan = takeBestOpponentMove(available, preview, target);
       if (movePlan) {
-        applyAiMovePreview(preview, movePlan);
+        applyAiMoveStackPreview(preview, movePlan);
         return {
           action_number: actionNumber,
           seal_mode: movePlan.sealMode,
-          cards: [movePlan.selection],
+          cards: movePlan.selections,
         };
       }
 
-      const attackPlan = takeAiAttack(available, targetId, "overdrive");
+      const attackPlan = takeHunterKillerAttack(available, game, preview, targetId, target);
       return {
         action_number: actionNumber,
         seal_mode: attackPlan ? attackPlan.sealMode : "sealed",
         cards: attackPlan ? [attackPlan.selection] : [],
+      };
+    }),
+  };
+}
+
+function buildBaubleMoveOnlyOrders(game, available, preview) {
+  const currentTarget = nearestBaubleForRound(game, game.round_number, preview);
+  const sealedCurrentReachPlan = currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, false) : null;
+  const currentReachPlan = sealedCurrentReachPlan
+    || (currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, true) : null);
+  const plannedMoves = currentReachPlan ? [...currentReachPlan] : [];
+  const targetBaubles = currentTarget ? [currentTarget] : nextRoundBaubleTargets(game, preview);
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber) => {
+      const alreadyScoring = distanceToBestBauble(targetBaubles, preview).distance === 0;
+      const movePlan = plannedMoves.length
+        ? takePlannedAiMove(available, plannedMoves.shift())
+        : alreadyScoring
+          ? null
+          : takeBestBaubleMove(targetBaubles, available, preview);
+      if (movePlan) {
+        applyAiMoveStackPreview(preview, movePlan);
+        return {
+          action_number: actionNumber,
+          seal_mode: movePlan.sealMode,
+          cards: movePlan.selections,
+        };
+      }
+      return {
+        action_number: actionNumber,
+        seal_mode: "sealed",
+        cards: [],
+      };
+    }),
+  };
+}
+
+function buildHunterKillerNoAttackOrders(game, available, preview, target) {
+  const currentTarget = nearestBaubleForRound(game, game.round_number, preview);
+  const sealedCurrentReachPlan = currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, false) : null;
+  const currentReachPlan = sealedCurrentReachPlan
+    || (currentTarget ? baubleRunnerReachPlan(currentTarget, available, preview, true) : null);
+  const plannedMoves = currentReachPlan ? [...currentReachPlan] : [];
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber) => {
+      const movePlan = plannedMoves.length
+        ? takePlannedAiMove(available, plannedMoves.shift())
+        : takeBestOpponentMove(available, preview, target);
+      if (movePlan) {
+        applyAiMoveStackPreview(preview, movePlan);
+        return {
+          action_number: actionNumber,
+          seal_mode: movePlan.sealMode,
+          cards: movePlan.selections,
+        };
+      }
+      return {
+        action_number: actionNumber,
+        seal_mode: "sealed",
+        cards: [],
       };
     }),
   };
@@ -431,18 +540,27 @@ function baubleRunnerReachPlan(bauble, available, preview, allowOverdrive) {
     if (seen.has(key)) return null;
     seen.add(key);
 
-    for (let cardIndex = 0; cardIndex < remainingCards.length; cardIndex += 1) {
-      const card = remainingCards[cardIndex];
-      const nextCards = remainingCards.filter((_, index) => index !== cardIndex);
-      for (const choice of aiMoveChoices(card)) {
-        for (const sealMode of aiMoveSealModes(allowOverdrive)) {
-          const candidate = { q: position.q, r: position.r, facing: position.facing };
-          applyAiMoveCandidatePreview(candidate, card, choice, sealMode);
-          const remainder = search(candidate, nextCards, actionsLeft - 1);
-          if (remainder) {
-            return [{ cardId: card.id, choice, sealMode }, ...remainder];
-          }
-        }
+    const options = aiMoveStackOptions(remainingCards, allowOverdrive)
+      .map((option) => {
+        const candidate = { q: position.q, r: position.r, facing: position.facing };
+        applyAiMoveStackPreview(candidate, option);
+        return {
+          ...option,
+          candidate,
+          distance: baubleRangeDistance(bauble, candidate),
+        };
+      })
+      .sort((left, right) => (
+        left.distance - right.distance
+        || (left.sealMode === "overdrive" ? 1 : 0) - (right.sealMode === "overdrive" ? 1 : 0)
+        || right.moves.length - left.moves.length
+      ));
+    for (const option of options) {
+      const usedIds = new Set(option.moves.map((move) => move.card.id));
+      const nextCards = remainingCards.filter((card) => !usedIds.has(card.id));
+      const remainder = search(option.candidate, nextCards, actionsLeft - 1);
+      if (remainder) {
+        return [plannedMoveStack(option), ...remainder];
       }
     }
     return null;
@@ -453,92 +571,160 @@ function baubleRunnerReachPlan(bauble, available, preview, allowOverdrive) {
 
 function takeBestBaubleMove(targetBaubles, available, preview) {
   let best = null;
-  available.forEach((card, index) => {
-    aiMoveChoices(card).forEach((choice) => {
-      const candidate = {
-        q: preview.q,
-        r: preview.r,
-        facing: preview.facing,
-      };
-      applyPreviewMove(candidate, previewCardValue(card, "sealed"), choice, card, aiStackForSelection(card, choice, "move"), 0);
-      const baubleScore = distanceToBestBauble(targetBaubles, candidate);
-      const currentScore = distanceToBestBauble(targetBaubles, preview);
-      const improvement = currentScore.distance - baubleScore.distance;
-      const score = [
-        improvement,
-        -baubleScore.distance,
-        baubleScore.victoryPoints,
-        previewCardValue(card, "sealed"),
-        -index,
-      ];
-      if (!best || compareAiScores(score, best.score) > 0) {
-        best = {
-          card,
-          index,
-          choice,
-          sealMode: "sealed",
-          score,
-          selection: aiSelectionForMove(card, choice),
-        };
-      }
-    });
+  aiMoveStackOptions(available, false).forEach((option) => {
+    const candidate = {
+      q: preview.q,
+      r: preview.r,
+      facing: preview.facing,
+    };
+    applyAiMoveStackPreview(candidate, option);
+    const baubleScore = distanceToBestBauble(targetBaubles, candidate);
+    const currentScore = distanceToBestBauble(targetBaubles, preview);
+    const improvement = currentScore.distance - baubleScore.distance;
+    const score = [
+      improvement,
+      -baubleScore.distance,
+      baubleScore.victoryPoints,
+      aiMoveStackDistance(option),
+      option.moves.length,
+      -option.firstIndex,
+    ];
+    if (!best || compareAiScores(score, best.score) > 0) {
+      best = { ...option, score };
+    }
   });
   if (!best || best.score[0] <= 0) return null;
-  available.splice(best.index, 1);
-  return best;
+  removeAiMoveStackCards(available, best);
+  return materializeAiMoveStack(best);
 }
 
-function takePlannedAiMove(available, plannedMove) {
-  if (!plannedMove) return null;
-  const index = available.findIndex((card) => card.id === plannedMove.cardId);
-  if (index < 0) return null;
-  const [card] = available.splice(index, 1);
-  return {
-    card,
-    index,
-    choice: plannedMove.choice,
-    sealMode: plannedMove.sealMode,
-    selection: aiSelectionForMove(card, plannedMove.choice),
-  };
+function takePlannedAiMove(available, plannedStack) {
+  if (!plannedStack) return null;
+  const moves = [];
+  for (const plannedMove of plannedStack.moves || []) {
+    const index = available.findIndex((card) => card.id === plannedMove.cardId);
+    if (index < 0) return null;
+    moves.push({ card: available[index], index, choice: plannedMove.choice });
+  }
+  removeAiMoveStackCards(available, { moves });
+  return materializeAiMoveStack({
+    sealMode: plannedStack.sealMode,
+    moves,
+    firstIndex: Math.min(...moves.map((move) => move.index)),
+  });
 }
 
 function takeBestOpponentMove(available, preview, target) {
   let best = null;
-  available.forEach((card, index) => {
-    aiMoveChoices(card).forEach((choice) => {
-      const candidate = {
-        q: preview.q,
-        r: preview.r,
-        facing: preview.facing,
-      };
-      applyAiMoveCandidatePreview(candidate, card, choice, "sealed");
-      const currentDistance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
-      const candidateDistance = hexDistance(candidate.q, candidate.r, target.ship.q, target.ship.r);
-      const improvement = currentDistance - candidateDistance;
-      const score = [
-        improvement,
-        -candidateDistance,
-        previewCardValue(card, "sealed"),
-        -index,
-      ];
-      if (!best || compareAiScores(score, best.score) > 0) {
-        best = {
-          card,
-          index,
-          choice,
-          sealMode: "sealed",
-          score,
-          selection: aiSelectionForMove(card, choice),
-        };
-      }
-    });
+  aiMoveStackOptions(available, false).forEach((option) => {
+    const candidate = {
+      q: preview.q,
+      r: preview.r,
+      facing: preview.facing,
+    };
+    applyAiMoveStackPreview(candidate, option);
+    const currentDistance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
+    const candidateDistance = hexDistance(candidate.q, candidate.r, target.ship.q, target.ship.r);
+    const improvement = currentDistance - candidateDistance;
+    const score = [
+      improvement,
+      -candidateDistance,
+      aiMoveStackDistance(option),
+      option.moves.length,
+      -option.firstIndex,
+    ];
+    if (!best || compareAiScores(score, best.score) > 0) {
+      best = { ...option, score };
+    }
   });
   if (!best || best.score[0] < 0) return null;
+  removeAiMoveStackCards(available, best);
+  return materializeAiMoveStack(best);
+}
+
+function takeHunterKillerPositionMove(available, game, preview, target) {
+  if ((game?.round_number || 1) >= 6) return null;
+  const currentNeeded = bestPredictedAttackNeededRoll(available, preview, target);
+  if (currentNeeded < 11) return null;
+  let best = null;
+  aiMoveStackOptions(available, false).forEach((option) => {
+    const candidate = {
+      q: preview.q,
+      r: preview.r,
+      facing: preview.facing,
+    };
+    applyAiMoveStackPreview(candidate, option);
+    const usedIds = new Set(option.moves.map((move) => move.card.id));
+    const remainingAfterMove = available.filter((card) => !usedIds.has(card.id));
+    const candidateNeeded = bestPredictedAttackNeededRoll(remainingAfterMove, candidate, target);
+    const currentDistance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
+    const candidateDistance = hexDistance(candidate.q, candidate.r, target.ship.q, target.ship.r);
+    const improvement = currentNeeded - candidateNeeded;
+    const score = [
+      improvement,
+      -candidateNeeded,
+      currentDistance - candidateDistance,
+      aiMoveStackDistance(option),
+      option.moves.length,
+      -option.firstIndex,
+    ];
+    if (!best || compareAiScores(score, best.score) > 0) {
+      best = { ...option, score };
+    }
+  });
+  if (!best || best.score[0] <= 0) return null;
+  removeAiMoveStackCards(available, best);
+  return materializeAiMoveStack(best);
+}
+
+function takeHunterKillerAttack(available, game, preview, attackTargetId, target) {
+  if (!attackTargetId) return null;
+  let best = null;
+  available.forEach((card, index) => {
+    if (!aiCanUseAsAttack(card)) return;
+    const sealMode = hunterKillerAttackSealMode(game, preview, target, card);
+    const score = [previewCardValue(card, sealMode), sealMode === "overdrive" ? 1 : 0, -index];
+    if (!best || compareAiScores(score, best.score) > 0) {
+      best = {
+        card,
+        index,
+        sealMode,
+        score,
+        selection: aiSelectionForAttack(card, attackTargetId),
+      };
+    }
+  });
+  if (!best) return null;
   available.splice(best.index, 1);
   return best;
 }
 
+function hunterKillerAttackSealMode(game, preview, target, card) {
+  if ((game?.round_number || 1) >= 6) return "overdrive";
+  const neededRoll = predictedAttackNeededRoll(preview, target, card);
+  return neededRoll >= 11 ? "sealed" : "overdrive";
+}
+
+function predictedAttackNeededRoll(preview, target, card) {
+  if (!target?.ship) return 12;
+  const distance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
+  const defense = distance + (target.ship.movement_this_action || 0) + (target.ship.defense_bonus_this_action || 0);
+  return defense - predictedAttackAimBonus(card);
+}
+
+function bestPredictedAttackNeededRoll(available, preview, target) {
+  const attackCards = available.filter(aiCanUseAsAttack);
+  if (!attackCards.length) return Infinity;
+  return Math.min(...attackCards.map((card) => predictedAttackNeededRoll(preview, target, card)));
+}
+
+function predictedAttackAimBonus(card) {
+  if (card?.effect?.aim_bonus) return card.effect.aim_bonus;
+  return card?.aim_bonus || 0;
+}
+
 function takeAiAttack(available, attackTargetId, sealMode = "sealed") {
+  if (!attackTargetId) return null;
   let best = null;
   available.forEach((card, index) => {
     if (!aiCanUseAsAttack(card)) return;
@@ -565,6 +751,52 @@ function aiMoveChoices(card) {
 
 function aiMoveSealModes(allowOverdrive) {
   return allowOverdrive ? ["sealed", "overdrive"] : ["sealed"];
+}
+
+function aiMoveStackOptions(available, allowOverdrive) {
+  const moveEntries = available
+    .map((card, index) => ({ card, index }))
+    .filter(({ card }) => aiCanUseAsMove(card));
+  const options = [];
+
+  moveEntries.forEach((entry) => {
+    aiMoveChoices(entry.card).forEach((choice) => {
+      options.push(materializeAiMoveStack({
+        sealMode: "sealed",
+        moves: [{ ...entry, choice }],
+        firstIndex: entry.index,
+      }));
+      if (allowOverdrive) {
+        options.push(materializeAiMoveStack({
+          sealMode: "overdrive",
+          moves: [{ ...entry, choice }],
+          firstIndex: entry.index,
+        }));
+      }
+    });
+  });
+
+  for (let leftIndex = 0; leftIndex < moveEntries.length; leftIndex += 1) {
+    for (let rightIndex = 0; rightIndex < moveEntries.length; rightIndex += 1) {
+      if (leftIndex === rightIndex) continue;
+      const left = moveEntries[leftIndex];
+      const right = moveEntries[rightIndex];
+      aiMoveChoices(left.card).forEach((leftChoice) => {
+        aiMoveChoices(right.card).forEach((rightChoice) => {
+          options.push(materializeAiMoveStack({
+            sealMode: "sealed",
+            moves: [
+              { ...left, choice: leftChoice },
+              { ...right, choice: rightChoice },
+            ],
+            firstIndex: Math.min(left.index, right.index),
+          }));
+        });
+      });
+    }
+  }
+
+  return options;
 }
 
 function aiCanUseAsMove(card) {
@@ -594,8 +826,37 @@ function aiSelectionForAttack(card, attackTargetId) {
     orientation: "up",
   };
   if (card.is_hybrid) selection.mode = "attack";
-  if (cardNeedsTarget(card) && attackTargetId) selection.target_player_id = attackTargetId;
+  if (attackTargetId) selection.target_player_id = attackTargetId;
   return selection;
+}
+
+function plannedMoveStack(option) {
+  return {
+    sealMode: option.sealMode,
+    moves: option.moves.map((move) => ({
+      cardId: move.card.id,
+      choice: move.choice,
+    })),
+  };
+}
+
+function materializeAiMoveStack(option) {
+  return {
+    ...option,
+    selections: option.moves.map((move) => aiSelectionForMove(move.card, move.choice)),
+  };
+}
+
+function aiMoveStackDistance(option) {
+  const passes = option.sealMode === "overdrive" ? 2 : 1;
+  return option.moves.reduce((sum, move) => sum + previewCardValue(move.card, option.sealMode) * passes, 0);
+}
+
+function removeAiMoveStackCards(available, option) {
+  const usedIds = new Set(option.moves.map((move) => move.card.id));
+  for (let index = available.length - 1; index >= 0; index -= 1) {
+    if (usedIds.has(available[index].id)) available.splice(index, 1);
+  }
 }
 
 function aiStackForSelection(card, choice, mode) {
@@ -611,6 +872,22 @@ function aiStackForSelection(card, choice, mode) {
 
 function applyAiMovePreview(preview, movePlan) {
   applyAiMoveCandidatePreview(preview, movePlan.card, movePlan.choice, movePlan.sealMode);
+}
+
+function applyAiMoveStackPreview(preview, movePlan) {
+  const passes = movePlan.sealMode === "overdrive" ? 2 : 1;
+  for (let pass = 0; pass < passes; pass += 1) {
+    movePlan.moves.forEach((move, cardIndex) => {
+      applyPreviewMove(
+        preview,
+        previewCardValue(move.card, movePlan.sealMode),
+        move.choice,
+        move.card,
+        aiStackForMovePlan(movePlan),
+        cardIndex,
+      );
+    });
+  }
 }
 
 function applyAiMoveCandidatePreview(preview, card, choice, sealMode) {
@@ -701,8 +978,12 @@ function renderAll() {
   elements.startingPlayerValue.textContent = game?.starting_player_id ?? "-";
   elements.redOrdersButton.disabled = !canSubmit("red");
   elements.blueOrdersButton.disabled = !canSubmit("blue");
-  elements.aiTypeSelect.disabled = !game;
-  elements.aiTypeSelect.value = state.selectedAiType;
+  if (elements.aiTypeSelect) {
+    elements.aiTypeSelect.disabled = !game;
+    elements.aiTypeSelect.value = state.selectedAiType;
+  }
+  syncAiTypeSelect("red", elements.redAiTypeSelect, game);
+  syncAiTypeSelect("blue", elements.blueAiTypeSelect, game);
   elements.resolveButton.disabled = !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
@@ -711,26 +992,58 @@ function renderAll() {
   renderPlayers(game);
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
+  renderEndGameSummary(game);
+}
+
+function syncAiTypeSelect(playerId, select, game) {
+  if (!select) return;
+  select.disabled = !game || !game.players?.[playerId];
+  select.value = selectedAiTypeForPlayer(playerId);
 }
 
 function actionLogItems(game) {
-  const events = game?.event_log || [];
+  const events = enrichOrderDiscardEvents(game?.event_log || []);
   if (!events.length) {
     const empty = document.createElement("div");
     empty.className = "action-log-empty";
     empty.textContent = "No actions yet.";
     return [empty];
   }
-  return events.map((event) => {
+  return [...events].filter((event) => !event._pairedWithOrders).reverse().map((event) => {
     const item = document.createElement("article");
-    item.className = `action-log-item ${actionLogTone(event)}`;
+    const playerId = actionLogPlayerId(event);
+    const activity = actionLogActivity(event);
+    item.className = `action-log-item ${actionLogTone(event)} ${activity ? `activity-${activity}` : ""}`;
+    if (playerId && SHIP_COLORS[playerId]) item.style.borderLeftColor = SHIP_COLORS[playerId];
     item.innerHTML = `
-      <div class="action-log-kicker">${actionLogKicker(event)}</div>
-      <strong>${actionLogTitle(event)}</strong>
+      <div class="action-log-kicker">${escapeHtml(actionLogKicker(event))}</div>
+      <strong>${escapeHtml(actionLogTitle(event))}</strong>
       <div class="action-log-body">${actionLogBody(event)}</div>
+      <pre class="action-log-detail">${escapeHtml(actionLogDetail(event))}</pre>
     `;
     return item;
   });
+}
+
+function enrichOrderDiscardEvents(events) {
+  const enriched = events.map((event) => ({ ...event }));
+  const pendingDiscards = {};
+  enriched.forEach((event, index) => {
+    if (event.type === "hand_discarded") {
+      pendingDiscards[event.player_id] = {
+        index,
+        cardIds: [...(event.card_ids || [])],
+      };
+      return;
+    }
+    if (event.type !== "orders_submitted") return;
+    const pending = pendingDiscards[event.player_id];
+    if (!pending) return;
+    event.unused_card_ids = pending.cardIds;
+    enriched[pending.index]._pairedWithOrders = true;
+    delete pendingDiscards[event.player_id];
+  });
+  return enriched;
 }
 
 function actionLogTone(event) {
@@ -740,6 +1053,19 @@ function actionLogTone(event) {
   return "";
 }
 
+function actionLogActivity(event) {
+  if (event.type === "volley_resolved") return "attack";
+  if (event.type === "movement_resolved") return "move";
+  if (event.type === "bauble_awarded" || event.type === "baubles_awarded") return "award";
+  if (event.type === "action_revealed") return actionCardsActivity(event.cards || []);
+  if (event.type === "orders_submitted") return "orders";
+  return "";
+}
+
+function actionLogPlayerId(event) {
+  return event.player_id || event.attacker_id || event.awards?.[0]?.player_id || "";
+}
+
 function actionLogKicker(event) {
   const round = event.round ? `Round ${event.round}` : "Game";
   const action = event.action_number ? ` Action ${event.action_number}` : "";
@@ -747,74 +1073,249 @@ function actionLogKicker(event) {
 }
 
 function actionLogTitle(event) {
-  if (event.type === "orders_submitted") return `${titleCase(event.player_id)} submitted orders`;
-  if (event.type === "action_revealed") return `${titleCase(event.player_id)} revealed Action ${event.action_number}`;
-  if (event.type === "movement_resolved") return `${titleCase(event.player_id)} moved`;
-  if (event.type === "volley_resolved") return `${titleCase(event.attacker_id)} ${event.hit ? "hit" : "missed"} ${titleCase(event.target_id)}`;
+  if (event.type === "orders_submitted") return `${titleCase(event.player_id)} orders set`;
+  if (event.type === "action_revealed") return `${titleCase(event.player_id)} ${englishActionStack(event.action_number, event.cards || [], event.seal_mode)}`;
+  if (event.type === "movement_resolved") return `${titleCase(event.player_id)} ${englishMovementEvent(event)}`;
+  if (event.type === "volley_resolved") return englishVolleyEvent(event);
   if (event.type === "bauble_awarded") return `${event.bauble?.is_fang ? "Fang" : `Bauble ${event.bauble?.number}`} awarded`;
   if (event.type === "baubles_awarded") return "No baubles awarded";
   if (event.type === "phase_changed") return `Phase: ${event.phase}`;
-  if (event.type === "hand_discarded") return `${titleCase(event.player_id)} discarded hand`;
-  if (event.type === "action_cards_moved") return `${titleCase(event.player_id)} cleared action cards`;
+  if (event.type === "hand_discarded") return `${titleCase(event.player_id)} discarded unused cards`;
+  if (event.type === "action_cards_moved") return `${titleCase(event.player_id)} cleaned up action cards`;
   return titleCase((event.type || "event").replaceAll("_", " "));
 }
 
 function actionLogBody(event) {
   if (event.type === "orders_submitted") {
-    return orderStacksSummary(event.stacks || []);
+    const unused = event.unused_card_ids?.length
+      ? `<span>Unused/discarded: ${escapeHtml(englishCardIdList(event.unused_card_ids))}</span>`
+      : "";
+    return `${orderStacksSummary(event.stacks || [])}${unused}`;
   }
-  if (event.type === "action_revealed") {
-    return `<span>${titleCase(event.seal_mode || "sealed")}</span>${cardSelectionsSummary(event.cards || [])}`;
-  }
+  if (event.type === "action_revealed") return `<span class="activity-${actionCardsActivity(event.cards || [])}">${escapeHtml(englishCardSelections(event.cards || []))}</span>`;
   if (event.type === "movement_resolved") {
-    return (event.steps || []).map((step) => {
-      const before = step.before || {};
-      const after = step.after || {};
-      const mode = step.overdrive_copy ? "Overdrive copy" : "Move";
-      return `<span>${mode}: ${step.card_id} (${before.q}, ${before.r}) -> (${after.q}, ${after.r})</span>`;
-    }).join("");
+    return (event.steps || []).map((step) => `<span class="activity-move">${escapeHtml(englishMovementStep(step))}</span>`).join("");
   }
   if (event.type === "volley_resolved") {
-    const hitText = event.hit ? `${event.damage_applied} damage` : "miss";
-    const overdrive = event.overdrive_copy ? "Overdrive copy, " : "";
-    return `<span>${overdrive}${event.roll}+${event.aim_bonus} vs ${event.defense_threshold}: ${hitText}</span>`;
+    const attackBonus = event.attack_bonus ?? event.aim_bonus ?? 0;
+    const rollTotal = event.roll + attackBonus;
+    const result = volleyOutcomeText(event);
+    const overdrive = event.overdrive_copy ? "Overdrive copy. " : "";
+    return `<span class="activity-attack">${escapeHtml(`${overdrive}Defense ${event.defense_threshold}; rolled ${event.roll} + ${attackBonus} Aim = ${rollTotal}: ${result}`)}</span>`;
   }
   if (event.type === "bauble_awarded") {
     return (event.awards || []).map((award) => {
-      const cardText = award.desperation_card_drawn ? `, drew ${award.desperation_card_id || "card"}` : "";
-      return `<span>${titleCase(award.player_id)} +${award.vp_awarded} VP${cardText}</span>`;
+      const cardText = award.desperation_card_drawn ? ` and drew ${award.desperation_card_id || "a card"}` : "";
+      return `<span class="activity-award">${escapeHtml(`${titleCase(award.player_id)} gained ${award.vp_awarded} VP${cardText}`)}</span>`;
     }).join("");
   }
-  if (event.type === "baubles_awarded") return `<span>${event.message || "No ships were in range."}</span>`;
-  if (event.type === "hand_discarded") return `<span>${(event.card_ids || []).join(", ") || "No cards"}</span>`;
+  if (event.type === "baubles_awarded") return `<span>${escapeHtml(event.message || "No ships were in range.")}</span>`;
+  if (event.type === "hand_discarded") return `<span>${escapeHtml((event.card_ids || []).join(", ") || "No cards")}</span>`;
   if (event.type === "action_cards_moved") {
     const discarded = event.moved_to_discard?.length ? `Discard: ${event.moved_to_discard.join(", ")}` : "";
     const overheated = event.moved_to_overheat?.length ? `Overheat: ${event.moved_to_overheat.join(", ")}` : "";
-    return [discarded, overheated].filter(Boolean).map((line) => `<span>${line}</span>`).join("");
+    return [discarded, overheated].filter(Boolean).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
   }
   return "";
 }
 
+function actionLogDetail(event) {
+  const { _pairedWithOrders, ...detail } = event;
+  return JSON.stringify(detail, null, 2);
+}
+
 function orderStacksSummary(stacks) {
   if (!stacks.length) return "<span>Orders hidden.</span>";
-  return stacks.map((stack) => `
-    <span>Action ${stack.action_number}: ${titleCase(stack.seal_mode || "sealed")} ${cardSelectionsPlain(stack.cards || [])}</span>
-  `).join("");
+  return stacks.map((stack) => {
+    const activity = actionCardsActivity(stack.cards || []);
+    return `<span class="activity-${activity}">${escapeHtml(englishActionStack(stack.action_number, stack.cards || [], stack.seal_mode))}</span>`;
+  }).join("");
 }
 
-function cardSelectionsSummary(cards) {
-  const plain = cardSelectionsPlain(cards);
-  return plain ? `<span>${plain}</span>` : "<span>No cards.</span>";
+function englishActionStack(actionNumber, cards, sealMode = "sealed") {
+  const prefix = `Action ${actionNumber}:`;
+  const overdrive = sealMode === "overdrive" ? "Overdrive " : "";
+  if (!cards.length) return `${prefix} No cards`;
+  return `${prefix} ${overdrive}${englishCardSelections(cards)}`;
 }
 
-function cardSelectionsPlain(cards) {
+function englishCardSelections(cards) {
   if (!cards.length) return "No cards";
-  return cards.map((selection) => {
-    const target = selection.target_player_id ? ` -> ${titleCase(selection.target_player_id)}` : "";
-    const mode = selection.mode ? ` (${selection.mode})` : "";
-    const orientation = selection.orientation && selection.orientation !== "up" ? ` ${moveChoiceLabel(selection.orientation)}` : "";
-    return `${selection.card_id}${mode}${orientation}${target}`;
-  }).join(", ");
+  return cards.map(englishCardSelection).join(" + ");
+}
+
+function englishCardSelection(selection) {
+  const card = inferCardFromId(selection.card_id || "");
+  const family = selection.mode || card.family;
+  if (family === "attack") {
+    const target = selection.target_player_id ? ` at ${titleCase(selection.target_player_id)}` : "";
+    return `Attack +${card.value}${target}`;
+  }
+  if (family === "move") {
+    const moveText = englishMoveChoice(selection.orientation || "forward", card.value);
+    return moveText;
+  }
+  return selection.card_id || "Card";
+}
+
+function englishCardIdList(cardIds) {
+  if (!cardIds.length) return "no cards";
+  return cardIds.map(englishCardId).join(", ");
+}
+
+function englishCardId(cardId) {
+  const card = state.knownCards[cardId] || inferCardFromId(cardId);
+  const family = card.effect?.family ?? card.family;
+  const value = card.effect?.value ?? card.value;
+  if (card.is_hybrid || family === "hybrid") return card.name || `Hybrid ${value}`;
+  if (family === "attack") return `Attack +${value}`;
+  if (family === "move") return `Move ${value}`;
+  return card.name || cardId;
+}
+
+function englishMovementEvent(event) {
+  const steps = event.steps || [];
+  if (!steps.length) return "did not move";
+  const total = steps.reduce((sum, step) => sum + (step.distance || 0), 0);
+  if (steps.length === 1) return englishMovementStep(steps[0]);
+  return `moved ${total}`;
+}
+
+function englishMovementStep(step) {
+  if (step.warp_destination) return `warped ${titleCase(step.warp_destination)}`;
+  if (step.distance <= 0) return "held position";
+  return englishMoveChoice(step.choice || "forward", step.distance);
+}
+
+function englishMoveChoice(choice, distance) {
+  const distanceText = distance > 0 ? ` ${distance}` : "";
+  if (choice === "turn_left") return `Turn Left, Move${distanceText}`;
+  if (choice === "turn_right") return `Turn Right, Move${distanceText}`;
+  if (choice === "slip_left") return `Side Slip Left${distanceText}`;
+  if (choice === "slip_right") return `Side Slip Right${distanceText}`;
+  if (choice === "u_turn_move") return `U-Turn, Move${distanceText}`;
+  return `Move${distanceText}`;
+}
+
+function englishVolleyEvent(event) {
+  const result = event.hit ? "hit" : "missed";
+  return `${titleCase(event.attacker_id)} shot ${titleCase(event.target_id)} and ${result}`;
+}
+
+function volleyOutcomeText(event) {
+  if (!event.hit) return "MISS";
+  if (event.shielded) return "HIT, absorbed by shields";
+  const destroyed = (event.damage_shots || [])
+    .filter((shot) => shot.destroyed && shot.component_id)
+    .map((shot) => formatComponentId(shot.component_id));
+  if (destroyed.length) return `HIT, damaged ${destroyed.join(", ")}`;
+  if (event.damage_applied) return `HIT, ${event.damage_applied} damage`;
+  return "HIT";
+}
+
+function volleyCalloutTitle(event) {
+  const attacker = titleCase(event.attacker_id);
+  if (!event.hit) return `${attacker} Misses`;
+  if (event.shielded) return `${attacker} Hits - Absorbed by Shields`;
+  const destroyed = (event.damage_shots || []).find((shot) => shot.destroyed && shot.component_id);
+  if (destroyed) return `${attacker} Hits - ${formatComponentId(destroyed.component_id)} Destroyed`;
+  return `${attacker} Hits - Damage`;
+}
+
+function actionCardsActivity(cards) {
+  if (!cards.length) return "orders";
+  return cards.some((selection) => {
+    const card = inferCardFromId(selection.card_id || "");
+    return (selection.mode || card.family) === "attack";
+  }) ? "attack" : "move";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+async function exportGameLog() {
+  const text = englishGameLog(state.selectedState);
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `starshot-log-${state.selectedGameId?.slice(0, 8) || "game"}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  try {
+    await navigator.clipboard?.writeText(text);
+  } catch {
+    // Download still succeeds when clipboard access is unavailable.
+  }
+}
+
+function aiStackForMovePlan(movePlan) {
+  return {
+    seal_mode: movePlan.sealMode,
+    cards: movePlan.moves.map((move) => move.card.id),
+    faces: movePlan.moves.map(() => "front"),
+    move_choices: movePlan.moves.map((move) => move.choice),
+    modes: movePlan.moves.map((move) => (move.card.is_hybrid ? "move" : "")),
+    targets: movePlan.moves.map(() => ""),
+  };
+}
+
+function englishGameLog(game) {
+  if (!game) return "No game selected.";
+  const lines = [
+    `StarShot game ${state.selectedGameId || ""}`,
+    `Round ${game.round_number}, phase ${game.phase}, starting player ${game.starting_player_id}`,
+    "",
+  ];
+  enrichOrderDiscardEvents(game.event_log || []).forEach((event) => {
+    if (event._pairedWithOrders) return;
+    const line = englishEventLine(event);
+    if (line) lines.push(line);
+  });
+  return lines.join("\n");
+}
+
+function englishEventLine(event) {
+  if (event.type === "hand_drawn") {
+    return `${titleCase(event.player_id)} drew ${englishCardIdList(event.card_ids || [])}.`;
+  }
+  if (event.type === "orders_submitted") {
+    const unused = event.unused_card_ids?.length ? ` Discarded unused: ${englishCardIdList(event.unused_card_ids)}.` : "";
+    return `${titleCase(event.player_id)} issued orders: ${plainOrderStacks(event.stacks || [])}.${unused}`;
+  }
+  if (event.type === "action_revealed") {
+    return `${titleCase(event.player_id)} revealed ${englishActionStack(event.action_number, event.cards || [], event.seal_mode)}.`;
+  }
+  if (event.type === "movement_resolved") {
+    return `${titleCase(event.player_id)} action ${event.action_number}: ${(event.steps || []).map(englishMovementStep).join(", ")}.`;
+  }
+  if (event.type === "volley_resolved") {
+    const attackBonus = event.attack_bonus ?? event.aim_bonus ?? 0;
+    return `${titleCase(event.attacker_id)} shot ${titleCase(event.target_id)} on action ${event.action_number}: defense ${event.defense_threshold}, rolled ${event.roll} + ${attackBonus} aim = ${event.roll_total}; ${volleyOutcomeText(event)}.`;
+  }
+  if (event.type === "bauble_awarded") {
+    return (event.awards || []).map((award) => {
+      const cardText = award.desperation_card_drawn ? ` and drew ${award.desperation_card_id || "a card"}` : "";
+      return `${titleCase(award.player_id)} scored ${award.vp_awarded} VP from ${event.bauble?.is_fang ? "Fang" : `Bauble ${event.bauble?.number}`}${cardText}.`;
+    }).join("\n");
+  }
+  if (event.type === "baubles_awarded") return event.message || "No baubles awarded.";
+  if (event.type === "hand_discarded") return `${titleCase(event.player_id)} discarded ${englishCardIdList(event.card_ids || [])}.`;
+  if (event.type === "phase_changed") return `Phase changed to ${event.phase}.`;
+  return "";
+}
+
+function plainOrderStacks(stacks) {
+  if (!stacks.length) return "orders hidden";
+  return stacks.map((stack) => englishActionStack(stack.action_number, stack.cards || [], stack.seal_mode)).join("; ");
 }
 
 function canSubmit(playerId) {
@@ -823,7 +1324,7 @@ function canSubmit(playerId) {
 }
 
 function canResolve(game) {
-  return Boolean(game && !["give_orders", "complete"].includes(game.phase));
+  return Boolean(game && !state.resolving && !["give_orders", "complete"].includes(game.phase));
 }
 
 function renderBoard(game) {
@@ -920,6 +1421,7 @@ function renderShipToken(svg, player, className) {
   const [x, y] = axialToPixel(player.ship.q, player.ship.r);
   const group = svgEl("g");
   group.setAttribute("class", className);
+  group.dataset.playerId = player.id;
 
   const circle = svgEl("circle");
   circle.setAttribute("cx", x);
@@ -1515,6 +2017,92 @@ function renderEvents(game) {
       return item;
     }),
   );
+}
+
+function renderEndGameSummary(game) {
+  const overlay = endGameOverlayElement();
+  if (!game || game.phase !== "complete" || state.dismissedEndGameFor === state.selectedGameId) {
+    overlay.classList.remove("visible");
+    return;
+  }
+  const summary = endGameSummary(game);
+  const winnerText = summary.winners.length > 1
+    ? `Tie: ${summary.winners.map(titleCase).join(", ")}`
+    : `${titleCase(summary.winners[0])} Wins`;
+  overlay.innerHTML = `
+    <section class="end-game-panel" role="dialog" aria-modal="true" aria-label="End game summary">
+      <div class="end-game-header">
+        <div>
+          <span>Game Complete</span>
+          <strong>${escapeHtml(winnerText)}</strong>
+        </div>
+        <button type="button" data-end-game-close>Close</button>
+      </div>
+      <div class="end-game-scoreboard">
+        ${summary.players.map((player) => `
+          <article class="end-game-player" style="border-left-color: ${SHIP_COLORS[player.id] || "#60706b"}">
+            <div class="end-game-player-title">
+              <strong>${escapeHtml(titleCase(player.id))}</strong>
+              <span>${player.finalVp} VP</span>
+            </div>
+            <dl>
+              <div><dt>Distance moved</dt><dd>${player.distanceMoved}</dd></div>
+              <div><dt>Baubles scored</dt><dd>${player.baubleCount} for ${player.baubleVp} VP</dd></div>
+              <div><dt>Hits</dt><dd>${player.hitCount} for ${player.hitVp} VP</dd></div>
+            </dl>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+  overlay.classList.add("visible");
+}
+
+function endGameOverlayElement() {
+  if (elements.endGameOverlay) return elements.endGameOverlay;
+  const overlay = document.createElement("div");
+  overlay.className = "end-game-overlay";
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay || event.target.closest("[data-end-game-close]")) {
+      state.dismissedEndGameFor = state.selectedGameId;
+      overlay.classList.remove("visible");
+    }
+  });
+  document.body.append(overlay);
+  elements.endGameOverlay = overlay;
+  return overlay;
+}
+
+function endGameSummary(game) {
+  const stats = Object.fromEntries(Object.keys(game.players || {}).map((playerId) => [playerId, {
+    id: playerId,
+    finalVp: game.players[playerId]?.victory_points || 0,
+    distanceMoved: 0,
+    baubleCount: 0,
+    baubleVp: 0,
+    hitCount: 0,
+    hitVp: 0,
+  }]));
+  (game.event_log || []).forEach((event) => {
+    if (event.type === "movement_resolved" && stats[event.player_id]) {
+      stats[event.player_id].distanceMoved += (event.steps || []).reduce((sum, step) => sum + (step.distance || 0), 0);
+    } else if (event.type === "bauble_awarded") {
+      (event.awards || []).forEach((award) => {
+        if (!stats[award.player_id]) return;
+        stats[award.player_id].baubleCount += 1;
+        stats[award.player_id].baubleVp += award.vp_awarded || 0;
+      });
+    } else if (event.type === "volley_resolved" && event.hit && stats[event.attacker_id]) {
+      stats[event.attacker_id].hitCount += 1;
+      stats[event.attacker_id].hitVp += event.vp_awarded || 0;
+    }
+  });
+  const players = Object.values(stats).sort((left, right) => PLAYER_ORDER.indexOf(left.id) - PLAYER_ORDER.indexOf(right.id));
+  const topVp = Math.max(...players.map((player) => player.finalVp), 0);
+  return {
+    players,
+    winners: players.filter((player) => player.finalVp === topVp).map((player) => player.id),
+  };
 }
 
 function syncBuilderPlayer() {
@@ -2289,12 +2877,19 @@ function applyDefaultAttackTarget(stack, cardIndex) {
 
 elements.createButton.addEventListener("click", () => createGame().catch(showError));
 elements.refreshButton.addEventListener("click", () => refreshGames().catch(showError));
+elements.exportLogButton?.addEventListener("click", () => exportGameLog().catch(showError));
 elements.redOrdersButton.addEventListener("click", () => submitAiOrders("red").catch(showError));
 elements.blueOrdersButton.addEventListener("click", () => submitAiOrders("blue").catch(showError));
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
-elements.aiTypeSelect.addEventListener("change", (event) => {
+elements.aiTypeSelect?.addEventListener("change", (event) => {
   state.selectedAiType = event.target.value;
+});
+elements.redAiTypeSelect?.addEventListener("change", (event) => {
+  state.selectedAiTypes.red = event.target.value;
+});
+elements.blueAiTypeSelect?.addEventListener("change", (event) => {
+  state.selectedAiTypes.blue = event.target.value;
 });
 elements.builderPlayerSelect.addEventListener("change", (event) => {
   state.builderPlayerId = event.target.value;
@@ -2347,6 +2942,177 @@ elements.revealOrdersToggle.addEventListener("change", () => {
 
 function showError(error) {
   alert(error.message);
+}
+
+function showResolutionCallouts(game, previousEventCount, previousGame = null) {
+  const callouts = resolutionCallouts(game, previousEventCount);
+  if (!callouts.length) return Promise.resolve(() => {});
+  const overlay = resolutionCalloutElement();
+  const animationContext = createBoardAnimationContext();
+  let index = 0;
+
+  return new Promise((resolve) => {
+    function showNext() {
+    const callout = callouts[index];
+    overlay.className = `resolution-callout visible ${callout.activity ? `activity-${callout.activity}` : ""}`;
+    overlay.innerHTML = `
+      <strong>${escapeHtml(callout.title)}</strong>
+      ${callout.detail ? `<span>${escapeHtml(callout.detail)}</span>` : ""}
+    `;
+    if (callout.moveStep) animateBoardShip(callout.playerId, callout.moveStep.before, callout.moveStep.after, animationContext);
+    if (callout.blast) animateBoardDot(callout.blast.from, callout.blast.to, "attack");
+    index += 1;
+    window.setTimeout(() => {
+      overlay.classList.remove("visible");
+      if (index < callouts.length) {
+        window.setTimeout(showNext, 180);
+      } else {
+        window.setTimeout(() => resolve(() => cleanupBoardAnimationContext(animationContext)), 180);
+      }
+    }, callout.duration || 1200);
+    }
+
+    showNext();
+  });
+}
+
+function createBoardAnimationContext() {
+  return {
+    hiddenTokens: new Set(),
+    shipGhosts: new Map(),
+  };
+}
+
+function cleanupBoardAnimationContext(context) {
+  context?.shipGhosts?.forEach((ship) => ship.remove());
+  context?.hiddenTokens?.forEach((token) => {
+    token.style.opacity = "";
+  });
+}
+
+function resolutionCallouts(game, previousEventCount) {
+  const events = (game?.event_log || []).slice(previousEventCount);
+  const callouts = [];
+  events.forEach((event) => {
+    if (event.type === "movement_resolved") {
+      const firstStep = (event.steps || [])[0];
+      if (event.overdrive_copy) {
+        callouts.push({
+          activity: "overdrive",
+          title: "OVERDRIVE",
+          detail: `${titleCase(event.player_id)} repeats Action ${event.action_number}`,
+          duration: 800,
+        });
+      }
+      callouts.push({
+        activity: "move",
+        playerId: event.player_id,
+        title: `${titleCase(event.player_id)} Moves`,
+        detail: `Action ${event.action_number}: ${(event.steps || []).map(englishMovementStep).join(", ")}`,
+        moveStep: firstStep ? { before: firstStep.before, after: firstStep.after } : null,
+      });
+    } else if (event.type === "volley_resolved") {
+      const attackBonus = event.attack_bonus ?? event.aim_bonus ?? 0;
+      const rollTotal = event.roll + attackBonus;
+      const attacker = game.players?.[event.attacker_id]?.ship;
+      const target = game.players?.[event.target_id]?.ship;
+      if (event.overdrive_copy) {
+        callouts.push({
+          activity: "overdrive",
+          title: "OVERDRIVE",
+          detail: `${titleCase(event.attacker_id)} fires again`,
+          duration: 800,
+        });
+      }
+      callouts.push({
+        activity: "attack",
+        title: `${titleCase(event.attacker_id)} Shoots`,
+        detail: `Action ${event.action_number}: ${titleCase(event.target_id)}`,
+        duration: 900,
+        blast: attacker && target ? { from: attacker, to: target } : null,
+      });
+      callouts.push({
+        activity: event.hit ? "attack" : "miss",
+        title: volleyCalloutTitle(event),
+        detail: `Defense ${event.defense_threshold}; rolled ${event.roll} + ${attackBonus} Aim = ${rollTotal}: ${volleyOutcomeText(event)}`,
+        duration: 1500,
+      });
+    } else if (event.type === "bauble_awarded") {
+      (event.awards || []).forEach((award) => {
+        callouts.push({
+          activity: "award",
+          title: `${titleCase(award.player_id)} Scores`,
+          detail: `+${award.vp_awarded} VP${award.desperation_card_drawn ? ", drew a card" : ""}`,
+        });
+      });
+    }
+  });
+  return callouts;
+}
+
+function resolutionCalloutElement() {
+  if (elements.resolutionCallout) return elements.resolutionCallout;
+  const overlay = document.createElement("div");
+  overlay.className = "resolution-callout";
+  document.body.append(overlay);
+  elements.resolutionCallout = overlay;
+  return overlay;
+}
+
+function animateBoardDot(fromHex, toHex, activity) {
+  const start = boardScreenPoint(fromHex);
+  const end = boardScreenPoint(toHex);
+  if (!start || !end) return;
+  const dot = document.createElement("div");
+  dot.className = `board-motion-dot ${activity === "attack" ? "attack-dot" : "move-dot"}`;
+  dot.style.left = `${start.x}px`;
+  dot.style.top = `${start.y}px`;
+  dot.style.setProperty("--motion-x", `${end.x - start.x}px`);
+  dot.style.setProperty("--motion-y", `${end.y - start.y}px`);
+  document.body.append(dot);
+  window.setTimeout(() => dot.remove(), 900);
+}
+
+function animateBoardShip(playerId, fromHex, toHex, context) {
+  const start = boardScreenPoint(fromHex);
+  const end = boardScreenPoint(toHex);
+  if (!start || !end || !playerId) return;
+  const staticToken = elements.boardSvg?.querySelector(`.ship-token[data-player-id="${playerId}"]`);
+  if (staticToken) {
+    staticToken.style.opacity = "0";
+    context?.hiddenTokens?.add(staticToken);
+  }
+  context?.shipGhosts?.get(playerId)?.remove();
+  const ship = document.createElement("div");
+  ship.className = "board-motion-ship";
+  ship.style.background = SHIP_COLORS[playerId] || "#6f5ab8";
+  ship.style.left = `${start.x}px`;
+  ship.style.top = `${start.y}px`;
+  ship.style.setProperty("--motion-x", `${end.x - start.x}px`);
+  ship.style.setProperty("--motion-y", `${end.y - start.y}px`);
+  ship.textContent = titleCase(playerId).charAt(0);
+  document.body.append(ship);
+  context?.shipGhosts?.set(playerId, ship);
+  window.setTimeout(() => {
+    ship.classList.add("settled");
+    ship.style.left = `${end.x}px`;
+    ship.style.top = `${end.y}px`;
+    ship.style.setProperty("--motion-x", "0px");
+    ship.style.setProperty("--motion-y", "0px");
+  }, 820);
+}
+
+function boardScreenPoint(hex) {
+  const svg = elements.boardSvg;
+  if (!svg || !hex) return null;
+  const [x, y] = axialToPixel(hex.q, hex.r);
+  const matrix = svg.getScreenCTM();
+  if (!matrix) return null;
+  const point = svg.createSVGPoint();
+  point.x = x;
+  point.y = y;
+  const screenPoint = point.matrixTransform(matrix);
+  return { x: screenPoint.x, y: screenPoint.y };
 }
 
 function showCombatResultOverlay(game, previousEventCount) {
@@ -2618,3 +3384,4 @@ function getMiniHexPoints(x, y, size) {
 }
 
 refreshGames().catch(showError);
+

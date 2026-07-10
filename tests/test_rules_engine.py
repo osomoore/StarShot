@@ -218,6 +218,41 @@ class RulesEngineTests(unittest.TestCase):
         self.assertTrue(movements[0]["steps"][0]["clamped"])
         self.assertTrue(movements[1]["steps"][0]["clamped"])
 
+    def test_overdriven_move_counts_both_moves_for_attack_defense(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        state.players["blue"].ship.q = 3
+        state.players["blue"].ship.r = 0
+        state.players["blue"].ship.facing = 0
+        state.players["red"].hand = [card_by_id("attack_2_a")]
+        state.players["blue"].hand = [card_by_id("move_2_a")]
+
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_2_a", target_player_id="blue"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "red", red_orders)
+        state = submit_orders(state, "blue", blue_orders)
+
+        state = resolve_next_step(state)
+
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
+        self.assertEqual(state.players["blue"].ship.movement_this_action, 4)
+        self.assertEqual(volley["target_movement"], 4)
+        self.assertEqual(volley["defense_threshold"], volley["distance"] + 4 + volley["target_defense_bonus"])
+
     def test_baubles_are_placed_without_overlap_and_later_rounds_are_nearer_center(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "yellow"), seed=11))
         positions = {(bauble.q, bauble.r) for bauble in state.baubles}

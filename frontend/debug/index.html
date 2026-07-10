@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StarShot Debug</title>
-    <link rel="stylesheet" href="/static/styles.css?v=action-log-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=action-log-14" />
   </head>
   <body>
     <main class="app-shell">
@@ -24,7 +24,10 @@
         <aside class="sidebar" aria-label="Action log">
           <div class="panel-header">
             <h2>Action Log</h2>
-            <span id="gameCount">0</span>
+            <div class="action-log-tools">
+              <button id="exportLogButton" type="button">Export Log</button>
+              <span id="gameCount">0</span>
+            </div>
           </div>
           <div id="actionLog" class="action-log"></div>
           <div id="gamesList" class="games-list legacy-games-list" hidden></div>
@@ -43,9 +46,17 @@
     </div>
   </div>
   <div class="actions-row">
-    <label class="ai-control">
-      AI Type
-      <select id="aiTypeSelect">
+    <label class="ai-control player-ai-control red-ai-control">
+      Red AI
+      <select id="redAiTypeSelect">
+        <option value="bauble_runner">Bauble Runner</option>
+        <option value="hunter_killer">Hunter-Killer</option>
+        <option value="blaster">Blaster</option>
+      </select>
+    </label>
+    <label class="ai-control player-ai-control blue-ai-control">
+      Blue AI
+      <select id="blueAiTypeSelect">
         <option value="bauble_runner">Bauble Runner</option>
         <option value="hunter_killer">Hunter-Killer</option>
         <option value="blaster">Blaster</option>
@@ -131,6 +142,6 @@
         </section>
       </section>
     </main>
-    <script src="/static/app.js?v=action-log-2"></script>
+    <script src="/static/app.js?v=action-log-14"></script>
   </body>
 </html>
