@@ -1809,6 +1809,7 @@ function renderActionPreview(svg, game) {
       for (let pass = 0; pass < passes; pass += 1) {
         selections.forEach(({ card, cardIndex, family }) => {
           if (family !== "move") return;
+          if (pass > 0 && previewSelectionIsDesperate(card, stack, cardIndex)) return;
           const before = { ...preview };
           const distance = previewSelectionMoveDistance(card, stack, cardIndex);
           const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
@@ -1851,10 +1852,8 @@ function renderActionPreview(svg, game) {
           family === "attack" && previewSelectionAlwaysHits(card, stack, cardIndex)
         ));
         drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
-        if (stack.seal_mode === "overdrive") {
-          drawAttackPreview(svg, preview, target, `A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
-        }
       });
+      drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, state.builderPlayerId);
     }
   });
 }
@@ -1903,6 +1902,7 @@ function renderStackPreview(svg, game, player, preview, stack, stackIndex, cardB
     for (let pass = 0; pass < passes; pass += 1) {
       selections.forEach(({ card, cardIndex, family: selectionFamily }) => {
         if (selectionFamily !== "move") return;
+        if (pass > 0 && previewSelectionIsDesperate(card, stack, cardIndex)) return;
         const before = { ...preview };
         const distance = previewSelectionMoveDistance(card, stack, cardIndex);
         const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
@@ -1933,11 +1933,34 @@ function renderStackPreview(svg, game, player, preview, stack, stackIndex, cardB
       );
       const alwaysHits = attackSelections.some(({ card, cardIndex }) => previewSelectionAlwaysHits(card, stack, cardIndex));
       drawAttackPreview(svg, preview, target, `${player.id[0].toUpperCase()}A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
-      if (stack.seal_mode === "overdrive") {
-        drawAttackPreview(svg, preview, target, `${player.id[0].toUpperCase()}A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
-      }
     });
+    drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, player.id, player.id[0].toUpperCase());
   }
+}
+
+function drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, attackerId, labelPrefix = "") {
+  if (stack.seal_mode !== "overdrive") return;
+  const attackSelections = selections.filter(({ card, cardIndex, family }) => (
+    family === "attack" && !previewSelectionIsDesperate(card, stack, cardIndex)
+  ));
+  if (!attackSelections.length) return;
+
+  const firstAttack = attackSelections.find(({ card, cardIndex }) => effectiveCardRequiresTarget(card, stack, cardIndex));
+  const attacksAll = attackSelections.some(({ card, cardIndex }) => previewSelectionAttacksAll(card, stack, cardIndex));
+  const targets = attacksAll
+    ? Object.values(game.players || {}).filter((candidate) => candidate.id !== attackerId)
+    : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
+      ? [game.players[stack.targets[firstAttack.cardIndex]]]
+      : [];
+  const damage = previewVolleyDamage(attackSelections, stack);
+  const aimBonus = attackSelections.reduce(
+    (total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex),
+    0,
+  );
+  const alwaysHits = attackSelections.some(({ card, cardIndex }) => previewSelectionAlwaysHits(card, stack, cardIndex));
+  targets.forEach((target) => {
+    drawAttackPreview(svg, preview, target, `${labelPrefix}A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
+  });
 }
 
 function shouldShowBuilderDraft(game, player) {
@@ -1966,6 +1989,10 @@ function previewSelectionMoveDistance(card, stack, cardIndex) {
       : card.desperate_face.value;
   }
   return previewCardValue(card, stack.seal_mode);
+}
+
+function previewSelectionIsDesperate(card, stack, cardIndex) {
+  return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face);
 }
 
 function previewSelectionWarpDestination(card, stack, cardIndex) {
@@ -3378,7 +3405,7 @@ function validateBuiltOrders() {
   if (!game || !player) return { ok: false, message: "Select a game and player first." };
   if (!canSubmit(state.builderPlayerId)) return { ok: false, message: "This player cannot submit orders now." };
 
-  const cardById = Object.fromEntries((player.hand || []).map((card) => [card.id, card]));
+  const cardById = Object.fromEntries((player.hand || []).map((card) => [card.id, normalizeCardMetadata(card)]));
   const used = new Set();
   for (const stack of state.builderDraft.stacks) {
     const families = new Set();

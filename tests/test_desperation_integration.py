@@ -500,6 +500,33 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertEqual(state.players["red"].ship.q, -3)
         self.assertEqual(state.players["red"].ship.r, 0)
 
+    def test_overdrive_does_not_copy_desperate_movement(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_crazy_ivan_a")
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(
+                1,
+                SealMode.OVERDRIVE,
+                (OrderCardSelection("desp_crazy_ivan_a", face="desperate", orientation="u_turn_move"),),
+            ),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.players["red"].ship.facing, 3)
+        self.assertEqual(state.players["red"].ship.q, -3)
+        self.assertEqual(state.players["red"].ship.r, 0)
+        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
+        movements = [event for event in state.event_log if event["type"] == "movement_resolved"]
+        self.assertEqual(len(movements), 1)
+        self.assertFalse(movements[0]["overdrive_copy"])
+
     # ------------------------------------------------------------------
     # Crazy Ivan desperate face — attack variant
     # ------------------------------------------------------------------
@@ -529,6 +556,63 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertEqual(volleys[0]["target_id"], "blue")
         self.assertEqual(volleys[0]["aim_bonus"], 3)
         self.assertTrue(volleys[0]["u_turn_attack"])
+
+    def test_overdrive_does_not_copy_desperate_attack(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_crack_shot_a")
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(
+                1,
+                SealMode.OVERDRIVE,
+                (OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),),
+            ),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
+        self.assertEqual(len(volleys), 1)
+        self.assertFalse(volleys[0]["overdrive_copy"])
+        self.assertEqual(volleys[0]["damage"], 2)
+
+    def test_overdrive_copy_excludes_desperate_attack_from_mixed_volley(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "targeted_attack_aim_2_a", "desp_crack_shot_a")
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(
+                1,
+                SealMode.OVERDRIVE,
+                (
+                    OrderCardSelection("targeted_attack_aim_2_a", target_player_id="blue"),
+                    OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),
+                ),
+            ),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
+        self.assertEqual(len(volleys), 2)
+        self.assertFalse(volleys[0]["overdrive_copy"])
+        self.assertTrue(volleys[1]["overdrive_copy"])
+        self.assertEqual(volleys[0]["card_ids"], ["targeted_attack_aim_2_a", "desp_crack_shot_a"])
+        self.assertEqual(volleys[1]["card_ids"], ["targeted_attack_aim_2_a"])
+        self.assertEqual(volleys[0]["damage"], 2)
+        self.assertEqual(volleys[1]["damage"], 1)
 
     # ------------------------------------------------------------------
     # Active Cooling desperate face

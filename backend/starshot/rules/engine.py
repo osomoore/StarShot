@@ -417,6 +417,8 @@ def _resolve_stack_movement(
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
+        if overdrive_copy and effect.is_desperate_face:
+            continue
         if effect.family != CardFamily.MOVE or effect.move is None:
             continue
 
@@ -583,14 +585,18 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
             _resolve_attack_volley(state, action_number, stack, attacker, target_id, attack_cards, shielded_target_ids)
             resolved_any = True
         if stack.seal_mode == SealMode.OVERDRIVE:
-            for target_id in target_ids:
+            overdrive_attack_cards = _attack_cards_for_stack(stack, include_desperate=False)
+            if not overdrive_attack_cards:
+                continue
+            overdrive_target_ids = _target_player_ids_for_attack(state, attacker, stack, overdrive_attack_cards)
+            for target_id in overdrive_target_ids:
                 _resolve_attack_volley(
                     state,
                     action_number,
                     stack,
                     attacker,
                     target_id,
-                    attack_cards,
+                    overdrive_attack_cards,
                     shielded_target_ids,
                     overdrive_copy=True,
                 )
@@ -752,11 +758,13 @@ def _resolve_attack_volley(
     state.event_log.append(event)
 
 
-def _attack_cards_for_stack(stack: ActionStack) -> list[tuple[Card, OrderCardSelection]]:
+def _attack_cards_for_stack(stack: ActionStack, *, include_desperate: bool = True) -> list[tuple[Card, OrderCardSelection]]:
     attack_cards: list[tuple[Card, OrderCardSelection]] = []
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
+        if not include_desperate and effect.is_desperate_face:
+            continue
         if effect.family == CardFamily.ATTACK:
             attack_cards.append((card, selection))
     return attack_cards
