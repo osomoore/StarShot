@@ -20,21 +20,21 @@ name = "Reconfigure"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 
 [[cards]]
 name = "Hull Repair"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 
 [[cards]]
 name = "Steady Shot"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Attack Aim +2, Damage +1"
 
@@ -43,7 +43,7 @@ name = "Side Slip"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Move 4 Right"
 side_b_2 = "Move 4 Left"
@@ -53,7 +53,7 @@ name = "Drift King"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Turn Right Twice then Move 4"
 
@@ -62,7 +62,7 @@ name = "Thrust Ions"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Move 5"
 
@@ -71,17 +71,17 @@ name = "Crazy Ivan"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "U-Turn then Move 3"
-side_b_2 = "U-Turn Attack Aim +3"
+side_b_2 = "U-Turn Attack Damage +1"
 
 [[cards]]
 name = "Active Cooling"
 copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Move 1, Move Overheat to Discard"
 
@@ -90,7 +90,7 @@ name = "Turbo Ions"
 copies = 1
 side_a_type = "Basic"
 side_a_1 = "Move 3"
-side_a_2 = "Attack Aim +3"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Move 10"
 
@@ -98,8 +98,8 @@ side_b_1 = "Move 10"
 name = "NightJammer"
 copies = 1
 side_a_type = "Basic"
-side_a_1 = "Move 4"
-side_a_2 = "Attack Aim +4"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Warp behind VP leader, Defense +5"
 
@@ -107,37 +107,34 @@ side_b_1 = "Warp behind VP leader, Defense +5"
 name = "Holdo Maneuver"
 copies = 1
 side_a_type = "Basic"
-side_a_1 = "Move 5"
-side_a_2 = "Attack Aim +5"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Attack Damage +2"
 
 [[cards]]
 name = "StarShot"
 copies = 1
 side_a_type = "Basic"
-side_a_1 = "Move 6"
-side_a_2 = "Attack Aim +6"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
-side_b_1 = "Always Hits"
+side_b_1 = "Attack Aim +999"
 
 [[cards]]
 name = "ScatterShot"
 copies = 1
 side_a_type = "Basic"
-side_a_1 = "Move 7"
-side_a_2 = "Attack Aim +7"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Attack Damage +2"
 
 [[cards]]
 name = "Lead the Target"
 copies = 1
 side_a_type = "Basic"
-side_a_1 = "Move 8"
-side_a_2 = "Attack Aim +8"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Attack Damage +1, Lead the Target"
-
-[[cards]]
-name = "Overdrive 2x"
-copies = 1
-side_a_type = "Basic"
-side_a_1 = "Move 2"
-side_a_2 = "Attack Aim +2"
