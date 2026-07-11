@@ -92,12 +92,12 @@ class DesperationIntegrationTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
-        self._set_hand(state, "blue", "attack_1_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a")
         desp_before = len(state.desperation_deck.cards)
 
         state = submit_orders(state, "red", self._empty_orders())
         state = submit_orders(state, "blue", OrdersSubmission(stacks=(
-            ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
             ActionStack(2, SealMode.SEALED),
             ActionStack(3, SealMode.SEALED),
         )))
@@ -211,7 +211,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
     def test_desperate_steady_shot_adds_aim_and_damage(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "red", "attack_1_a", "desp_steady_shot_a")
+        self._set_hand(state, "red", "targeted_attack_aim_1_a", "desp_steady_shot_a")
         state.players["blue"].ship.shields = 0
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
@@ -220,7 +220,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
         state = submit_orders(state, "red", OrdersSubmission(stacks=(
             ActionStack(1, SealMode.SEALED, (
-                OrderCardSelection("attack_1_a", target_player_id="blue"),
+                OrderCardSelection("targeted_attack_aim_1_a", target_player_id="blue"),
                 OrderCardSelection("desp_steady_shot_a", face="desperate"),
             )),
             ActionStack(2, SealMode.SEALED),
@@ -289,7 +289,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
     def test_untargeted_attack_joins_targeted_card_target(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green"), seed=1))
-        self._set_hand(state, "red", "attack_1_a", "desp_steady_shot_a")
+        self._set_hand(state, "red", "targeted_attack_aim_1_a", "desp_steady_shot_a")
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
         state.players["red"].ship.facing = 0
@@ -300,7 +300,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
         state = submit_orders(state, "red", OrdersSubmission(stacks=(
             ActionStack(1, SealMode.SEALED, (
-                OrderCardSelection("attack_1_a", target_player_id="blue"),
+                OrderCardSelection("targeted_attack_aim_1_a", target_player_id="blue"),
                 OrderCardSelection("desp_steady_shot_a", face="desperate"),
             )),
             ActionStack(2, SealMode.SEALED),
@@ -353,7 +353,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
     def test_desperate_starshot_always_hits(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "red", "attack_1_a", "desp_starshot")
+        self._set_hand(state, "red", "targeted_attack_aim_1_a", "desp_starshot")
         state.players["blue"].ship.shields = 0
         state.players["red"].ship.q = -14
         state.players["red"].ship.r = 0
@@ -362,7 +362,7 @@ class DesperationIntegrationTests(unittest.TestCase):
 
         state = submit_orders(state, "red", OrdersSubmission(stacks=(
             ActionStack(1, SealMode.SEALED, (
-                OrderCardSelection("attack_1_a", target_player_id="blue"),
+                OrderCardSelection("targeted_attack_aim_1_a", target_player_id="blue"),
                 OrderCardSelection("desp_starshot", face="desperate"),
             )),
             ActionStack(2, SealMode.SEALED),
@@ -528,8 +528,8 @@ class DesperationIntegrationTests(unittest.TestCase):
 
     def test_desperate_lead_the_target_ignores_target_movement(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "red", "attack_1_a", "desp_lead_the_target")
-        self._set_hand(state, "blue", "move_2_a")
+        self._set_hand(state, "red", "targeted_attack_aim_1_a", "desp_lead_the_target")
+        self._set_hand(state, "blue", "controlled_move_2_a")
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 1
@@ -538,14 +538,14 @@ class DesperationIntegrationTests(unittest.TestCase):
 
         state = submit_orders(state, "red", OrdersSubmission(stacks=(
             ActionStack(1, SealMode.SEALED, (
-                OrderCardSelection("attack_1_a", target_player_id="blue"),
+                OrderCardSelection("targeted_attack_aim_1_a", target_player_id="blue"),
                 OrderCardSelection("desp_lead_the_target", face="desperate"),
             )),
             ActionStack(2, SealMode.SEALED),
             ActionStack(3, SealMode.SEALED),
         )))
         state = submit_orders(state, "blue", OrdersSubmission(stacks=(
-            ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_2_a", orientation="forward"),)),
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_2_a", orientation="forward"),)),
             ActionStack(2, SealMode.SEALED),
             ActionStack(3, SealMode.SEALED),
         )))

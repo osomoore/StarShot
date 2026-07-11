@@ -17,6 +17,7 @@ class SQLiteGameStoreTests(unittest.TestCase):
 
             self.assertEqual(loaded.round_number, 1)
             self.assertEqual(loaded.phase, state.phase)
+            self.assertEqual(loaded.deck_set_id, "core_0_2_sides")
             self.assertEqual(set(loaded.players), {"red", "blue"})
             self.assertEqual(loaded.starting_player_id, state.starting_player_id)
 
@@ -30,6 +31,7 @@ class SQLiteGameStoreTests(unittest.TestCase):
 
             self.assertEqual(games[0]["id"], game_id)
             self.assertEqual(games[0]["phase"], "give_orders")
+            self.assertEqual(games[0]["deck_set_id"], "core_0_2_sides")
 
 
 if __name__ == "__main__":

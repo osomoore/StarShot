@@ -34,16 +34,16 @@ def main() -> int:
 
     red_orders = OrdersSubmission(
         stacks=(
-            ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a"),)),
-            ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b"),)),
-            ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_1_a"),)),
+            ActionStack(2, SealMode.SEALED, (OrderCardSelection("controlled_move_1_b"),)),
+            ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_2_a"),)),
         )
     )
     blue_orders = OrdersSubmission(
         stacks=(
-            ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
-            ActionStack(2, SealMode.SEALED, (OrderCardSelection("attack_1_b", target_player_id="red"),)),
-            ActionStack(3, SealMode.SEALED, (OrderCardSelection("attack_2_a", target_player_id="red"),)),
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
+            ActionStack(2, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_b", target_player_id="red"),)),
+            ActionStack(3, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),)),
         )
     )
 

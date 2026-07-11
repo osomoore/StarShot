@@ -42,6 +42,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
+button[aria-pressed="true"] {
+  background: #ffffff;
+  color: #182022;
+}
+
 select {
   border: 1px solid #b8c2be;
   border-radius: 6px;
@@ -1238,6 +1243,21 @@ select {
   font-weight: 900;
 }
 
+.end-game-ship {
+  align-items: center;
+  background: #fafbfa;
+  border: 1px solid #e0e5e2;
+  border-radius: 6px;
+  display: flex;
+  justify-content: center;
+  min-height: 118px;
+  padding: 6px;
+}
+
+.end-game-ship .mini-ship-svg {
+  max-width: 128px;
+}
+
 .end-game-stat-grid {
   display: grid;
   gap: 6px;
@@ -1726,6 +1746,216 @@ pre {
 
 .state-panel pre {
   max-height: 460px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  background: #0f1415;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .app-shell {
+  background: #0f1415;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] .topbar {
+  background: #090d0e;
+  border-bottom: 1px solid #273234;
+}
+
+:root[data-theme="dark"] .topbar p,
+:root[data-theme="dark"] .label,
+:root[data-theme="dark"] .panel-note,
+:root[data-theme="dark"] .action-log-empty,
+:root[data-theme="dark"] .action-log-kicker,
+:root[data-theme="dark"] .front-card span,
+:root[data-theme="dark"] .picker-card span,
+:root[data-theme="dark"] .card-slot-label,
+:root[data-theme="dark"] .builder-controls label,
+:root[data-theme="dark"] .card-slot label,
+:root[data-theme="dark"] .order-stack-header label,
+:root[data-theme="dark"] .ship-board-title span,
+:root[data-theme="dark"] .ship-board-footer,
+:root[data-theme="dark"] .player-row p,
+:root[data-theme="dark"] dt,
+:root[data-theme="dark"] .end-game-header span,
+:root[data-theme="dark"] .end-game-overall dt,
+:root[data-theme="dark"] .summary-stat span {
+  color: #9cacaa;
+}
+
+:root[data-theme="dark"] button {
+  background: #347983;
+  border-color: #4d98a1;
+  color: #f7fbfa;
+}
+
+:root[data-theme="dark"] button[aria-pressed="true"],
+:root[data-theme="dark"] .toolbar-link,
+:root[data-theme="dark"] .seal-toggle,
+:root[data-theme="dark"] .stack-clear-button,
+:root[data-theme="dark"] .picker-clear-action,
+:root[data-theme="dark"] .combat-result-header button,
+:root[data-theme="dark"] .end-game-header button,
+:root[data-theme="dark"] .card-picker-header button {
+  background: #1a2325;
+  border-color: #405153;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] button:disabled {
+  background: #334143;
+  border-color: #465457;
+  color: #899794;
+}
+
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] input {
+  background: #11191a;
+  border-color: #405153;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .summary-strip,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .control-strip .actions-row,
+:root[data-theme="dark"] .player-rail,
+:root[data-theme="dark"] .mini-ship-board,
+:root[data-theme="dark"] .ship-board,
+:root[data-theme="dark"] .combat-result-panel,
+:root[data-theme="dark"] .end-game-panel,
+:root[data-theme="dark"] .card-picker-panel,
+:root[data-theme="dark"] .hex-choice-panel {
+  background: #151c1d;
+  border-color: #2e3a3c;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] .sidebar {
+  border-right-color: #2e3a3c;
+}
+
+:root[data-theme="dark"] .game-row,
+:root[data-theme="dark"] .action-log-item,
+:root[data-theme="dark"] .player-row,
+:root[data-theme="dark"] .combat-result-item,
+:root[data-theme="dark"] .end-game-player,
+:root[data-theme="dark"] .summary-stat,
+:root[data-theme="dark"] .end-game-overall,
+:root[data-theme="dark"] .end-game-overall dl div,
+:root[data-theme="dark"] .combat-result-breakdown,
+:root[data-theme="dark"] .damage-shot-list {
+  background: #11191a;
+  border-color: #334143;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] .game-row small,
+:root[data-theme="dark"] .action-log-body,
+:root[data-theme="dark"] .mini-stat,
+:root[data-theme="dark"] .combat-result-item span {
+  color: #bfcbc8;
+}
+
+:root[data-theme="dark"] .game-row.selected {
+  border-color: #57aab3;
+  box-shadow: inset 4px 0 0 #57aab3;
+}
+
+:root[data-theme="dark"] .order-stack {
+  background:
+    linear-gradient(180deg, rgb(24 33 34 / 0.96), rgb(17 25 26 / 0.98)),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--action-accent) 24%, transparent), transparent 46%);
+  border-color: color-mix(in srgb, var(--action-accent) 48%, #334143);
+}
+
+:root[data-theme="dark"] .order-stack.readonly {
+  background: #12191a;
+  border-color: #2b3638;
+}
+
+:root[data-theme="dark"] .order-stack.readonly select {
+  background: #101718;
+  color: #899794;
+}
+
+:root[data-theme="dark"] .front-card,
+:root[data-theme="dark"] .picker-card,
+:root[data-theme="dark"] .hex-choice-summary,
+:root[data-theme="dark"] .hex-choice {
+  background: #11191a;
+  border-color: #405153;
+  color: #e6ece9;
+}
+
+:root[data-theme="dark"] .front-card.move-card,
+:root[data-theme="dark"] .picker-card.move-card {
+  background: linear-gradient(135deg, #173326, #11191a 60%);
+  border-color: #4fb272;
+}
+
+:root[data-theme="dark"] .front-card.attack-card,
+:root[data-theme="dark"] .picker-card.attack-card {
+  background: linear-gradient(135deg, #3a1c1d, #11191a 60%);
+  border-color: #d75d58;
+}
+
+:root[data-theme="dark"] .front-card.hybrid-card,
+:root[data-theme="dark"] .picker-card.hybrid-card {
+  background: linear-gradient(135deg, #163046, #11191a 60%);
+  border-color: #77addc;
+}
+
+:root[data-theme="dark"] .front-card.desperate-card,
+:root[data-theme="dark"] .hex-choice-summary.desperate-card,
+:root[data-theme="dark"] .hex-choice.desperate-choice,
+:root[data-theme="dark"] .front-card.desperate-attack-card,
+:root[data-theme="dark"] .hex-choice-summary.desperate-attack-card,
+:root[data-theme="dark"] .hex-choice.desperate-attack-choice {
+  color: inherit;
+}
+
+:root[data-theme="dark"] .mini-ship-header {
+  border-bottom-color: #2e3a3c;
+}
+
+:root[data-theme="dark"] .mini-ship-vp,
+:root[data-theme="dark"] .picker-card b {
+  background: #e6ece9;
+  color: #11191a;
+}
+
+:root[data-theme="dark"] .mini-ship-svg-container,
+:root[data-theme="dark"] .end-game-ship,
+:root[data-theme="dark"] .ship-art-frame,
+:root[data-theme="dark"] .board-svg {
+  background: #0f1718;
+  border-color: #2e3a3c;
+}
+
+:root[data-theme="dark"] .board-hex {
+  fill: #172222;
+  stroke: #314346;
+}
+
+:root[data-theme="dark"] .combat-result-overlay,
+:root[data-theme="dark"] .end-game-overlay {
+  background: rgb(4 7 8 / 0.64);
+}
+
+:root[data-theme="dark"] pre,
+:root[data-theme="dark"] .action-log-detail {
+  background: #070b0c;
+  border: 1px solid #263234;
+  color: #d7e8e5;
+}
+
+:root[data-theme="dark"] .combat-result-summary,
+:root[data-theme="dark"] .end-game-player-title span {
+  color: #e6ece9 !important;
 }
 
 @media (max-width: 900px) {

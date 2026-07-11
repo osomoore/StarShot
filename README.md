@@ -101,7 +101,7 @@ Example orders JSON:
     {
       "action_number": 1,
       "seal_mode": "sealed",
-      "cards": [{ "card_id": "move_1_a" }]
+      "cards": [{ "card_id": "controlled_move_1_a" }]
     },
     {
       "action_number": 2,
@@ -111,7 +111,7 @@ Example orders JSON:
     {
       "action_number": 3,
       "seal_mode": "overdrive",
-      "cards": [{ "card_id": "move_2_a" }]
+      "cards": [{ "card_id": "controlled_move_2_a" }]
     }
   ]
 }
@@ -128,6 +128,8 @@ Useful local endpoints:
 
 - `GET /`
 - `GET /api/health`
+
+Deck definitions live in `resources/decks/core_0_2/`. See `docs/context/deck_data.md` for the side-based card format and custom deck-set startup options.
 - `GET /api/games`
 - `POST /api/games`
 - `GET /api/games/{game_id}`

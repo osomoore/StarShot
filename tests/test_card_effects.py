@@ -8,7 +8,7 @@ from starshot.rules.models import CardFamily, OrderCardSelection, SealMode
 
 class CardEffectsTests(unittest.TestCase):
     def test_base_move_ignores_overdrive_for_card_value(self):
-        card = card_by_id("move_2_a")
+        card = card_by_id("controlled_move_2_a")
         effect = interpret_card(card, OrderCardSelection(card.id), SealMode.OVERDRIVE)
 
         self.assertEqual(effect.family, CardFamily.MOVE)
@@ -17,7 +17,7 @@ class CardEffectsTests(unittest.TestCase):
         self.assertEqual(effect.move.orientation_options, ("forward", "turn_left", "turn_right"))
 
     def test_base_attack_ignores_overdrive_for_aim_value(self):
-        card = card_by_id("attack_2_a")
+        card = card_by_id("targeted_attack_aim_2_a")
         effect = interpret_card(
             card,
             OrderCardSelection(card.id, target_player_id="blue"),

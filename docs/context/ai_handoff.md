@@ -16,6 +16,7 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 - `frontend/debug/`: plain HTML/CSS/JavaScript debug UI served by FastAPI at `/`.
 - `tests/`: unittest suite for rules, persistence, serialization, and API.
 - `docs/rules/`: canonical rules PDF, extracted text, and implementation checklist.
+- `resources/decks/core_0_2/`: default human-editable TOML deck data.
 
 ## How To Run
 
@@ -35,6 +36,12 @@ python -m unittest discover -s tests
 ```
 
 The local server is expected at `http://127.0.0.1:8000`.
+
+To start with a custom deck set:
+
+```powershell
+python scripts\server_control.py start --deck-set path\to\deck_set
+```
 
 ## Current Gameplay Slice
 
@@ -60,6 +67,8 @@ Implemented so far:
 - After choosing card 1 for an order, the debug builder advances to card 2 after any required move/target choice. Move-choice panels only show orientations supported by the selected card.
 
 Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 8 groups of the 0.2 migration are complete.
+
+Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_id`; order submission and resolution reject games whose deck set does not match the active server catalog.
 
 **Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 

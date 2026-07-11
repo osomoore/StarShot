@@ -19,13 +19,19 @@ class ApiTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_create_list_get_and_submit_orders(self):
+        health = self.client.get("/api/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json()["deck_set_id"], "core_0_2_sides")
+
         created = self.client.post("/api/games", json={"player_ids": ["red", "blue"], "seed": 3})
         self.assertEqual(created.status_code, 200)
         game_id = created.json()["game_id"]
+        self.assertEqual(created.json()["state"]["deck_set_id"], "core_0_2_sides")
 
         listed = self.client.get("/api/games")
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.json()["games"][0]["id"], game_id)
+        self.assertEqual(listed.json()["games"][0]["deck_set_id"], "core_0_2_sides")
 
         state = created.json()["state"]
         red_cards = [card["id"] for card in state["players"]["red"]["hand"]]

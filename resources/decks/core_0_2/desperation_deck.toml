@@ -1,241 +1,145 @@
+generated_id_prefix = "desp_"
+
 [[cards]]
-id = "desp_afterburners"
 name = "Afterburners"
-copies = [
-  "desp_afterburners_a",
-  "desp_afterburners_b",
-  "desp_afterburners_c",
-  "desp_afterburners_d",
-  "desp_afterburners_e",
-]
-family = "move"
-value = 3
-orientation_options = ["forward", "turn_right", "turn_left"]
-requires_target = false
-no_basic_face = true
-
-[cards.desperate_face]
-family = "move"
-value = 3
-orientation_options = ["forward", "turn_right", "turn_left"]
+copies = 5
+side_a_type = "Desperate"
+side_a_1 = "Move 3"
+side_b_type = "Desperate"
+side_b_1 = "Turn Right, Move 3"
+side_b_2 = "Turn Left, Move 3"
+cleanup = "Return to Desperation deck"
 
 [[cards]]
-id = "desp_crack_shot"
 name = "Crack Shot"
-copies = [
-  "desp_crack_shot_a",
-  "desp_crack_shot_b",
-  "desp_crack_shot_c",
-  "desp_crack_shot_d",
-  "desp_crack_shot_e",
-]
-family = "attack"
-value = 0
-requires_target = true
-no_basic_face = true
-
-[cards.desperate_face]
-family = "attack"
-base_damage = 1
-damage_bonus = 1
-requires_target = true
+copies = 5
+side_a_type = "Desperate"
+side_a_1 = "Targeted Attack Damage +1"
+cleanup = "Return to Desperation deck"
 
 [[cards]]
-id = "desp_reconfigure"
 name = "Reconfigure"
-copies = ["desp_reconfigure_a", "desp_reconfigure_b", "desp_reconfigure_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
 
 [[cards]]
-id = "desp_hull_repair"
 name = "Hull Repair"
-copies = ["desp_hull_repair_a", "desp_hull_repair_b", "desp_hull_repair_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
 
 [[cards]]
-id = "desp_steady_shot"
 name = "Steady Shot"
-copies = ["desp_steady_shot_a", "desp_steady_shot_b", "desp_steady_shot_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "attack"
-aim_bonus = 2
-damage_bonus = 1
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Attack Aim +2, Damage +1"
 
 [[cards]]
-id = "desp_side_slip"
 name = "Side Slip"
-copies = ["desp_side_slip_a", "desp_side_slip_b", "desp_side_slip_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 4
-orientation_options = ["slip_right", "slip_left"]
-side_slip_direction = "right"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Move 4 Right"
+side_b_2 = "Move 4 Left"
 
 [[cards]]
-id = "desp_drift_king"
 name = "Drift King"
-copies = ["desp_drift_king_a", "desp_drift_king_b", "desp_drift_king_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 4
-double_turn_right = true
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Turn Right Twice then Move 4"
 
 [[cards]]
-id = "desp_thrust_ions"
 name = "Thrust Ions"
-copies = ["desp_thrust_ions_a", "desp_thrust_ions_b", "desp_thrust_ions_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 5
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Move 5"
 
 [[cards]]
-id = "desp_crazy_ivan"
 name = "Crazy Ivan"
-copies = ["desp_crazy_ivan_a", "desp_crazy_ivan_b", "desp_crazy_ivan_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 3
-orientation_options = ["u_turn_move", "u_turn_attack"]
-u_turn_move = true
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "U-Turn then Move 3"
+side_b_2 = "U-Turn Attack Aim +3"
 
 [[cards]]
-id = "desp_active_cooling"
 name = "Active Cooling"
-copies = ["desp_active_cooling_a", "desp_active_cooling_b", "desp_active_cooling_c"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 1
-active_cooling = true
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Move 1, Move Overheat to Discard"
 
 [[cards]]
-id = "desp_turbo_ions"
 name = "Turbo Ions"
-copies = ["desp_turbo_ions"]
-family = "move"
-value = 3
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-value = 10
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 3"
+side_a_2 = "Attack Aim +3"
+side_b_type = "Desperate"
+side_b_1 = "Move 10"
 
 [[cards]]
-id = "desp_nightjammer"
 name = "NightJammer"
-copies = ["desp_nightjammer"]
-family = "move"
-value = 4
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "move"
-defense_bonus = 5
-warp_destination = "leader"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 4"
+side_a_2 = "Attack Aim +4"
+side_b_type = "Desperate"
+side_b_1 = "Warp behind VP leader, Defense +5"
 
 [[cards]]
-id = "desp_holdo_maneuver"
 name = "Holdo Maneuver"
-copies = ["desp_holdo_maneuver"]
-family = "move"
-value = 5
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 5"
+side_a_2 = "Attack Aim +5"
 
 [[cards]]
-id = "desp_starshot"
 name = "StarShot"
-copies = ["desp_starshot"]
-family = "move"
-value = 6
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "attack"
-aim_bonus = 999
-always_hits = true
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 6"
+side_a_2 = "Attack Aim +6"
+side_b_type = "Desperate"
+side_b_1 = "Always Hits"
 
 [[cards]]
-id = "desp_scattershot"
 name = "ScatterShot"
-copies = ["desp_scattershot"]
-family = "move"
-value = 7
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 7"
+side_a_2 = "Attack Aim +7"
 
 [[cards]]
-id = "desp_lead_the_target"
 name = "Lead the Target"
-copies = ["desp_lead_the_target"]
-family = "move"
-value = 8
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
-
-[cards.desperate_face]
-family = "attack"
-damage_bonus = 1
-lead_the_target = true
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 8"
+side_a_2 = "Attack Aim +8"
+side_b_type = "Desperate"
+side_b_1 = "Attack Damage +1, Lead the Target"
 
 [[cards]]
-id = "desp_overdrive_2x"
 name = "Overdrive 2x"
-copies = ["desp_overdrive_2x"]
-family = "move"
-value = 2
-is_hybrid = true
-orientation_options = ["forward"]
-requires_target = false
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Aim +2"

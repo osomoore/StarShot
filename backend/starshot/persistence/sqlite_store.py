@@ -111,6 +111,7 @@ class SQLiteGameStore:
                     "updated_at": row["updated_at"],
                     "round_number": state.round_number,
                     "phase": state.phase.value,
+                    "deck_set_id": state.deck_set_id,
                     "players": list(state.players),
                 }
             )

@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from starshot.persistence import SQLiteGameStore
+from starshot.rules.deck_data import active_catalog
 from starshot.rules import GameConfig, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
 from starshot.rules.ship_simulation import simulate_ship_kills
@@ -59,7 +60,8 @@ def ship_simulator() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    catalog = active_catalog()
+    return {"status": "ok", "deck_set_id": catalog.id, "deck_set_path": str(catalog.path)}
 
 
 @app.get("/api/simulations/ship-kill")

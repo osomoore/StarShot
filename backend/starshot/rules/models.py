@@ -59,6 +59,7 @@ class DesperateFace:
 class GameConfig:
     player_ids: tuple[str, ...]
     seed: int | None = None
+    deck_set_id: str | None = None
     debug_start_with_attack_desperation_card: bool = False
 
 
@@ -159,6 +160,7 @@ class GameResult:
 @dataclass(slots=True)
 class GameState:
     players: dict[str, PlayerState]
+    deck_set_id: str = ""
     baubles: list[BaubleState] = field(default_factory=list)
     desperation_deck: DesperationDeck = field(default_factory=DesperationDeck)
     round_number: int = 1

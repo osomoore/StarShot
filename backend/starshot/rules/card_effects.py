@@ -62,6 +62,12 @@ def desperate_face_for(card: Card, selection: OrderCardSelection) -> DesperateFa
 def selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
+        if desperate_face.family == CardFamily.HYBRID:
+            if selection.mode == "attack" or selection.orientation.endswith("attack"):
+                return CardFamily.ATTACK
+            if selection.mode in {None, "move"}:
+                return CardFamily.MOVE
+            raise ValueError(f"Hybrid desperate face for card {card.id} requires a mode selection.")
         # Crazy Ivan: orientation u_turn_attack means the desperate face acts as an attack
         if selection.orientation == "u_turn_attack":
             return CardFamily.ATTACK

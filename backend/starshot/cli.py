@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from starshot.persistence import SQLiteGameStore
@@ -15,6 +16,7 @@ DEFAULT_DB_PATH = Path(".starshot") / "games.sqlite3"
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="starshot")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="SQLite game database path.")
+    parser.add_argument("--deck-set", type=Path, help="Deck set directory to use.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     new_game = subparsers.add_parser("new-game", help="Create and persist a new game.")
@@ -36,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     resolve.add_argument("game_id")
 
     args = parser.parse_args(argv)
+    if args.deck_set is not None:
+        os.environ["STARSHOT_DECK_SET"] = str(args.deck_set)
     store = SQLiteGameStore(args.db)
 
     try:

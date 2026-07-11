@@ -16,6 +16,7 @@ from starshot.rules.card_piles import (
     draw_hand,
     remove_ordered_cards_from_hand,
 )
+from starshot.rules.deck_data import active_catalog
 from starshot.rules.card_effects import (
     card_aim_bonus as _effect_card_aim_bonus,
     card_always_hits as _effect_card_always_hits,
@@ -91,6 +92,12 @@ def create_initial_state(config: GameConfig) -> GameState:
     if len(player_ids) < 2 or len(player_ids) > 4:
         raise RulesError("StarShot requires 2 to 4 unique players.")
 
+    catalog = active_catalog()
+    if config.deck_set_id is not None and config.deck_set_id != catalog.id:
+        raise RulesError(
+            f"Requested deck set {config.deck_set_id!r}, but active deck set is {catalog.id!r}."
+        )
+
     setup_rng = Random(config.seed)
     starting_player_id = setup_rng.choice(player_ids)
     rng_seed = config.seed if config.seed is not None else setup_rng.randrange(1, 2**31)
@@ -117,6 +124,7 @@ def create_initial_state(config: GameConfig) -> GameState:
     desperation_deck = create_desperation_deck(setup_rng)
     state = GameState(
         players=players,
+        deck_set_id=catalog.id,
         baubles=baubles,
         desperation_deck=desperation_deck,
         starting_player_id=starting_player_id,
@@ -129,6 +137,7 @@ def create_initial_state(config: GameConfig) -> GameState:
             "phase": state.phase,
             "players": list(player_ids),
             "starting_player_id": starting_player_id,
+            "deck_set_id": catalog.id,
             "baubles": [bauble_event_payload(bauble) for bauble in baubles],
         }
     )
@@ -158,6 +167,7 @@ def legal_actions(state: GameState, player_id: str) -> list[str]:
 
 
 def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) -> GameState:
+    _validate_active_deck_set(state)
     if state.phase != GamePhase.GIVE_ORDERS:
         raise RulesError("Orders may only be submitted during give_orders.")
 
@@ -207,6 +217,7 @@ def apply_action(state: GameState, player_id: str, action: dict) -> GameState:
 
 
 def resolve_next_step(state: GameState) -> GameState:
+    _validate_active_deck_set(state)
     if state.phase == GamePhase.GIVE_ORDERS:
         raise RulesError("Cannot resolve until all players submit orders.")
     if state.phase == GamePhase.COMPLETE:
@@ -1016,6 +1027,13 @@ def _player_order_from_starting_player(state: GameState) -> tuple[str, ...]:
 def _change_phase(state: GameState, phase: GamePhase) -> None:
     state.phase = phase
     state.event_log.append({"type": "phase_changed", "phase": phase})
+
+
+def _validate_active_deck_set(state: GameState) -> None:
+    active_id = active_catalog().id
+    state_id = state.deck_set_id or active_id
+    if state_id != active_id:
+        raise RulesError(f"Game uses deck set {state_id!r}, but active deck set is {active_id!r}.")
 
 
 def _starting_ship(index: int) -> ShipState:

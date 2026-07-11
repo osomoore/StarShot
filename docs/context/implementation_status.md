@@ -7,13 +7,15 @@ All 8 groups of the 0.2 migration are complete. The implementation uses the 0.2 
 Recent corrections made after reviewing `docs/rules/rules_0.2.txt` directly:
 
 - **Base deck corrected to 10 cards**: 3× Controlled Move 1, 4× Controlled Move 2, 2× Targeted Attack Aim +1, 1× Targeted Attack Aim +2. Previous implementation had wrong counts (3+4+2+1 was correct but names and `requires_target` were wrong).
-- **Base attack cards are targeted**: All base attack cards (`attack_1_a`, `attack_1_b`, `attack_2_a`) now have `requires_target=True` (default). They are proper Targeted Attack cards that require the player to choose a target.
+- **Base attack cards are targeted**: All base attack cards (`targeted_attack_aim_1_a`, `targeted_attack_aim_1_b`, `targeted_attack_aim_2_a`) now have `requires_target=True` (default). They are proper Targeted Attack cards that require the player to choose a target.
 - **Move cards turn before moving**: `turn_left` and `turn_right` orientations now rotate the ship first, then move forward in the new facing direction. Previously the ship moved first then turned.
 - **No U-Turn on base move cards**: `orientation_options` default is now `("forward", "turn_left", "turn_right")`. U-turn has been removed from base move cards and from the frontend move picker.
 
 Use `docs/context/rules_0.2_migration_plan.md` for the next rules-update work. Card interpretation lives in `backend/starshot/rules/card_effects.py`; hand/discard/overheat movement lives in `backend/starshot/rules/card_piles.py`.
 
 The 0.2 desperation deck is in place with 41 cards. The backend recognizes no-basic-face return behavior for Afterburners and Crack Shot, hybrid/basic desperation attacks, and implemented Desperate faces for Steady Shot, Side Slip, Drift King, Thrust Ions, Crazy Ivan, Active Cooling, Turbo Ions, NightJammer, StarShot, and Lead the Target. Deferred Desperate faces still reject cleanly: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, and Overdrive 2x.
+
+Deck definitions are now human-editable TOML files under `resources/decks/core_0_2/`. Simple card behavior is written as controlled-English `side_a_*` / `side_b_*` text, with generated copy ids from `name` and `copies = N`. The loader validates the deck set at load time and exposes the active catalog through existing deck helpers. Use `python scripts\server_control.py start --deck-set path\to\deck_set` or `STARSHOT_DECK_SET` to swap deck sets. New games store `deck_set_id`, and gameplay operations reject saved games whose deck set differs from the active server catalog. See `docs/context/deck_data.md`.
 
 Untargeted attack cards can be ordered alone and shoot straight ahead at the first enemy on the forward line. If paired with a targeted attack, they join the same volley and share the targeted card's target.
 
@@ -59,7 +61,7 @@ Movement behavior currently implemented:
 
 Combat behavior currently implemented:
 
-- Base attack cards (`attack_1_a`, `attack_1_b`, `attack_2_a`) are Targeted Attacks and require `target_player_id`.
+- Base attack cards (`targeted_attack_aim_1_a`, `targeted_attack_aim_1_b`, `targeted_attack_aim_2_a`) are Targeted Attacks and require `target_player_id`.
 - Attack rolls use `2d6`.
 - A volley deals base 1 damage plus `Damage +X` modifiers; multiple base attack cards add Aim but do not add extra base damage.
 - Overdriven attack stacks resolve a normal volley then an immediate duplicate volley before the next attacker.

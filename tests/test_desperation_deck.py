@@ -24,7 +24,7 @@ class DesperationDeckDefinitionTests(unittest.TestCase):
             self.assertFalse(card.is_base, f"{card.id} should have is_base=False")
 
     def test_card_by_id_finds_base_cards(self):
-        card = card_by_id("move_1_a")
+        card = card_by_id("controlled_move_1_a")
         self.assertTrue(card.is_base)
         self.assertEqual(card.family, CardFamily.MOVE)
 
@@ -52,7 +52,7 @@ class DesperationDeckDefinitionTests(unittest.TestCase):
             self.assertEqual(card.family, CardFamily.ATTACK)
             self.assertTrue(card.requires_target)
 
-    def test_hybrid_cards_have_move_2_basic_value(self):
+    def test_hybrid_cards_have_controlled_move_2_basic_value(self):
         hybrid_ids = [
             "desp_steady_shot_a", "desp_side_slip_a", "desp_drift_king_a",
             "desp_thrust_ions_a", "desp_crazy_ivan_a", "desp_active_cooling_a",

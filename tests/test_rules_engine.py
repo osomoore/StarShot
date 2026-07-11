@@ -23,6 +23,7 @@ class RulesEngineTests(unittest.TestCase):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=7))
 
         self.assertEqual(state.round_number, 1)
+        self.assertEqual(state.deck_set_id, "core_0_2_sides")
         self.assertEqual(state.phase, GamePhase.GIVE_ORDERS)
         self.assertIn(state.starting_player_id, {"red", "blue"})
         self.assertEqual(len(state.players["red"].deck), 5)
@@ -45,6 +46,24 @@ class RulesEngineTests(unittest.TestCase):
         with self.assertRaises(RulesError):
             create_initial_state(GameConfig(player_ids=("red",)))
 
+    def test_rejects_configured_deck_set_mismatch(self):
+        with self.assertRaisesRegex(RulesError, "Requested deck set"):
+            create_initial_state(GameConfig(player_ids=("red", "blue"), deck_set_id="other"))
+
+    def test_rejects_gameplay_when_state_deck_set_differs_from_active_catalog(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.deck_set_id = "other"
+        orders = OrdersSubmission(
+            stacks=(
+                ActionStack(action_number=1, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+
+        with self.assertRaisesRegex(RulesError, "Game uses deck set"):
+            submit_orders(state, "red", orders)
+
     def test_orders_cannot_mix_move_and_attack_cards_in_one_stack(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         orders = OrdersSubmission(
@@ -53,8 +72,8 @@ class RulesEngineTests(unittest.TestCase):
                     action_number=1,
                     seal_mode=SealMode.SEALED,
                     cards=(
-                        OrderCardSelection(card_id="move_1_a"),
-                        OrderCardSelection(card_id="attack_1_a", target_player_id="blue"),
+                        OrderCardSelection(card_id="controlled_move_1_a"),
+                        OrderCardSelection(card_id="targeted_attack_aim_1_a", target_player_id="blue"),
                     ),
                 ),
                 ActionStack(action_number=2, seal_mode=SealMode.SEALED),
@@ -78,15 +97,15 @@ class RulesEngineTests(unittest.TestCase):
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.ACTION_2)
-        self.assertNotIn("move_1_a", {card.id for card in state.players["red"].discard})
-        self.assertNotIn("attack_1_a", {card.id for card in state.players["blue"].discard})
+        self.assertNotIn("controlled_move_1_a", {card.id for card in state.players["red"].discard})
+        self.assertNotIn("targeted_attack_aim_1_a", {card.id for card in state.players["blue"].discard})
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.ACTION_3)
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.AWARD_BAUBLES)
-        self.assertNotIn("move_2_a", {card.id for card in state.players["red"].overheat})
+        self.assertNotIn("controlled_move_2_a", {card.id for card in state.players["red"].overheat})
 
         state = resolve_next_step(state)
         self.assertEqual(state.phase, GamePhase.CLEANUP)
@@ -103,31 +122,31 @@ class RulesEngineTests(unittest.TestCase):
             event for event in state.event_log
             if event["type"] == "action_cards_moved" and event["player_id"] == "blue"
         ]
-        self.assertIn("move_1_a", red_moves[0]["moved_to_discard"])
-        self.assertIn("attack_1_a", blue_moves[0]["moved_to_discard"])
-        self.assertIn("move_2_a", red_moves[2]["moved_to_overheat"])
+        self.assertIn("controlled_move_1_a", red_moves[0]["moved_to_discard"])
+        self.assertIn("targeted_attack_aim_1_a", blue_moves[0]["moved_to_discard"])
+        self.assertIn("controlled_move_2_a", red_moves[2]["moved_to_overheat"])
 
     def test_overheated_cards_wait_until_deck_exhausts(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.phase = GamePhase.CLEANUP
         red = state.players["red"]
         red.deck = [
-            card_by_id("move_1_a"),
-            card_by_id("move_1_b"),
-            card_by_id("move_2_b"),
-            card_by_id("move_2_c"),
-            card_by_id("attack_1_a"),
+            card_by_id("controlled_move_1_a"),
+            card_by_id("controlled_move_1_b"),
+            card_by_id("controlled_move_2_b"),
+            card_by_id("controlled_move_2_c"),
+            card_by_id("targeted_attack_aim_1_a"),
         ]
         red.hand = []
-        red.discard = [card_by_id("attack_1_b")]
-        red.overheat = [card_by_id("move_2_a")]
+        red.discard = [card_by_id("targeted_attack_aim_1_b")]
+        red.overheat = [card_by_id("controlled_move_2_a")]
 
         state = resolve_next_step(state)
         red = state.players["red"]
 
-        self.assertEqual({card.id for card in red.hand}, {"move_1_a", "move_1_b", "move_2_b", "move_2_c", "attack_1_a"})
-        self.assertEqual([card.id for card in red.overheat], ["move_2_a"])
-        self.assertEqual([card.id for card in red.discard], ["attack_1_b"])
+        self.assertEqual({card.id for card in red.hand}, {"controlled_move_1_a", "controlled_move_1_b", "controlled_move_2_b", "controlled_move_2_c", "targeted_attack_aim_1_a"})
+        self.assertEqual([card.id for card in red.overheat], ["controlled_move_2_a"])
+        self.assertEqual([card.id for card in red.discard], ["targeted_attack_aim_1_b"])
 
     def test_deck_exhaustion_shuffles_discard_then_moves_overheat_to_discard(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
@@ -135,27 +154,27 @@ class RulesEngineTests(unittest.TestCase):
         red = state.players["red"]
         red.deck = []
         red.hand = []
-        red.discard = [card_by_id("move_1_a")]
-        red.overheat = [card_by_id("move_2_a")]
+        red.discard = [card_by_id("controlled_move_1_a")]
+        red.overheat = [card_by_id("controlled_move_2_a")]
 
         state = resolve_next_step(state)
         red = state.players["red"]
 
-        self.assertEqual({card.id for card in red.hand}, {"move_1_a", "move_2_a"})
+        self.assertEqual({card.id for card in red.hand}, {"controlled_move_1_a", "controlled_move_2_a"})
         self.assertEqual(red.overheat, [])
         self.assertEqual(red.discard, [])
         refresh = [event for event in state.event_log if event["type"] == "deck_refreshed" and event["player_id"] == "red"][0]
-        self.assertEqual(refresh["reshuffled_discard"], ["move_1_a", "move_2_a"])
-        self.assertEqual(refresh["moved_overheat_to_discard"], ["move_2_a"])
+        self.assertEqual(refresh["reshuffled_discard"], ["controlled_move_1_a", "controlled_move_2_a"])
+        self.assertEqual(refresh["moved_overheat_to_discard"], ["controlled_move_2_a"])
 
     def test_movement_resolves_from_move_orientation(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         # Red starts at (-11, 0) facing 0 (east)
         red_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a", orientation="turn_right"),)),
-                ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b", orientation="turn_left"),)),
-                ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a", orientation="forward"),)),
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_1_a", orientation="turn_right"),)),
+                ActionStack(2, SealMode.SEALED, (OrderCardSelection("controlled_move_1_b", orientation="turn_left"),)),
+                ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_2_a", orientation="forward"),)),
             )
         )
         blue_orders = OrdersSubmission(
@@ -193,7 +212,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.facing = 0
         red_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_2_a"),)),
                 ActionStack(2, SealMode.SEALED),
                 ActionStack(3, SealMode.SEALED),
             )
@@ -226,19 +245,19 @@ class RulesEngineTests(unittest.TestCase):
         state.players["blue"].ship.q = 3
         state.players["blue"].ship.r = 0
         state.players["blue"].ship.facing = 0
-        state.players["red"].hand = [card_by_id("attack_2_a")]
-        state.players["blue"].hand = [card_by_id("move_2_a")]
+        state.players["red"].hand = [card_by_id("targeted_attack_aim_2_a")]
+        state.players["blue"].hand = [card_by_id("controlled_move_2_a")]
 
         red_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_2_a", target_player_id="blue"),)),
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="blue"),)),
                 ActionStack(2, SealMode.SEALED),
                 ActionStack(3, SealMode.SEALED),
             )
         )
         blue_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+                ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_2_a"),)),
                 ActionStack(2, SealMode.SEALED),
                 ActionStack(3, SealMode.SEALED),
             )
@@ -368,7 +387,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
-        self._set_hand(state, "blue", "attack_1_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a")
         state = submit_orders(
             state,
             "red",
@@ -385,7 +404,7 @@ class RulesEngineTests(unittest.TestCase):
             "blue",
             OrdersSubmission(
                 stacks=(
-                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
                     ActionStack(2, SealMode.SEALED),
                     ActionStack(3, SealMode.SEALED),
                 )
@@ -408,7 +427,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
-        self._set_hand(state, "blue", "attack_2_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_2_a")
         state = submit_orders(
             state,
             "red",
@@ -425,7 +444,7 @@ class RulesEngineTests(unittest.TestCase):
             "blue",
             OrdersSubmission(
                 stacks=(
-                    ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("attack_2_a", target_player_id="red"),)),
+                    ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),)),
                     ActionStack(2, SealMode.SEALED),
                     ActionStack(3, SealMode.SEALED),
                 )
@@ -436,7 +455,7 @@ class RulesEngineTests(unittest.TestCase):
 
         self.assertEqual(state.players["red"].ship.damage_taken, 2)
         self.assertEqual(state.players["blue"].victory_points, 2)
-        self.assertNotIn("attack_2_a", {card.id for card in state.players["blue"].overheat})
+        self.assertNotIn("targeted_attack_aim_2_a", {card.id for card in state.players["blue"].overheat})
         volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
         self.assertEqual(len(volleys), 2)
         self.assertFalse(volleys[0]["overdrive_copy"])
@@ -453,7 +472,7 @@ class RulesEngineTests(unittest.TestCase):
         state.players["red"].ship.shields = 0
         state.players["blue"].ship.q = 1
         state.players["blue"].ship.r = 0
-        self._set_hand(state, "blue", "attack_1_a", "attack_2_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a", "targeted_attack_aim_2_a")
         state = submit_orders(
             state,
             "red",
@@ -474,8 +493,8 @@ class RulesEngineTests(unittest.TestCase):
                         1,
                         SealMode.SEALED,
                         (
-                            OrderCardSelection("attack_1_a", target_player_id="red"),
-                            OrderCardSelection("attack_2_a", target_player_id="red"),
+                            OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),
+                            OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),
                         ),
                     ),
                     ActionStack(2, SealMode.SEALED),
@@ -488,7 +507,7 @@ class RulesEngineTests(unittest.TestCase):
 
         volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
         self.assertEqual(len(volleys), 1)
-        self.assertEqual(volleys[0]["card_ids"], ["attack_1_a", "attack_2_a"])
+        self.assertEqual(volleys[0]["card_ids"], ["targeted_attack_aim_1_a", "targeted_attack_aim_2_a"])
         self.assertEqual(volleys[0]["damage"], 1)
         self.assertEqual(state.players["red"].ship.damage_taken, 1)
         self.assertEqual(state.rng_step, 3)
@@ -504,7 +523,7 @@ class RulesEngineTests(unittest.TestCase):
             {"port_outer_engines", "port_life_support"}
         )
         state.players["red"].ship.damage_taken = 2
-        self._set_hand(state, "blue", "attack_1_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a")
         state = submit_orders(
             state,
             "red",
@@ -521,7 +540,7 @@ class RulesEngineTests(unittest.TestCase):
             "blue",
             OrdersSubmission(
                 stacks=(
-                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
                     ActionStack(2, SealMode.SEALED),
                     ActionStack(3, SealMode.SEALED),
                 )
@@ -538,12 +557,12 @@ class RulesEngineTests(unittest.TestCase):
         """One overdrive stack with 2 cards: both go to overheat, draw reduced by 1 next round.
         Round 2 hand should have 4 playable cards (5 - 1 overdrive seal)."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "red", "move_1_a", "move_2_a")
+        self._set_hand(state, "red", "controlled_move_1_a", "controlled_move_2_a")
         red_orders = OrdersSubmission(
             stacks=(
                 ActionStack(1, SealMode.OVERDRIVE, (
-                    OrderCardSelection("move_1_a"),
-                    OrderCardSelection("move_2_a"),
+                    OrderCardSelection("controlled_move_1_a"),
+                    OrderCardSelection("controlled_move_2_a"),
                 )),
                 ActionStack(2, SealMode.SEALED),
                 ActionStack(3, SealMode.SEALED),
@@ -564,23 +583,23 @@ class RulesEngineTests(unittest.TestCase):
         red = state.players["red"]
         self.assertEqual(len(red.hand), 4)
         hand_ids = {card.id for card in red.hand}
-        self.assertNotIn("move_1_a", hand_ids)
-        self.assertNotIn("move_2_a", hand_ids)
+        self.assertNotIn("controlled_move_1_a", hand_ids)
+        self.assertNotIn("controlled_move_2_a", hand_ids)
         self.assertEqual(len(red.overheat), 2)
 
     def test_two_overdrive_stacks_place_two_seal_cards_on_deck(self):
         """Two overdrive stacks: draw reduced by 2 next round, hand has 3 playable cards."""
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "red", "move_1_a", "move_2_a", "move_1_b", "move_2_b")
+        self._set_hand(state, "red", "controlled_move_1_a", "controlled_move_2_a", "controlled_move_1_b", "controlled_move_2_b")
         red_orders = OrdersSubmission(
             stacks=(
                 ActionStack(1, SealMode.OVERDRIVE, (
-                    OrderCardSelection("move_1_a"),
-                    OrderCardSelection("move_2_a"),
+                    OrderCardSelection("controlled_move_1_a"),
+                    OrderCardSelection("controlled_move_2_a"),
                 )),
                 ActionStack(2, SealMode.OVERDRIVE, (
-                    OrderCardSelection("move_1_b"),
-                    OrderCardSelection("move_2_b"),
+                    OrderCardSelection("controlled_move_1_b"),
+                    OrderCardSelection("controlled_move_2_b"),
                 )),
                 ActionStack(3, SealMode.SEALED),
             )
@@ -603,19 +622,19 @@ class RulesEngineTests(unittest.TestCase):
 
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        self._set_hand(state, "blue", "attack_1_a", "attack_1_b", "attack_2_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a", "targeted_attack_aim_1_b", "targeted_attack_aim_2_a")
         red_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a"),)),
-                ActionStack(2, SealMode.SEALED, (OrderCardSelection("move_1_b"),)),
-                ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("move_2_a"),)),
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_1_a"),)),
+                ActionStack(2, SealMode.SEALED, (OrderCardSelection("controlled_move_1_b"),)),
+                ActionStack(3, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_2_a"),)),
             )
         )
         blue_orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("attack_1_a", target_player_id="red"),)),
-                ActionStack(2, SealMode.SEALED, (OrderCardSelection("attack_1_b", target_player_id="red"),)),
-                ActionStack(3, SealMode.SEALED, (OrderCardSelection("attack_2_a", target_player_id="red"),)),
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
+                ActionStack(2, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_b", target_player_id="red"),)),
+                ActionStack(3, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),)),
             )
         )
         state = submit_orders(state, "red", red_orders)

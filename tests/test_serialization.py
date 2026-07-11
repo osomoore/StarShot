@@ -19,8 +19,9 @@ class SerializationTests(unittest.TestCase):
         restored = state_from_dict(state_to_dict(state))
 
         self.assertEqual(restored.round_number, state.round_number)
+        self.assertEqual(restored.deck_set_id, "core_0_2_sides")
         self.assertEqual(restored.phase, state.phase)
-        self.assertEqual(restored.players["red"].hand[0].id, "move_1_a")
+        self.assertEqual(restored.players["red"].hand[0].id, "controlled_move_1_a")
         self.assertEqual(len(restored.players["red"].deck), 5)
         self.assertEqual(restored.players["red"].discard, [])
         self.assertEqual(restored.players["red"].ship.q, -11)
@@ -35,6 +36,7 @@ class SerializationTests(unittest.TestCase):
         self.assertTrue(restored.baubles[-1].is_fang)
 
         serialized_ship = state_to_dict(state)["players"]["red"]["ship"]
+        self.assertEqual(state_to_dict(state)["deck_set_id"], "core_0_2_sides")
         self.assertEqual(serialized_ship["layout_id"], "base_ship_0")
         self.assertIn("component_layout", serialized_ship)
         self.assertEqual(serialized_ship["damage_lanes"]["1"][0], "aft_engines")
@@ -47,7 +49,7 @@ class SerializationTests(unittest.TestCase):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=5))
         orders = OrdersSubmission(
             stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("move_1_a"),)),
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_1_a"),)),
                 ActionStack(2, SealMode.SEALED),
                 ActionStack(3, SealMode.SEALED),
             )
@@ -68,7 +70,7 @@ class SerializationTests(unittest.TestCase):
                     {
                         "action_number": 1,
                         "seal_mode": "sealed",
-                        "cards": [{"card_id": "move_1_a"}],
+                        "cards": [{"card_id": "controlled_move_1_a"}],
                     },
                     {"action_number": 2, "seal_mode": "sealed", "cards": []},
                     {"action_number": 3, "seal_mode": "overdrive", "cards": []},
@@ -76,7 +78,7 @@ class SerializationTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(orders.stacks[0].cards[0].card_id, "move_1_a")
+        self.assertEqual(orders.stacks[0].cards[0].card_id, "controlled_move_1_a")
         self.assertEqual(orders.stacks[2].seal_mode, SealMode.OVERDRIVE)
 
     def test_hybrid_desperation_cards_keep_metadata_across_serialization(self):

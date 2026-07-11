@@ -16,6 +16,7 @@
   playbackSpeed: "normal",
   autoPlaying: false,
   aiTargets: {},
+  theme: "light",
   // New properties for board interaction
   zoomScale: 1,
   panOffsetX: 0,
@@ -78,6 +79,7 @@ const START_CORNER_DIRECTIONS = [3, 0, 2, 5];
 const elements = {
   createButton: document.querySelector("#createButton"),
   createGameControls: document.querySelector("#createGameControls"),
+  themeToggleButton: document.querySelector("#themeToggleButton"),
   refreshButton: document.querySelector("#refreshButton"),
   actionLog: document.querySelector("#actionLog") || document.querySelector("#gamesList"),
   exportLogButton: document.querySelector("#exportLogButton"),
@@ -114,6 +116,25 @@ const elements = {
   boardZoomOutButton: document.querySelector("#boardZoomOutButton"),
   boardZoomInButton: document.querySelector("#boardZoomInButton"),
 };
+
+function initialTheme() {
+  const stored = window.localStorage?.getItem("starshotTheme");
+  if (stored === "dark" || stored === "light") return stored;
+  if (window.matchMedia?.("(prefers-color-scheme: dark)")?.matches) return "dark";
+  return "light";
+}
+
+function applyTheme(theme) {
+  state.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  if (elements.themeToggleButton) {
+    elements.themeToggleButton.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+    elements.themeToggleButton.setAttribute("aria-pressed", String(theme === "dark"));
+  }
+}
+
+applyTheme(initialTheme());
 
 if (elements.boardZoomInButton) {
   elements.boardZoomInButton.addEventListener("click", () => {
@@ -2278,6 +2299,9 @@ function renderEndGameSummary(game) {
               <strong>${escapeHtml(titleCase(player.id))}</strong>
               <span>${player.finalVp} VP</span>
             </div>
+            <div class="end-game-ship" aria-label="${escapeHtml(player.id)} ship status">
+              ${miniShipSvgMarkup(game.players[player.id], game)}
+            </div>
             <div class="end-game-stat-grid">
               <div class="summary-stat wide"><span>AI</span><strong>${escapeHtml(AI_TYPES[player.aiType] || player.aiType)}</strong></div>
               <div class="summary-stat"><span>Total VP</span><strong>${player.finalVp}</strong></div>
@@ -2478,10 +2502,11 @@ function inferCardFromId(cardId) {
     "desp_overdrive_2x",
   ]);
   const isHybrid = hybridPrefixes.some((prefix) => cardId.startsWith(prefix)) || hybridIds.has(cardId);
-  const family = isHybrid ? "hybrid" : cardId.startsWith("attack") || cardId.startsWith("desp_crack_shot") ? "attack" : "move";
-  const value = Number(cardId.match(/_(\d+)_/)?.[1] || 1);
+  const isBaseAttack = cardId.startsWith("targeted_attack_aim_");
+  const family = isHybrid ? "hybrid" : isBaseAttack || cardId.startsWith("desp_crack_shot") ? "attack" : "move";
+  const value = Number(cardId.match(/_(\d+)(?:_|$)/)?.[1] || 1);
   const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
-  const requiresTarget = cardId.startsWith("desp_crack_shot") || cardId.startsWith("attack_");
+  const requiresTarget = cardId.startsWith("desp_crack_shot") || isBaseAttack;
   return {
     id: cardId,
     name,
@@ -3177,6 +3202,11 @@ function applyDefaultAttackTarget(stack, cardIndex) {
 }
 
 elements.createButton?.addEventListener("click", () => createGame().catch(showError));
+elements.themeToggleButton?.addEventListener("click", () => {
+  const nextTheme = state.theme === "dark" ? "light" : "dark";
+  window.localStorage?.setItem("starshotTheme", nextTheme);
+  applyTheme(nextTheme);
+});
 elements.createGameControls?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-player-count]");
   if (!button) return;
@@ -3629,47 +3659,7 @@ function createMiniBoardCard(color, game) {
 
   const svgContainer = document.createElement("div");
   svgContainer.className = "mini-ship-svg-container";
-
-  const svg = svgEl("svg");
-  svg.setAttribute("viewBox", "-34 -35 68 70");
-  svg.setAttribute("class", "mini-ship-svg");
-
-  let layout = player?.ship?.component_layout;
-  if (!layout) {
-    const anyActivePlayer = Object.values(game.players)[0];
-    layout = anyActivePlayer?.ship?.component_layout;
-  }
-
-  if (layout) {
-    const destroyedSet = new Set(player?.ship?.destroyed_components || []);
-    renderMiniShieldRings(svg, player?.ship?.shields || 0);
-    
-    layout.forEach(comp => {
-      const size = 7;
-      const x = size * 1.5 * comp.q;
-      const y = size * SQRT3 * (comp.r + comp.q / 2);
-
-      const isDestroyed = destroyedSet.has(comp.id);
-      const fill = isDestroyed
-        ? MINI_COMPONENT_FILLS.destroyed
-        : MINI_COMPONENT_FILLS[comp.type] || MINI_COMPONENT_FILLS.default;
-
-      const poly = svgEl("polygon");
-      poly.setAttribute("points", getMiniHexPoints(x, y, size).map(p => p.join(",")).join(" "));
-      poly.setAttribute("stroke", "#000000");
-      poly.setAttribute("stroke-width", "1");
-      poly.setAttribute("fill", fill);
-      poly.setAttribute("class", `mini-hex-cell ${comp.type} ${isDestroyed ? "destroyed" : ""}`);
-      
-      const title = svgEl("title");
-      title.textContent = `${comp.name}${isDestroyed ? " (DESTROYED)" : ""}`;
-      poly.append(title);
-
-      svg.append(poly);
-    });
-  }
-
-  svgContainer.append(svg);
+  svgContainer.innerHTML = miniShipSvgMarkup(player, game);
   card.append(svgContainer);
 
   const footer = document.createElement("div");
@@ -3684,20 +3674,34 @@ function createMiniBoardCard(color, game) {
   return card;
 }
 
-function renderMiniShieldRings(svg, shieldCount) {
-  [0, 1].forEach((index) => {
-    const ring = svgEl("circle");
+function miniShipSvgMarkup(player, game) {
+  let layout = player?.ship?.component_layout;
+  if (!layout) {
+    const anyActivePlayer = Object.values(game.players || {})[0];
+    layout = anyActivePlayer?.ship?.component_layout;
+  }
+  const destroyedSet = new Set(player?.ship?.destroyed_components || []);
+  const shieldCount = player?.ship?.shields || 0;
+  const cells = (layout || []).map((comp) => {
+    const size = 7;
+    const x = size * 1.5 * comp.q;
+    const y = size * SQRT3 * (comp.r + comp.q / 2);
+    const isDestroyed = destroyedSet.has(comp.id);
+    const fill = isDestroyed
+      ? MINI_COMPONENT_FILLS.destroyed
+      : MINI_COMPONENT_FILLS[comp.type] || MINI_COMPONENT_FILLS.default;
+    const points = getMiniHexPoints(x, y, size).map((point) => point.join(",")).join(" ");
+    const title = `${comp.name}${isDestroyed ? " (DESTROYED)" : ""}`;
+    return `<polygon points="${points}" stroke="#000000" stroke-width="1" fill="${fill}" class="mini-hex-cell ${escapeHtml(comp.type)} ${isDestroyed ? "destroyed" : ""}"><title>${escapeHtml(title)}</title></polygon>`;
+  }).join("");
+  return `<svg viewBox="-34 -35 68 70" class="mini-ship-svg" role="img" aria-label="Ship component hexes">${miniShieldRingsMarkup(shieldCount)}${cells}</svg>`;
+}
+
+function miniShieldRingsMarkup(shieldCount) {
+  return [0, 1].map((index) => {
     const isActive = shieldCount > index;
-    ring.setAttribute("cx", "0");
-    ring.setAttribute("cy", "0");
-    ring.setAttribute("r", String(32 - index * 3));
-    ring.setAttribute("fill", "none");
-    ring.setAttribute("stroke", isActive ? "#2f8fde" : "#c8cfcc");
-    ring.setAttribute("stroke-width", isActive ? "1.6" : "1.2");
-    ring.setAttribute("stroke-dasharray", isActive ? "" : "3 3");
-    ring.setAttribute("opacity", isActive ? "0.95" : "0.5");
-    svg.append(ring);
-  });
+    return `<circle cx="0" cy="0" r="${32 - index * 3}" fill="none" stroke="${isActive ? "#2f8fde" : "#c8cfcc"}" stroke-width="${isActive ? "1.6" : "1.2"}" stroke-dasharray="${isActive ? "" : "3 3"}" opacity="${isActive ? "0.95" : "0.5"}"></circle>`;
+  }).join("");
 }
 
 function getMiniHexPoints(x, y, size) {

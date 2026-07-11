@@ -22,6 +22,7 @@ from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, 
 
 def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
     return {
+        "deck_set_id": state.deck_set_id,
         "round_number": state.round_number,
         "phase": state.phase.value,
         "starting_player_id": state.starting_player_id,
@@ -41,6 +42,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
 def state_from_dict(data: dict) -> GameState:
     return GameState(
         players={player_id: player_from_dict(player) for player_id, player in data["players"].items()},
+        deck_set_id=data.get("deck_set_id", ""),
         baubles=[bauble_from_dict(bauble) for bauble in data.get("baubles", [])],
         desperation_deck=desperation_deck_from_dict(data.get("desperation_deck", {})),
         round_number=data["round_number"],
