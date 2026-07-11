@@ -74,6 +74,27 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(shown.json()["state"]["players"]["red"]["has_submitted_orders"])
         self.assertIsNone(shown.json()["state"]["players"]["red"]["prepared_orders"])
 
+    def test_debug_draw_desperation_card_type_to_hand(self):
+        created = self.client.post("/api/games", json={"player_ids": ["red", "blue"], "seed": 3})
+        self.assertEqual(created.status_code, 200)
+        game_id = created.json()["game_id"]
+        state = created.json()["state"]
+        hand_before = len(state["players"]["red"]["hand"])
+        deck_before = len(state["desperation_deck"]["cards"])
+
+        drawn = self.client.post(
+            f"/api/games/{game_id}/debug/desperation-draw",
+            json={"player_id": "red", "card_id": "desp_afterburners_a"},
+        )
+
+        self.assertEqual(drawn.status_code, 200)
+        next_state = drawn.json()["state"]
+        self.assertEqual(len(next_state["players"]["red"]["hand"]), hand_before + 1)
+        self.assertEqual(len(next_state["desperation_deck"]["cards"]), deck_before - 1)
+        self.assertEqual(next_state["players"]["red"]["hand"][-1]["name"], "Afterburners")
+        self.assertEqual(next_state["event_log"][-1]["type"], "debug_desperation_drawn")
+        self.assertEqual(next_state["event_log"][-1]["card_name"], "Afterburners")
+
 
 if __name__ == "__main__":
     unittest.main()

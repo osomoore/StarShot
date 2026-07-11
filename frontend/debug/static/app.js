@@ -3,6 +3,7 @@
   selectedGameId: null,
   selectedState: null,
   builderPlayerId: "red",
+  debugDesperationCardId: "",
   builderDraft: createEmptyDraft(),
   knownCards: {},
   selectedAiType: "bauble_runner",
@@ -102,6 +103,8 @@ const elements = {
   resolveButton: document.querySelector("#resolveButton"),
   revealOrdersToggle: document.querySelector("#revealOrdersToggle"),
   builderPlayerSelect: document.querySelector("#builderPlayerSelect"),
+  debugDesperationSelect: document.querySelector("#debugDesperationSelect"),
+  debugDrawDesperationButton: document.querySelector("#debugDrawDesperationButton"),
   ordersBuilderView: document.querySelector("#ordersBuilderView"),
   ordersPreview: document.querySelector("#ordersPreview"),
   submitBuiltOrdersButton: document.querySelector("#submitBuiltOrdersButton"),
@@ -329,6 +332,20 @@ async function submitAiOrders(playerId) {
     return;
   }
   await submitOrders(playerId, orders);
+}
+
+async function debugDrawDesperationCard() {
+  if (!state.selectedGameId || !state.builderPlayerId || !state.debugDesperationCardId) return;
+  const payload = await api(`/api/games/${state.selectedGameId}/debug/desperation-draw`, {
+    method: "POST",
+    body: JSON.stringify({
+      player_id: state.builderPlayerId,
+      card_id: state.debugDesperationCardId,
+    }),
+  });
+  rememberVisibleCards(payload.state);
+  state.selectedState = payload.state;
+  await refreshGames();
 }
 
 async function submitAiOrdersSilently(playerId) {
@@ -1202,6 +1219,7 @@ function renderAll() {
   syncAiTypeSelect("red", elements.redAiTypeSelect, game);
   syncAiTypeSelect("blue", elements.blueAiTypeSelect, game);
   renderAiControls(game);
+  renderDebugDesperationDraw(game);
   elements.resolveButton.disabled = state.autoPlaying || !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
@@ -1328,6 +1346,7 @@ function actionLogTitle(event) {
   if (event.type === "phase_changed") return `Phase: ${event.phase}`;
   if (event.type === "hand_discarded") return `${titleCase(event.player_id)} discarded unused cards`;
   if (event.type === "action_cards_moved") return `${titleCase(event.player_id)} cleaned up action cards`;
+  if (event.type === "debug_desperation_drawn") return `${titleCase(event.player_id)} drew ${event.card_name || event.card_id}`;
   return titleCase((event.type || "event").replaceAll("_", " "));
 }
 
@@ -1363,6 +1382,9 @@ function actionLogBody(event) {
       ? `Overheat: ${event.moved_to_overheat.join(", ")}`
       : "";
     return [discarded, overheated].filter(Boolean).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+  }
+  if (event.type === "debug_desperation_drawn") {
+    return `<span>${escapeHtml(`${event.card_id} added to hand by debug draw`)}</span>`;
   }
   return "";
 }
@@ -1498,11 +1520,42 @@ async function exportGameLog() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  const copied = await copyTextToClipboard(text);
+  flashExportButton(copied ? "Exported + Copied" : "Exported");
+}
+
+async function copyTextToClipboard(text) {
   try {
-    await navigator.clipboard?.writeText(text);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
   } catch {
-    // Download still succeeds when clipboard access is unavailable.
+    // Fall back to the legacy copy path below.
   }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.append(textarea);
+  textarea.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+  }
+}
+
+function flashExportButton(label) {
+  if (!elements.exportLogButton) return;
+  const original = elements.exportLogButton.textContent;
+  elements.exportLogButton.textContent = label;
+  window.setTimeout(() => {
+    elements.exportLogButton.textContent = original || "Export Log";
+  }, 1800);
 }
 
 function aiStackForMovePlan(movePlan) {
@@ -1521,6 +1574,7 @@ function englishGameLog(game) {
   const lines = [
     `StarShot game ${state.selectedGameId || ""}`,
     `Round ${game.round_number}, phase ${game.phase}, starting player ${game.starting_player_id}`,
+    ...deckMetadataLogLines(game),
     "",
   ];
   enrichOrderDiscardEvents(game.event_log || []).forEach((event) => {
@@ -1529,6 +1583,26 @@ function englishGameLog(game) {
     if (line) lines.push(line);
   });
   return lines.join("\n");
+}
+
+function deckMetadataLogLines(game) {
+  const deckSet = game.deck_set;
+  if (!deckSet) {
+    return [
+      `Deck set: ${game.deck_set_id || "unknown"}`,
+      `Rules config: ${JSON.stringify(game.rules_config || {})}`,
+    ];
+  }
+  const lines = [
+    `Deck set: ${deckSet.id || game.deck_set_id || "unknown"} (${deckSet.name || "unnamed"}, rules ${deckSet.rules_version || "unknown"})`,
+    `Deck path: ${deckSet.path || "unknown"}`,
+    `Rules config: ${JSON.stringify(deckSet.rules_config || game.rules_config || {})}`,
+  ];
+  Object.entries(deckSet.files || {}).forEach(([name, file]) => {
+    lines.push(`Deck file ${name}: ${file?.path || "unknown"}`);
+    lines.push(`Deck file ${name} sha256: ${file?.sha256 || "missing"}`);
+  });
+  return lines;
 }
 
 function englishEventLine(event) {
@@ -2289,7 +2363,9 @@ function renderEndGameSummary(game) {
     return;
   }
   const summary = endGameSummary(game);
-  const winnerText = summary.winners.length > 1
+  const winnerText = summary.winners.length === 0
+    ? "No Survivors"
+    : summary.winners.length > 1
     ? `Tie: ${summary.winners.map(titleCase).join(", ")}`
     : `${titleCase(summary.winners[0])} Wins`;
   overlay.innerHTML = `
@@ -2413,6 +2489,7 @@ function endGameSummary(game) {
         : "Destroyed"
       : "Survived";
   });
+  const resultWinners = Array.isArray(game.result?.winner_ids) ? game.result.winner_ids : null;
   const topVp = Math.max(...players.map((player) => player.finalVp), 0);
   const overallShots = players.reduce((sum, player) => sum + player.shots, 0);
   const overallHits = players.reduce((sum, player) => sum + player.hitCount, 0);
@@ -2427,7 +2504,7 @@ function endGameSummary(game) {
   return {
     players,
     overall,
-    winners: players.filter((player) => player.finalVp === topVp).map((player) => player.id),
+    winners: resultWinners ?? players.filter((player) => player.finalVp === topVp).map((player) => player.id),
   };
 }
 
@@ -2565,6 +2642,34 @@ function renderBuilderPlayerSelect(game) {
     }),
   );
   elements.builderPlayerSelect.disabled = players.length === 0;
+}
+
+function renderDebugDesperationDraw(game) {
+  if (!elements.debugDesperationSelect || !elements.debugDrawDesperationButton) return;
+  const cardTypes = desperationCardTypes(game);
+  if (!cardTypes.some((card) => card.id === state.debugDesperationCardId)) {
+    state.debugDesperationCardId = cardTypes[0]?.id || "";
+  }
+
+  elements.debugDesperationSelect.replaceChildren(
+    ...cardTypes.map((card) => {
+      const option = document.createElement("option");
+      option.value = card.id;
+      option.textContent = card.name;
+      option.selected = card.id === state.debugDesperationCardId;
+      return option;
+    }),
+  );
+  elements.debugDesperationSelect.disabled = cardTypes.length === 0;
+  elements.debugDrawDesperationButton.disabled = !game || !state.builderPlayerId || !state.debugDesperationCardId;
+}
+
+function desperationCardTypes(game) {
+  const byName = new Map();
+  (game?.desperation_deck?.cards || []).forEach((card) => {
+    if (!byName.has(card.name)) byName.set(card.name, card);
+  });
+  return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
 function renderActionStack(stack, stackIndex, availableCards, game, readOnly) {
@@ -3244,6 +3349,10 @@ elements.playbackSpeedSelect?.addEventListener("change", (event) => {
 });
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
+elements.debugDesperationSelect?.addEventListener("change", (event) => {
+  state.debugDesperationCardId = event.target.value;
+});
+elements.debugDrawDesperationButton?.addEventListener("click", () => debugDrawDesperationCard().catch(showError));
 elements.aiTypeSelect?.addEventListener("change", (event) => {
   state.selectedAiType = event.target.value;
 });

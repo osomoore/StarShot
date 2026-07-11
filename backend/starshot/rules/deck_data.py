@@ -438,7 +438,7 @@ def _phrase_spec(part: str, field: str) -> FaceSpec | None:
         )
     if match := re.fullmatch(r"turn right twice then move (\d+)", part):
         return FaceSpec(family=CardFamily.MOVE, value=int(match.group(1)), requires_target=False, double_turn_right=True)
-    if match := re.fullmatch(r"u-turn then move (\d+)", part):
+    if match := re.fullmatch(r"u-turn(?: then)? move (\d+)", part):
         return FaceSpec(
             family=CardFamily.MOVE,
             value=int(match.group(1)),
@@ -453,6 +453,15 @@ def _phrase_spec(part: str, field: str) -> FaceSpec | None:
             orientation_options=("u_turn_attack",),
             requires_target=False,
             aim_bonus=int(match.group(1)),
+            u_turn_attack=True,
+        )
+    if match := re.fullmatch(r"u-turn attack damage \+(\d+)", part):
+        return FaceSpec(
+            family=CardFamily.ATTACK,
+            value=0,
+            orientation_options=("u_turn_attack",),
+            requires_target=False,
+            damage_bonus=int(match.group(1)),
             u_turn_attack=True,
         )
     if part in {"turn left", "turn right"}:
@@ -645,7 +654,25 @@ def _split_alternatives(text: str) -> list[str]:
 
 
 def _normalize_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower().replace(" then ", " then "))
+    normalized = re.sub(r"\s+", " ", text.strip().lower().replace(" then ", " then "))
+    normalized = re.sub(
+        r"\bturn (right|left)\s*,\s*turn \1\s*,\s*turn \1\s*,\s*move (\d+)\b",
+        r"u-turn move \2",
+        normalized,
+    )
+    normalized = re.sub(
+        r"\bturn (right|left)\s*,\s*turn \1\s*,\s*turn \1\s*,\s*attack damage \+(\d+)\b",
+        r"u-turn attack damage +\2",
+        normalized,
+    )
+    normalized = re.sub(
+        r"\bturn (right|left)\s*,\s*turn \1\s*,\s*turn \1\s*,\s*attack aim \+(\d+)\b",
+        r"u-turn attack aim +\2",
+        normalized,
+    )
+    normalized = re.sub(r"\bu-turn\s*,\s*move\b", "u-turn move", normalized)
+    normalized = re.sub(r"\bu-turn\s*,\s*attack\b", "u-turn attack", normalized)
+    return normalized
 
 
 def _english_orientation_options(text: str, field: str) -> tuple[str, ...]:

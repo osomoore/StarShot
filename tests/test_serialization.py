@@ -37,6 +37,14 @@ class SerializationTests(unittest.TestCase):
 
         serialized_ship = state_to_dict(state)["players"]["red"]["ship"]
         self.assertEqual(state_to_dict(state)["deck_set_id"], "core_0_2_sides")
+        deck_set = state_to_dict(state)["deck_set"]
+        self.assertEqual(deck_set["id"], "core_0_2_sides")
+        self.assertIn("core_0_2", deck_set["path"])
+        self.assertEqual(deck_set["rules_config"], {"overheat_pile": True})
+        self.assertRegex(deck_set["files"]["manifest"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(deck_set["files"]["config"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(deck_set["files"]["base_deck"]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(deck_set["files"]["desperation_deck"]["sha256"], r"^[0-9a-f]{64}$")
         self.assertEqual(serialized_ship["layout_id"], "base_ship_0")
         self.assertIn("component_layout", serialized_ship)
         self.assertEqual(serialized_ship["damage_lanes"]["1"][0], "aft_engines")

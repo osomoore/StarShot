@@ -43,6 +43,16 @@ class DeckDataTests(unittest.TestCase):
         afterburners = catalog.desperation_card_map["desp_afterburners_a"]
         self.assertTrue(afterburners.no_basic_face)
 
+    def test_core_0_3_crazy_ivan_accepts_comma_u_turn_text(self):
+        catalog = load_deck_catalog(Path("resources/decks/core_0_3"))
+
+        crazy_ivan = catalog.desperation_card_map["desp_crazy_ivan_a"]
+        self.assertEqual(crazy_ivan.desperate_face.family.value, "hybrid")
+        self.assertEqual(crazy_ivan.desperate_face.orientation_options, ("u_turn_move", "u_turn_attack"))
+        self.assertEqual(crazy_ivan.desperate_face.value, 3)
+        self.assertEqual(crazy_ivan.desperate_face.aim_bonus, 0)
+        self.assertEqual(crazy_ivan.desperate_face.damage_bonus, 1)
+
     def test_duplicate_card_ids_are_rejected_on_load(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             deck_path = Path(temp_dir)

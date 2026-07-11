@@ -137,9 +137,6 @@ def card_attack_base_damage(card: Card, selection: OrderCardSelection, seal_mode
 def card_attack_aim_bonus(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
-        # Crazy Ivan u_turn_attack: 180° flip then attack with Aim +3
-        if selection.orientation == "u_turn_attack":
-            return 3
         return desperate_face.aim_bonus
     return card_value(card, selection, seal_mode)
 

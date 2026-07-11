@@ -436,6 +436,7 @@ select {
 
 .builder-controls select {
   min-height: 32px;
+  min-width: 0;
   padding: 4px 7px;
 }
 

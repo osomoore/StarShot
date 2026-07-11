@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from starshot.persistence import SQLiteGameStore
 from starshot.rules.deck_data import active_catalog
-from starshot.rules import GameConfig, RulesError, create_initial_state, resolve_next_step, submit_orders
+from starshot.rules import GameConfig, GameState, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
 from starshot.rules.ship_simulation import simulate_ship_kills
 
@@ -38,8 +38,53 @@ class SubmitOrdersRequest(BaseModel):
     orders: dict
 
 
+class DebugDrawDesperationRequest(BaseModel):
+    player_id: str
+    card_id: str
+
+
 def get_store() -> SQLiteGameStore:
     return SQLiteGameStore(Path(os.environ.get("STARSHOT_DB", DEFAULT_DB_PATH)))
+
+
+def _debug_draw_desperation_to_hand(state: GameState, player_id: str, representative_card_id: str) -> str:
+    player = state.players.get(player_id)
+    if player is None:
+        raise RulesError(f"Unknown player: {player_id}")
+
+    catalog = active_catalog()
+    representative = catalog.desperation_card_map.get(representative_card_id)
+    if representative is None:
+        raise RulesError(f"Unknown desperation card: {representative_card_id}")
+
+    draw_index = next(
+        (
+            index
+            for index, card in enumerate(state.desperation_deck.cards)
+            if card.name == representative.name
+        ),
+        None,
+    )
+    if draw_index is None:
+        raise RulesError(f"No {representative.name} cards are available in the Desperation deck.")
+
+    drawn = state.desperation_deck.cards.pop(draw_index)
+    if not state.desperation_deck.cards:
+        state.desperation_deck.shuffle_marker_on_top = True
+    player.hand.append(drawn)
+    state.event_log.append(
+        {
+            "type": "debug_desperation_drawn",
+            "round": state.round_number,
+            "phase": state.phase.value,
+            "player_id": player.id,
+            "card_id": drawn.id,
+            "card_name": drawn.name,
+            "hand_count": len(player.hand),
+            "desperation_deck_count": len(state.desperation_deck.cards),
+        }
+    )
+    return drawn.id
 
 
 @app.get("/")
@@ -135,6 +180,20 @@ def submit_game_orders(game_id: str, request: SubmitOrdersRequest) -> dict:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (RulesError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/games/{game_id}/debug/desperation-draw")
+def debug_draw_desperation_card(game_id: str, request: DebugDrawDesperationRequest) -> dict:
+    try:
+        store = get_store()
+        state = store.load_game(game_id)
+        drawn_card_id = _debug_draw_desperation_to_hand(state, request.player_id, request.card_id)
+        store.save_game(game_id, state)
+        return {"game_id": game_id, "drawn_card_id": drawn_card_id, "state": state_to_dict(state, reveal_orders=False)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RulesError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

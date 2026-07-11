@@ -55,7 +55,8 @@ side_a_type = "Basic"
 side_a_1 = "Move 2"
 side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
-side_b_1 = "Turn Right Twice then Move 4"
+side_b_1 = "Move 4, Turn Right, Turn Right"
+side_b_2 = "Move 4, Turn Left, Turn Left"
 
 [[cards]]
 name = "Thrust Ions"
@@ -65,25 +66,6 @@ side_a_1 = "Move 2"
 side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Move 5"
-
-[[cards]]
-name = "Crazy Ivan"
-copies = 3
-side_a_type = "Basic"
-side_a_1 = "Move 2"
-side_a_2 = "Attack Damage +1"
-side_b_type = "Desperate"
-side_b_1 = "U-Turn then Move 3"
-side_b_2 = "U-Turn Attack Damage +1"
-
-[[cards]]
-name = "Active Cooling"
-copies = 3
-side_a_type = "Basic"
-side_a_1 = "Move 2"
-side_a_2 = "Attack Damage +1"
-side_b_type = "Desperate"
-side_b_1 = "Move 1, Move Overheat to Discard"
 
 [[cards]]
 name = "Turbo Ions"
@@ -138,3 +120,13 @@ side_a_1 = "Move 2"
 side_a_2 = "Attack Damage +1"
 side_b_type = "Desperate"
 side_b_1 = "Attack Damage +1, Lead the Target"
+
+[[cards]]
+name = "Crazy Ivan"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "U-Turn, Move 3"
+side_b_2 = "U-Turn, Attack Damage +1"

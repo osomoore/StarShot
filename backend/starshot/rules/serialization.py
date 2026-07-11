@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from starshot.rules.card_effects import static_card_effect_summary
 from starshot.rules.models import (
     ActionStack,
@@ -23,9 +25,11 @@ from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, 
 
 
 def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
+    catalog = active_catalog()
     return {
         "deck_set_id": state.deck_set_id,
-        "rules_config": rules_config_to_dict(active_catalog().rules_config),
+        "deck_set": deck_set_to_dict(catalog),
+        "rules_config": rules_config_to_dict(catalog.rules_config),
         "round_number": state.round_number,
         "phase": state.phase.value,
         "starting_player_id": state.starting_player_id,
@@ -61,6 +65,34 @@ def state_from_dict(data: dict) -> GameState:
 def rules_config_to_dict(config: RulesConfig) -> dict:
     return {
         "overheat_pile": config.overheat_pile,
+    }
+
+
+def deck_set_to_dict(catalog) -> dict:
+    files = {
+        name: deck_file_to_dict(catalog.path / filename)
+        for name, filename in (
+            ("manifest", "manifest.toml"),
+            ("config", "config.toml"),
+            ("base_deck", "base_deck.toml"),
+            ("desperation_deck", "desperation_deck.toml"),
+        )
+    }
+    return {
+        "id": catalog.id,
+        "name": catalog.name,
+        "rules_version": catalog.rules_version,
+        "path": str(catalog.path),
+        "rules_config": rules_config_to_dict(catalog.rules_config),
+        "files": files,
+    }
+
+
+def deck_file_to_dict(path) -> dict:
+    exists = path.exists()
+    return {
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if exists else None,
     }
 
 
