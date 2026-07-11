@@ -1,0 +1,33 @@
+[[cards]]
+id = "move_1"
+name = "Controlled Move 1"
+copies = ["move_1_a", "move_1_b", "move_1_c"]
+family = "move"
+value = 1
+orientation_options = ["forward", "turn_left", "turn_right"]
+requires_target = false
+
+[[cards]]
+id = "move_2"
+name = "Controlled Move 2"
+copies = ["move_2_a", "move_2_b", "move_2_c", "move_2_d"]
+family = "move"
+value = 2
+orientation_options = ["forward", "turn_left", "turn_right"]
+requires_target = false
+
+[[cards]]
+id = "attack_1"
+name = "Targeted Attack Aim +1"
+copies = ["attack_1_a", "attack_1_b"]
+family = "attack"
+value = 1
+requires_target = true
+
+[[cards]]
+id = "attack_2"
+name = "Targeted Attack Aim +2"
+copies = ["attack_2_a"]
+family = "attack"
+value = 2
+requires_target = true
