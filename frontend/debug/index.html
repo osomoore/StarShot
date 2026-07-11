@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StarShot Debug</title>
-    <link rel="stylesheet" href="/static/styles.css?v=action-log-14" />
+    <link rel="stylesheet" href="/static/styles.css?v=action-log-20" />
   </head>
   <body>
     <main class="app-shell">
@@ -16,7 +16,11 @@
         <div class="toolbar">
           <a class="toolbar-link" href="/ship-sim">Ship Simulator</a>
           <button id="refreshButton" type="button">Refresh</button>
-          <button id="createButton" type="button">New Red/Blue Game</button>
+          <div id="createGameControls" class="create-game-controls" aria-label="Create game">
+            <button type="button" data-player-count="2">New 2P Game</button>
+            <button type="button" data-player-count="3">New 3P Game</button>
+            <button type="button" data-player-count="4">New 4P Game</button>
+          </div>
         </div>
       </header>
 
@@ -46,24 +50,16 @@
     </div>
   </div>
   <div class="actions-row">
-    <label class="ai-control player-ai-control red-ai-control">
-      Red AI
-      <select id="redAiTypeSelect">
-        <option value="bauble_runner">Bauble Runner</option>
-        <option value="hunter_killer">Hunter-Killer</option>
-        <option value="blaster">Blaster</option>
+    <div id="aiControls" class="ai-controls"></div>
+    <label class="ai-control playback-control">
+      Playback Speed
+      <select id="playbackSpeedSelect">
+        <option value="normal">Normal</option>
+        <option value="fast">Fast</option>
+        <option value="instant">Instant</option>
+        <option value="play_game">Play entire game</option>
       </select>
     </label>
-    <label class="ai-control player-ai-control blue-ai-control">
-      Blue AI
-      <select id="blueAiTypeSelect">
-        <option value="bauble_runner">Bauble Runner</option>
-        <option value="hunter_killer">Hunter-Killer</option>
-        <option value="blaster">Blaster</option>
-      </select>
-    </label>
-    <button id="redOrdersButton" type="button" disabled>Red AI</button>
-    <button id="blueOrdersButton" type="button" disabled>Blue AI</button>
     <label class="check-control">
       <input id="revealOrdersToggle" type="checkbox" />
       Reveal orders
@@ -73,9 +69,6 @@
 
           <div class="play-layout">
             <aside class="player-rail" aria-label="Player ships">
-              <div class="panel-header">
-                <h2>Ships</h2>
-              </div>
               <div id="leftMiniBoards" class="mini-boards-column"></div>
             </aside>
 
@@ -142,6 +135,6 @@
         </section>
       </section>
     </main>
-    <script src="/static/app.js?v=action-log-14"></script>
+    <script src="/static/app.js?v=action-log-20"></script>
   </body>
 </html>

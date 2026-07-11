@@ -85,6 +85,20 @@ select {
   gap: 10px;
 }
 
+.create-game-controls,
+.ai-controls,
+.player-ai-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.player-ai-group {
+  align-items: end;
+  border-left: 4px solid #60706b;
+  padding-left: 8px;
+}
+
 .ai-control {
   align-items: center;
   color: #43504d;
@@ -1156,9 +1170,11 @@ select {
   color: #182022;
   display: grid;
   gap: 14px;
-  max-width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  max-width: min(1120px, 100%);
+  overflow: auto;
   padding: 18px;
-  width: 620px;
+  width: 980px;
 }
 
 .end-game-header {
@@ -1195,7 +1211,7 @@ select {
 .end-game-scoreboard {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .end-game-player {
@@ -1222,25 +1238,71 @@ select {
   font-weight: 900;
 }
 
-.end-game-player dl {
+.end-game-stat-grid {
   display: grid;
-  gap: 7px;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-stat {
+  background: #f7f9f8;
+  border: 1px solid #e0e5e2;
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.summary-stat.wide {
+  grid-column: 1 / -1;
+}
+
+.summary-stat span {
+  color: #60706b;
+  font-size: 0.74rem;
+  line-height: 1.15;
+}
+
+.summary-stat strong {
+  font-weight: 800;
+  line-height: 1.15;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.end-game-overall {
+  background: #f7f9f8;
+  border: 1px solid #d8ddda;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.end-game-overall > strong {
+  font-size: 1rem;
+}
+
+.end-game-overall dl {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin: 0;
 }
 
-.end-game-player dl div {
-  align-items: baseline;
+.end-game-overall dl div {
   display: flex;
   gap: 10px;
   justify-content: space-between;
 }
 
-.end-game-player dt {
+.end-game-overall dt {
   color: #60706b;
   font-size: 0.82rem;
 }
 
-.end-game-player dd {
+.end-game-overall dd {
   font-weight: 800;
   margin: 0;
   text-align: right;

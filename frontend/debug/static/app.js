@@ -9,8 +9,13 @@
   selectedAiTypes: {
     red: "bauble_runner",
     blue: "bauble_runner",
+    green: "bauble_runner",
+    yellow: "bauble_runner",
   },
   dismissedEndGameFor: null,
+  playbackSpeed: "normal",
+  autoPlaying: false,
+  aiTargets: {},
   // New properties for board interaction
   zoomScale: 1,
   panOffsetX: 0,
@@ -72,6 +77,7 @@ const START_CORNER_DIRECTIONS = [3, 0, 2, 5];
 
 const elements = {
   createButton: document.querySelector("#createButton"),
+  createGameControls: document.querySelector("#createGameControls"),
   refreshButton: document.querySelector("#refreshButton"),
   actionLog: document.querySelector("#actionLog") || document.querySelector("#gamesList"),
   exportLogButton: document.querySelector("#exportLogButton"),
@@ -80,6 +86,8 @@ const elements = {
   roundValue: document.querySelector("#roundValue"),
   phaseValue: document.querySelector("#phaseValue"),
   startingPlayerValue: document.querySelector("#startingPlayerValue"),
+  aiControls: document.querySelector("#aiControls"),
+  playbackSpeedSelect: document.querySelector("#playbackSpeedSelect"),
   redOrdersButton: document.querySelector("#redOrdersButton"),
   blueOrdersButton: document.querySelector("#blueOrdersButton"),
   aiTypeSelect: document.querySelector("#aiTypeSelect"),
@@ -186,19 +194,26 @@ async function refreshGames() {
   }
 }
 
-async function createGame() {
+async function createGame(playerCount = 2) {
+  const playerIds = playerIdsForCount(playerCount);
   const payload = await api("/api/games", {
     method: "POST",
     body: JSON.stringify({
-      player_ids: ["red", "blue"],
+      player_ids: playerIds,
       seed: 3,
     }),
   });
   state.selectedGameId = payload.game_id;
   state.builderDraft = createEmptyDraft();
   state.knownCards = {};
+  state.aiTargets = {};
   state.dismissedEndGameFor = null;
   await refreshGames();
+}
+
+function playerIdsForCount(playerCount) {
+  const count = Math.max(2, Math.min(4, Number(playerCount) || 2));
+  return PLAYER_ORDER.slice(0, count);
 }
 
 async function selectGame(gameId) {
@@ -292,6 +307,48 @@ async function submitAiOrders(playerId) {
   await submitOrders(playerId, orders);
 }
 
+async function submitAiOrdersSilently(playerId) {
+  const aiType = selectedAiTypeForPlayer(playerId);
+  const orders = buildAiOrders(playerId, aiType);
+  if (!orders) return false;
+  await submitOrders(playerId, orders);
+  return true;
+}
+
+async function playEntireGame() {
+  if (!state.selectedGameId || state.autoPlaying) return;
+  const previousSpeed = state.playbackSpeed;
+  state.autoPlaying = true;
+  state.playbackSpeed = "instant";
+  if (elements.playbackSpeedSelect) elements.playbackSpeedSelect.value = "play_game";
+  renderAll();
+  try {
+    let guard = 0;
+    while (state.selectedState?.phase !== "complete" && guard < 250) {
+      guard += 1;
+      const game = state.selectedState;
+      if (!game) break;
+      if (game.phase === "give_orders") {
+        const pendingPlayers = PLAYER_ORDER
+          .filter((playerId) => game.players?.[playerId] && canSubmit(playerId));
+        for (const playerId of pendingPlayers) {
+          await submitAiOrdersSilently(playerId);
+        }
+      } else if (canResolve(state.selectedState)) {
+        await resolveNextStep();
+      } else {
+        break;
+      }
+    }
+    if (guard >= 250) throw new Error("Autoplay stopped after 250 steps.");
+  } finally {
+    state.autoPlaying = false;
+    state.playbackSpeed = previousSpeed;
+    if (elements.playbackSpeedSelect) elements.playbackSpeedSelect.value = previousSpeed;
+    renderAll();
+  }
+}
+
 function selectedAiTypeForPlayer(playerId) {
   return state.selectedAiTypes[playerId] || state.selectedAiType || "bauble_runner";
 }
@@ -299,7 +356,7 @@ function selectedAiTypeForPlayer(playerId) {
 function buildAiOrders(playerId, aiType) {
   if (aiType === "bauble_runner") return buildBaubleRunnerOrders(playerId);
   if (aiType === "hunter_killer") return buildHunterKillerOrders(playerId);
-  if (aiType === "blaster") return buildDemoOrders(playerId, "attack");
+  if (aiType === "blaster") return buildBlasterOrders(playerId);
   return buildDemoOrders(playerId, "move");
 }
 
@@ -383,7 +440,7 @@ function buildHunterKillerOrders(playerId) {
   const player = game?.players?.[playerId];
   if (!game || !player || !canSubmit(playerId)) return null;
 
-  const targetId = nearestOpponentId(game, player);
+  const targetId = persistentHunterKillerTargetId(game, player);
   const target = game.players[targetId];
   if (!target) return buildDemoOrders(playerId, "attack");
 
@@ -439,6 +496,71 @@ function buildHunterKillerOrders(playerId) {
         action_number: actionNumber,
         seal_mode: attackPlan ? attackPlan.sealMode : "sealed",
         cards: attackPlan ? [attackPlan.selection] : [],
+      };
+    }),
+  };
+}
+
+function buildBlasterOrders(playerId) {
+  const game = state.selectedState;
+  const player = game?.players?.[playerId];
+  if (!game || !player || !canSubmit(playerId)) return null;
+
+  const available = [...(player.hand || [])];
+  const preview = {
+    q: player.ship.q,
+    r: player.ship.r,
+    facing: player.ship.facing,
+  };
+  const targetId = blasterTargetId(game, player, available, preview);
+  const target = game.players[targetId];
+  if (!target) return buildDemoOrders(playerId, "attack");
+
+  const attackCount = available.filter(aiCanUseAsAttack).length;
+  const attackSlots = new Set(
+    [0, 1, 2].slice(Math.max(0, 3 - Math.min(3, attackCount))),
+  );
+
+  return {
+    stacks: [1, 2, 3].map((actionNumber, stackIndex) => {
+      const distance = hexDistance(preview.q, preview.r, target.ship.q, target.ship.r);
+      if (distance > 8) {
+        const movePlan = takeBestOpponentMove(available, preview, target);
+        if (movePlan) {
+          applyAiMoveStackPreview(preview, movePlan);
+          return {
+            action_number: actionNumber,
+            seal_mode: movePlan.sealMode,
+            cards: movePlan.selections,
+          };
+        }
+      }
+
+      if (attackSlots.has(stackIndex) || distance <= 8) {
+        const attackPlan = takeHunterKillerAttack(available, game, preview, targetId, target);
+        if (attackPlan) {
+          return {
+            action_number: actionNumber,
+            seal_mode: attackPlan.sealMode,
+            cards: [attackPlan.selection],
+          };
+        }
+      }
+
+      const movePlan = takeBestOpponentMove(available, preview, target);
+      if (movePlan) {
+        applyAiMoveStackPreview(preview, movePlan);
+        return {
+          action_number: actionNumber,
+          seal_mode: movePlan.sealMode,
+          cards: movePlan.selections,
+        };
+      }
+
+      return {
+        action_number: actionNumber,
+        seal_mode: "sealed",
+        cards: [],
       };
     }),
   };
@@ -929,13 +1051,84 @@ function activeBaubleTargets(game) {
 }
 
 function nearestOpponentId(game, player) {
-  return Object.values(game.players || {})
-    .filter((candidate) => candidate.id !== player.id && !candidate.eliminated)
+  return activeOpponentPlayers(game, player)
     .sort((left, right) => (
       hexDistance(player.ship.q, player.ship.r, left.ship.q, left.ship.r)
       - hexDistance(player.ship.q, player.ship.r, right.ship.q, right.ship.r)
       || left.id.localeCompare(right.id)
     ))[0]?.id || "";
+}
+
+function activeOpponentPlayers(game, player) {
+  return Object.values(game?.players || {})
+    .filter((candidate) => (
+      candidate.id !== player.id
+      && !candidate.eliminated
+      && !candidate.ship?.destroyed
+    ));
+}
+
+function persistentHunterKillerTargetId(game, player) {
+  const key = `${state.selectedGameId || "game"}:${player.id}`;
+  const rememberedId = state.aiTargets[key];
+  if (rememberedId && isActiveOpponent(game, player, rememberedId)) {
+    return rememberedId;
+  }
+  const nextId = initialHunterKillerTargetId(game, player);
+  if (nextId) state.aiTargets[key] = nextId;
+  return nextId;
+}
+
+function initialHunterKillerTargetId(game, player) {
+  return nearestOpponentId(game, player);
+}
+
+function isActiveOpponent(game, player, targetId) {
+  const target = game?.players?.[targetId];
+  return Boolean(target && target.id !== player.id && !target.eliminated && !target.ship?.destroyed);
+}
+
+function blasterTargetId(game, player, available, preview) {
+  const candidates = activeOpponentPlayers(game, player)
+    .filter((target) => canReachTargetDistance(available, preview, target, 8));
+  const pool = candidates.length ? candidates : activeOpponentPlayers(game, player);
+  return pool
+    .sort((left, right) => compareAiScores(blasterTargetScore(player, right), blasterTargetScore(player, left)))[0]?.id || "";
+}
+
+function blasterTargetScore(player, target) {
+  const destroyedComponents = target.ship?.destroyed_components?.length || 0;
+  return [
+    target.ship?.damage_taken || 0,
+    destroyedComponents,
+    -(target.ship?.shields || 0),
+    -hexDistance(player.ship.q, player.ship.r, target.ship.q, target.ship.r),
+    -PLAYER_ORDER.indexOf(target.id),
+  ];
+}
+
+function canReachTargetDistance(available, preview, target, maxDistance) {
+  if (hexDistance(preview.q, preview.r, target.ship.q, target.ship.r) <= maxDistance) return true;
+  const moveCards = available.filter(aiCanUseAsMove);
+  const seen = new Set();
+
+  function search(position, remainingCards, actionsLeft) {
+    if (hexDistance(position.q, position.r, target.ship.q, target.ship.r) <= maxDistance) return true;
+    if (actionsLeft === 0) return false;
+    const key = `${position.q},${position.r},${position.facing}|${actionsLeft}|${remainingCards.map((card) => card.id).join(",")}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+
+    return aiMoveStackOptions(remainingCards, true).some((option) => {
+      const candidate = { q: position.q, r: position.r, facing: position.facing };
+      applyAiMoveStackPreview(candidate, option);
+      const usedIds = new Set(option.moves.map((move) => move.card.id));
+      const nextCards = remainingCards.filter((card) => !usedIds.has(card.id));
+      return search(candidate, nextCards, actionsLeft - 1);
+    });
+  }
+
+  return search({ q: preview.q, r: preview.r, facing: preview.facing }, moveCards, 3);
 }
 
 function compareAiScores(left, right) {
@@ -976,15 +1169,16 @@ function renderAll() {
   elements.roundValue.textContent = game?.round_number ?? "-";
   elements.phaseValue.textContent = game?.phase ?? "-";
   elements.startingPlayerValue.textContent = game?.starting_player_id ?? "-";
-  elements.redOrdersButton.disabled = !canSubmit("red");
-  elements.blueOrdersButton.disabled = !canSubmit("blue");
+  if (elements.redOrdersButton) elements.redOrdersButton.disabled = !canSubmit("red");
+  if (elements.blueOrdersButton) elements.blueOrdersButton.disabled = !canSubmit("blue");
   if (elements.aiTypeSelect) {
     elements.aiTypeSelect.disabled = !game;
     elements.aiTypeSelect.value = state.selectedAiType;
   }
   syncAiTypeSelect("red", elements.redAiTypeSelect, game);
   syncAiTypeSelect("blue", elements.blueAiTypeSelect, game);
-  elements.resolveButton.disabled = !canResolve(game);
+  renderAiControls(game);
+  elements.resolveButton.disabled = state.autoPlaying || !canResolve(game);
   renderOrdersBuilder(game);
   renderBoard(game);
   renderMiniShipBoards(game);
@@ -999,6 +1193,34 @@ function syncAiTypeSelect(playerId, select, game) {
   if (!select) return;
   select.disabled = !game || !game.players?.[playerId];
   select.value = selectedAiTypeForPlayer(playerId);
+}
+
+function renderAiControls(game) {
+  if (!elements.aiControls) return;
+  if (!game) {
+    elements.aiControls.replaceChildren();
+    return;
+  }
+  const controls = PLAYER_ORDER
+    .filter((playerId) => game.players?.[playerId])
+    .map((playerId) => {
+      const control = document.createElement("div");
+      control.className = "player-ai-group";
+      control.style.borderLeftColor = SHIP_COLORS[playerId] || "#60706b";
+      control.innerHTML = `
+        <label class="ai-control player-ai-control">
+          ${escapeHtml(titleCase(playerId))} AI
+          <select data-ai-player="${escapeHtml(playerId)}">
+            ${Object.entries(AI_TYPES).map(([value, label]) => `
+              <option value="${escapeHtml(value)}"${selectedAiTypeForPlayer(playerId) === value ? " selected" : ""}>${escapeHtml(label)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <button type="button" data-ai-submit="${escapeHtml(playerId)}"${!state.autoPlaying && canSubmit(playerId) ? "" : " disabled"}>${escapeHtml(titleCase(playerId))} AI</button>
+      `;
+      return control;
+    });
+  elements.aiControls.replaceChildren(...controls);
 }
 
 function actionLogItems(game) {
@@ -1325,6 +1547,18 @@ function canSubmit(playerId) {
 
 function canResolve(game) {
   return Boolean(game && !state.resolving && !["give_orders", "complete"].includes(game.phase));
+}
+
+function playbackDelay(duration) {
+  if (state.playbackSpeed === "instant") return 0;
+  const multiplier = state.playbackSpeed === "fast" ? 0.35 : 1;
+  return Math.max(0, Math.round((duration || 1200) * multiplier));
+}
+
+function playbackGap(duration = 180) {
+  if (state.playbackSpeed === "instant") return 0;
+  const multiplier = state.playbackSpeed === "fast" ? 0.35 : 1;
+  return Math.max(0, Math.round(duration * multiplier));
 }
 
 function renderBoard(game) {
@@ -2045,13 +2279,33 @@ function renderEndGameSummary(game) {
               <strong>${escapeHtml(titleCase(player.id))}</strong>
               <span>${player.finalVp} VP</span>
             </div>
-            <dl>
-              <div><dt>Distance moved</dt><dd>${player.distanceMoved}</dd></div>
-              <div><dt>Baubles scored</dt><dd>${player.baubleCount} for ${player.baubleVp} VP</dd></div>
-              <div><dt>Hits</dt><dd>${player.hitCount} for ${player.hitVp} VP</dd></div>
-            </dl>
+            <div class="end-game-stat-grid">
+              <div class="summary-stat wide"><span>AI</span><strong>${escapeHtml(AI_TYPES[player.aiType] || player.aiType)}</strong></div>
+              <div class="summary-stat"><span>Total VP</span><strong>${player.finalVp}</strong></div>
+              <div class="summary-stat"><span>Bauble VP</span><strong>${player.baubleVp}</strong></div>
+              <div class="summary-stat"><span>Attack VP</span><strong>${player.attackVp}</strong></div>
+              <div class="summary-stat"><span>Baubles</span><strong>${player.baubleCount}</strong></div>
+              <div class="summary-stat"><span>Distance</span><strong>${player.distanceMoved}</strong></div>
+              <div class="summary-stat"><span>Damage Taken</span><strong>${player.damageSustained}</strong></div>
+              <div class="summary-stat"><span>Shots</span><strong>${player.shots}</strong></div>
+              <div class="summary-stat"><span>Hit Rate</span><strong>${player.hitPct}</strong></div>
+              <div class="summary-stat wide"><span>Hit Most</span><strong>${escapeHtml(player.mostHitTarget)}</strong></div>
+              <div class="summary-stat wide"><span>Kills</span><strong>${escapeHtml(player.killsText)}</strong></div>
+              <div class="summary-stat wide"><span>Status</span><strong>${escapeHtml(player.killedByText)}</strong></div>
+            </div>
           </article>
         `).join("")}
+      </div>
+      <div class="end-game-overall">
+        <strong>Overall</strong>
+        <dl>
+          <div><dt>Total VP</dt><dd>${summary.overall.totalVp}</dd></div>
+          <div><dt>Bauble VP</dt><dd>${summary.overall.baubleVp}</dd></div>
+          <div><dt>Attack VP</dt><dd>${summary.overall.attackVp}</dd></div>
+          <div><dt>Total damage sustained</dt><dd>${summary.overall.damageSustained}</dd></div>
+          <div><dt>Total shots</dt><dd>${summary.overall.shots}</dd></div>
+          <div><dt>Hit percentage</dt><dd>${summary.overall.hitPct}</dd></div>
+        </dl>
       </div>
     </section>
   `;
@@ -2076,12 +2330,18 @@ function endGameOverlayElement() {
 function endGameSummary(game) {
   const stats = Object.fromEntries(Object.keys(game.players || {}).map((playerId) => [playerId, {
     id: playerId,
+    aiType: selectedAiTypeForPlayer(playerId),
     finalVp: game.players[playerId]?.victory_points || 0,
+    damageSustained: game.players[playerId]?.ship?.damage_taken || 0,
     distanceMoved: 0,
     baubleCount: 0,
     baubleVp: 0,
     hitCount: 0,
-    hitVp: 0,
+    attackVp: 0,
+    shots: 0,
+    hitsByTarget: {},
+    kills: [],
+    killedBy: "",
   }]));
   (game.event_log || []).forEach((event) => {
     if (event.type === "movement_resolved" && stats[event.player_id]) {
@@ -2092,17 +2352,52 @@ function endGameSummary(game) {
         stats[award.player_id].baubleCount += 1;
         stats[award.player_id].baubleVp += award.vp_awarded || 0;
       });
-    } else if (event.type === "volley_resolved" && event.hit && stats[event.attacker_id]) {
-      stats[event.attacker_id].hitCount += 1;
-      stats[event.attacker_id].hitVp += event.vp_awarded || 0;
+    } else if (event.type === "volley_resolved" && stats[event.attacker_id]) {
+      stats[event.attacker_id].shots += 1;
+      if (event.hit) {
+        stats[event.attacker_id].hitCount += 1;
+        if (event.target_id) {
+          stats[event.attacker_id].hitsByTarget[event.target_id] = (stats[event.attacker_id].hitsByTarget[event.target_id] || 0) + 1;
+        }
+        stats[event.attacker_id].attackVp += event.vp_awarded || 0;
+        if (event.target_destroyed && !event.was_destroyed && stats[event.target_id]) {
+          stats[event.attacker_id].kills.push(event.target_id);
+          stats[event.target_id].killedBy = event.attacker_id;
+        }
+      }
     }
   });
   const players = Object.values(stats).sort((left, right) => PLAYER_ORDER.indexOf(left.id) - PLAYER_ORDER.indexOf(right.id));
+  players.forEach((player) => {
+    player.hitPct = player.shots ? `${Math.round((player.hitCount / player.shots) * 100)}%` : "0%";
+    player.mostHitTarget = mostHitTargetText(player.hitsByTarget);
+    player.killsText = player.kills.length ? player.kills.map(titleCase).join(", ") : "None";
+    player.killedByText = player.killedBy ? `Destroyed by ${titleCase(player.killedBy)}` : "Survived";
+  });
   const topVp = Math.max(...players.map((player) => player.finalVp), 0);
+  const overallShots = players.reduce((sum, player) => sum + player.shots, 0);
+  const overallHits = players.reduce((sum, player) => sum + player.hitCount, 0);
+  const overall = {
+    totalVp: players.reduce((sum, player) => sum + player.finalVp, 0),
+    baubleVp: players.reduce((sum, player) => sum + player.baubleVp, 0),
+    attackVp: players.reduce((sum, player) => sum + player.attackVp, 0),
+    damageSustained: players.reduce((sum, player) => sum + player.damageSustained, 0),
+    shots: overallShots,
+    hitPct: overallShots ? `${Math.round((overallHits / overallShots) * 100)}%` : "0%",
+  };
   return {
     players,
+    overall,
     winners: players.filter((player) => player.finalVp === topVp).map((player) => player.id),
   };
+}
+
+function mostHitTargetText(hitsByTarget) {
+  const entries = Object.entries(hitsByTarget || {});
+  if (!entries.length) return "None";
+  entries.sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const [targetId, hits] = entries[0];
+  return `${titleCase(targetId)} (${hits})`;
 }
 
 function syncBuilderPlayer() {
@@ -2875,11 +3170,33 @@ function applyDefaultAttackTarget(stack, cardIndex) {
   }
 }
 
-elements.createButton.addEventListener("click", () => createGame().catch(showError));
+elements.createButton?.addEventListener("click", () => createGame().catch(showError));
+elements.createGameControls?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-player-count]");
+  if (!button) return;
+  createGame(button.dataset.playerCount).catch(showError);
+});
 elements.refreshButton.addEventListener("click", () => refreshGames().catch(showError));
 elements.exportLogButton?.addEventListener("click", () => exportGameLog().catch(showError));
-elements.redOrdersButton.addEventListener("click", () => submitAiOrders("red").catch(showError));
-elements.blueOrdersButton.addEventListener("click", () => submitAiOrders("blue").catch(showError));
+elements.redOrdersButton?.addEventListener("click", () => submitAiOrders("red").catch(showError));
+elements.blueOrdersButton?.addEventListener("click", () => submitAiOrders("blue").catch(showError));
+elements.aiControls?.addEventListener("change", (event) => {
+  const select = event.target.closest("[data-ai-player]");
+  if (!select) return;
+  state.selectedAiTypes[select.dataset.aiPlayer] = select.value;
+});
+elements.aiControls?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-ai-submit]");
+  if (!button) return;
+  submitAiOrders(button.dataset.aiSubmit).catch(showError);
+});
+elements.playbackSpeedSelect?.addEventListener("change", (event) => {
+  if (event.target.value === "play_game") {
+    playEntireGame().catch(showError);
+    return;
+  }
+  state.playbackSpeed = event.target.value;
+});
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
 elements.aiTypeSelect?.addEventListener("change", (event) => {
@@ -2946,6 +3263,7 @@ function showError(error) {
 
 function showResolutionCallouts(game, previousEventCount, previousGame = null) {
   const callouts = resolutionCallouts(game, previousEventCount);
+  if (state.playbackSpeed === "instant") return Promise.resolve(() => {});
   if (!callouts.length) return Promise.resolve(() => {});
   const overlay = resolutionCalloutElement();
   const animationContext = createBoardAnimationContext();
@@ -2965,11 +3283,11 @@ function showResolutionCallouts(game, previousEventCount, previousGame = null) {
     window.setTimeout(() => {
       overlay.classList.remove("visible");
       if (index < callouts.length) {
-        window.setTimeout(showNext, 180);
+        window.setTimeout(showNext, playbackGap());
       } else {
-        window.setTimeout(() => resolve(() => cleanupBoardAnimationContext(animationContext)), 180);
+        window.setTimeout(() => resolve(() => cleanupBoardAnimationContext(animationContext)), playbackGap());
       }
-    }, callout.duration || 1200);
+    }, playbackDelay(callout.duration || 1200));
     }
 
     showNext();
@@ -3070,7 +3388,7 @@ function animateBoardDot(fromHex, toHex, activity) {
   dot.style.setProperty("--motion-x", `${end.x - start.x}px`);
   dot.style.setProperty("--motion-y", `${end.y - start.y}px`);
   document.body.append(dot);
-  window.setTimeout(() => dot.remove(), 900);
+  window.setTimeout(() => dot.remove(), playbackDelay(900));
 }
 
 function animateBoardShip(playerId, fromHex, toHex, context) {
@@ -3099,7 +3417,7 @@ function animateBoardShip(playerId, fromHex, toHex, context) {
     ship.style.top = `${end.y}px`;
     ship.style.setProperty("--motion-x", "0px");
     ship.style.setProperty("--motion-y", "0px");
-  }, 820);
+  }, playbackDelay(820));
 }
 
 function boardScreenPoint(hex) {
