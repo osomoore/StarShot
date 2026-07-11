@@ -1912,11 +1912,52 @@ pre {
 
 :root[data-theme="dark"] .front-card.desperate-card,
 :root[data-theme="dark"] .hex-choice-summary.desperate-card,
-:root[data-theme="dark"] .hex-choice.desperate-choice,
+:root[data-theme="dark"] .hex-choice.desperate-choice {
+  background:
+    linear-gradient(135deg, #34f28a 0%, #16b968 48%, #0d4f31 100%);
+  border-color: #8effbd;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.22),
+    0 0 0 2px rgb(52 242 138 / 0.18),
+    0 10px 24px rgb(0 0 0 / 0.34);
+  color: #04150b;
+}
+
 :root[data-theme="dark"] .front-card.desperate-attack-card,
 :root[data-theme="dark"] .hex-choice-summary.desperate-attack-card,
 :root[data-theme="dark"] .hex-choice.desperate-attack-choice {
-  color: inherit;
+  background:
+    linear-gradient(135deg, #ffb24c 0%, #f47a19 50%, #743100 100%);
+  border-color: #ffd08a;
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.2),
+    0 0 0 2px rgb(255 178 76 / 0.18),
+    0 10px 24px rgb(0 0 0 / 0.34);
+  color: #1b0900;
+}
+
+:root[data-theme="dark"] .front-card.desperate-card span,
+:root[data-theme="dark"] .front-card.desperate-card .card-slot-label,
+:root[data-theme="dark"] .hex-choice-summary.desperate-card {
+  color: #04150b;
+}
+
+:root[data-theme="dark"] .front-card.desperate-attack-card span,
+:root[data-theme="dark"] .front-card.desperate-attack-card .card-slot-label,
+:root[data-theme="dark"] .hex-choice-summary.desperate-attack-card {
+  color: #1b0900;
+}
+
+:root[data-theme="dark"] .hex-choice.desperate-choice .choice-hex {
+  background: #052313;
+  border: 1px solid rgb(142 255 189 / 0.28);
+  color: #4dff9b;
+}
+
+:root[data-theme="dark"] .hex-choice.desperate-attack-choice .choice-hex {
+  background: #2a1000;
+  border: 1px solid rgb(255 208 138 / 0.34);
+  color: #ffbf66;
 }
 
 :root[data-theme="dark"] .mini-ship-header {
