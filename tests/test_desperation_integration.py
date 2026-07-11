@@ -1,5 +1,6 @@
 """Integration tests for desperate face resolution in the game engine."""
 
+import os
 import unittest
 
 from starshot.rules import (
@@ -443,6 +444,37 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertEqual(state.players["red"].ship.facing, 4)
         self.assertEqual(state.players["red"].ship.q, -4)
         self.assertEqual(state.players["red"].ship.r, 4)
+
+    def test_core_0_3_desperate_drift_king_moves_then_turns_twice(self):
+        original = os.environ.get("STARSHOT_DECK_SET")
+        try:
+            os.environ["STARSHOT_DECK_SET"] = "resources/decks/core_0_3"
+            state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+            self._set_hand(state, "red", "desp_drift_king_a")
+            state.players["red"].ship.q = 0
+            state.players["red"].ship.r = 0
+            state.players["red"].ship.facing = 0
+
+            state = submit_orders(state, "red", OrdersSubmission(stacks=(
+                ActionStack(
+                    1,
+                    SealMode.SEALED,
+                    (OrderCardSelection("desp_drift_king_a", face="desperate", orientation="turn_left"),),
+                ),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )))
+            state = submit_orders(state, "blue", self._empty_orders())
+            state = resolve_next_step(state)
+
+            self.assertEqual(state.players["red"].ship.q, 4)
+            self.assertEqual(state.players["red"].ship.r, 0)
+            self.assertEqual(state.players["red"].ship.facing, 2)
+        finally:
+            if original is None:
+                os.environ.pop("STARSHOT_DECK_SET", None)
+            else:
+                os.environ["STARSHOT_DECK_SET"] = original
 
     # ------------------------------------------------------------------
     # Crazy Ivan desperate face — move variant

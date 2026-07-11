@@ -40,13 +40,15 @@ class DesperationCardSemanticsTests(unittest.TestCase):
     def test_afterburners_orientation_options(self):
         card = desperation_card_by_id("desp_afterburners_a")
         sel = OrderCardSelection(card.id)
+        self.assertEqual(selected_card_family(card, sel), CardFamily.MOVE)
         self.assertIn("forward", card_orientation_options(card, sel))
         self.assertIn("turn_right", card_orientation_options(card, sel))
         self.assertIn("turn_left", card_orientation_options(card, sel))
 
     def test_crack_shot_requires_target(self):
         card = desperation_card_by_id("desp_crack_shot_a")
-        sel = OrderCardSelection(card.id, face="desperate", target_player_id="blue")
+        sel = OrderCardSelection(card.id, target_player_id="blue")
+        self.assertEqual(selected_card_family(card, sel), CardFamily.ATTACK)
         self.assertTrue(card_requires_target(card, sel))
         self.assertEqual(card_damage_bonus(card, sel), 1)
 

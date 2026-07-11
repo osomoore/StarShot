@@ -448,6 +448,14 @@ def _resolve_stack_movement(
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
             player.ship.q, player.ship.r = attempted_q, attempted_r
             player.ship.movement_this_action += distance
+        elif move_effect.double_turn_after_move:
+            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+            player.ship.q, player.ship.r = attempted_q, attempted_r
+            if move_choice == "turn_left":
+                player.ship.facing = turn_left(turn_left(player.ship.facing))
+            else:
+                player.ship.facing = turn_right(turn_right(player.ship.facing))
+            player.ship.movement_this_action += distance
         elif move_effect.u_turn_move:
             player.ship.facing = u_turn(player.ship.facing)
             attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)

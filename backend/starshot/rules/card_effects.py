@@ -14,6 +14,7 @@ class MoveDirective:
     warp_destination: str | None = None
     side_slip_direction: str | None = None
     double_turn_right: bool = False
+    double_turn_after_move: bool = False
     u_turn_move: bool = False
     active_cooling: bool = False
 
@@ -52,7 +53,7 @@ def is_desperate_face(selection: OrderCardSelection) -> bool:
 
 
 def desperate_face_for(card: Card, selection: OrderCardSelection) -> DesperateFace | None:
-    if not is_desperate_face(selection):
+    if not is_desperate_face(selection) and not card.no_basic_face:
         return None
     if card.desperate_face is None:
         raise ValueError(f"Card {card.id} does not have an implemented desperate face.")
@@ -99,6 +100,7 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
             warp_destination=card_warp_destination(card, selection),
             side_slip_direction=card_side_slip_direction(card, selection),
             double_turn_right=card_double_turn_right(card, selection),
+            double_turn_after_move=card_double_turn_after_move(card, selection),
             u_turn_move=card_u_turn_move(card, selection),
             active_cooling=card_active_cooling(card, selection),
         )
@@ -215,6 +217,11 @@ def card_side_slip_direction(card: Card, selection: OrderCardSelection) -> str |
 def card_double_turn_right(card: Card, selection: OrderCardSelection) -> bool:
     desperate_face = desperate_face_for(card, selection)
     return bool(desperate_face is not None and desperate_face.double_turn_right)
+
+
+def card_double_turn_after_move(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.double_turn_after_move)
 
 
 def card_u_turn_move(card: Card, selection: OrderCardSelection) -> bool:

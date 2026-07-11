@@ -66,6 +66,7 @@ class FaceSpec:
     attacks_all: bool = False
     side_slip_direction: str | None = None
     double_turn_right: bool = False
+    double_turn_after_move: bool = False
     u_turn_move: bool = False
     u_turn_attack: bool = False
     active_cooling: bool = False
@@ -356,6 +357,7 @@ def _desperate_face_from_spec(spec: FaceSpec | None) -> DesperateFace | None:
         attacks_all=spec.attacks_all,
         side_slip_direction=spec.side_slip_direction,
         double_turn_right=spec.double_turn_right,
+        double_turn_after_move=spec.double_turn_after_move,
         u_turn_move=spec.u_turn_move,
         u_turn_attack=spec.u_turn_attack,
         active_cooling=spec.active_cooling,
@@ -438,6 +440,14 @@ def _phrase_spec(part: str, field: str) -> FaceSpec | None:
         )
     if match := re.fullmatch(r"turn right twice then move (\d+)", part):
         return FaceSpec(family=CardFamily.MOVE, value=int(match.group(1)), requires_target=False, double_turn_right=True)
+    if match := re.fullmatch(r"move (\d+) then turn (right|left) twice", part):
+        return FaceSpec(
+            family=CardFamily.MOVE,
+            value=int(match.group(1)),
+            orientation_options=(f"turn_{match.group(2)}",),
+            requires_target=False,
+            double_turn_after_move=True,
+        )
     if match := re.fullmatch(r"u-turn(?: then)? move (\d+)", part):
         return FaceSpec(
             family=CardFamily.MOVE,
@@ -552,6 +562,7 @@ def _combine_mixed_alternatives(alternatives: list[FaceSpec], field: str) -> Fac
         attacks_all=attack.attacks_all,
         side_slip_direction=move.side_slip_direction,
         double_turn_right=move.double_turn_right,
+        double_turn_after_move=move.double_turn_after_move,
         u_turn_move=move.u_turn_move,
         u_turn_attack=attack.u_turn_attack,
         active_cooling=move.active_cooling,
@@ -591,6 +602,7 @@ def _merge_specs(left: FaceSpec, right: FaceSpec) -> FaceSpec:
         attacks_all=left.attacks_all or right.attacks_all,
         side_slip_direction=right.side_slip_direction or left.side_slip_direction,
         double_turn_right=left.double_turn_right or right.double_turn_right,
+        double_turn_after_move=left.double_turn_after_move or right.double_turn_after_move,
         u_turn_move=left.u_turn_move or right.u_turn_move,
         u_turn_attack=left.u_turn_attack or right.u_turn_attack,
         active_cooling=left.active_cooling or right.active_cooling,
@@ -617,6 +629,7 @@ def _replace_spec(spec: FaceSpec, **changes: Any) -> FaceSpec:
         "attacks_all": spec.attacks_all,
         "side_slip_direction": spec.side_slip_direction,
         "double_turn_right": spec.double_turn_right,
+        "double_turn_after_move": spec.double_turn_after_move,
         "u_turn_move": spec.u_turn_move,
         "u_turn_attack": spec.u_turn_attack,
         "active_cooling": spec.active_cooling,
@@ -633,6 +646,7 @@ def _move_signature(spec: FaceSpec) -> tuple[Any, ...]:
         spec.movement_disabled,
         spec.warp_destination,
         spec.double_turn_right,
+        spec.double_turn_after_move,
         spec.active_cooling,
     )
 
@@ -668,6 +682,11 @@ def _normalize_text(text: str) -> str:
     normalized = re.sub(
         r"\bturn (right|left)\s*,\s*turn \1\s*,\s*turn \1\s*,\s*attack aim \+(\d+)\b",
         r"u-turn attack aim +\2",
+        normalized,
+    )
+    normalized = re.sub(
+        r"\bmove (\d+)\s*,\s*turn (right|left)\s*,\s*turn \2\b",
+        r"move \1 then turn \2 twice",
         normalized,
     )
     normalized = re.sub(r"\bu-turn\s*,\s*move\b", "u-turn move", normalized)
@@ -734,6 +753,10 @@ def _desperate_face(data: Any, source: str) -> DesperateFace | None:
         attacks_all=_bool(data.get("attacks_all", False), f"{source}.desperate_face.attacks_all"),
         side_slip_direction=_optional_str(data.get("side_slip_direction"), f"{source}.desperate_face.side_slip_direction"),
         double_turn_right=_bool(data.get("double_turn_right", False), f"{source}.desperate_face.double_turn_right"),
+        double_turn_after_move=_bool(
+            data.get("double_turn_after_move", False),
+            f"{source}.desperate_face.double_turn_after_move",
+        ),
         u_turn_move=_bool(data.get("u_turn_move", False), f"{source}.desperate_face.u_turn_move"),
         u_turn_attack=_bool(data.get("u_turn_attack", False), f"{source}.desperate_face.u_turn_attack"),
         active_cooling=_bool(data.get("active_cooling", False), f"{source}.desperate_face.active_cooling"),

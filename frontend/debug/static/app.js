@@ -1,4 +1,4 @@
-﻿const state = {
+const state = {
   games: [],
   selectedGameId: null,
   selectedState: null,
@@ -2033,13 +2033,14 @@ function previewMoveLabel(stackIndex, cardIndex, distance, warpDestination = "")
 
 function applyPreviewMove(preview, distance, choice, card = null, stack = null, cardIndex = 0) {
   const face = selectedFace(card, stack, cardIndex) === "desperate" ? card?.desperate_face : null;
+  const turnAfterMove = Boolean(face?.double_turn_after_move);
   if (choice === "u_turn_move" || face?.u_turn_move) {
     preview.facing = (preview.facing + 3) % 6;
   } else if (face?.double_turn_right) {
     preview.facing = (preview.facing + 4) % 6;
-  } else if (choice === "turn_left") {
+  } else if (!turnAfterMove && choice === "turn_left") {
     preview.facing = (preview.facing + 1) % 6;
-  } else if (choice === "turn_right") {
+  } else if (!turnAfterMove && choice === "turn_right") {
     preview.facing = (preview.facing + 5) % 6;
   }
   let movementFacing = preview.facing;
@@ -2054,6 +2055,11 @@ function applyPreviewMove(preview, distance, choice, card = null, stack = null, 
   const clamped = clampToBoard(preview.q, preview.r);
   preview.q = clamped.q;
   preview.r = clamped.r;
+  if (turnAfterMove) {
+    preview.facing = choice === "turn_left"
+      ? (preview.facing + 2) % 6
+      : (preview.facing + 4) % 6;
+  }
 }
 
 function applyPreviewWarp(game, player, preview, destination) {
@@ -2366,8 +2372,8 @@ function renderEndGameSummary(game) {
   const winnerText = summary.winners.length === 0
     ? "No Survivors"
     : summary.winners.length > 1
-    ? `Tie: ${summary.winners.map(titleCase).join(", ")}`
-    : `${titleCase(summary.winners[0])} Wins`;
+      ? `Tie: ${summary.winners.map(titleCase).join(", ")}`
+      : `${titleCase(summary.winners[0])} Wins`;
   overlay.innerHTML = `
     <section class="end-game-panel" role="dialog" aria-modal="true" aria-label="End game summary">
       <div class="end-game-header">
@@ -2527,7 +2533,7 @@ function syncBuilderPlayer() {
 function rememberVisibleCards(game) {
   Object.values(game?.players || {}).forEach((player) => {
     [...(player.deck || []), ...(player.hand || []), ...(player.discard || []), ...(player.overheat || [])].forEach((card) => {
-      state.knownCards[card.id] = card;
+      state.knownCards[card.id] = normalizeCardMetadata(card);
     });
     player.prepared_orders?.stacks?.forEach((stack) => {
       stack.cards.forEach((selection) => {
@@ -2542,21 +2548,19 @@ function rememberVisibleCards(game) {
 function cardLookupForPlayer(player) {
   const visibleCards = Object.fromEntries(
     [...(player?.deck || []), ...(player?.hand || []), ...(player?.discard || []), ...(player?.overheat || [])]
-      .map((card) => [card.id, card]),
+      .map((card) => [card.id, normalizeCardMetadata(card)]),
   );
   const merged = { ...state.knownCards, ...visibleCards };
   Object.entries(merged).forEach(([cardId, card]) => {
     if (!card || cardId === undefined) return;
-    if (card.is_hybrid === undefined) {
-      merged[cardId] = { ...card, is_hybrid: inferCardFromId(cardId).is_hybrid };
-    }
+    merged[cardId] = normalizeCardMetadata(card);
   });
   return merged;
 }
 
 function cardsForBuilder(player) {
   const byId = cardLookupForPlayer(player);
-  const cards = [...(player?.hand || [])];
+  const cards = [...(player?.hand || [])].map((card) => byId[card.id] || normalizeCardMetadata(card));
   state.builderDraft.stacks.forEach((stack) => {
     stack.cards.forEach((cardId) => {
       if (cardId && byId[cardId] && !cards.some((card) => card.id === cardId)) {
@@ -2593,6 +2597,7 @@ function inferCardFromId(cardId) {
   const value = Number(cardId.match(/_(\d+)(?:_|$)/)?.[1] || 1);
   const name = family === "attack" ? `Targeted Attack ${value}` : family === "hybrid" ? `Hybrid Card ${value}` : `Controlled Move ${value}`;
   const requiresTarget = cardId.startsWith("desp_crack_shot") || isBaseAttack;
+  const noBasicFace = cardId.startsWith("desp_afterburners") || cardId.startsWith("desp_crack_shot");
   return {
     id: cardId,
     name,
@@ -2601,8 +2606,47 @@ function inferCardFromId(cardId) {
     is_base: !cardId.startsWith("desp_"),
     requires_target: requiresTarget,
     is_hybrid: isHybrid,
-    no_basic_face: cardId.startsWith("desp_afterburners") || cardId.startsWith("desp_crack_shot"),
+    no_basic_face: noBasicFace,
+    desperate_face: inferredDesperateFace(cardId),
     effect: { family, value, requires_target: requiresTarget, is_hybrid: isHybrid },
+  };
+}
+
+function inferredDesperateFace(cardId) {
+  if (cardId.startsWith("desp_afterburners")) {
+    return {
+      family: "move",
+      value: 3,
+      orientation_options: ["forward", "turn_right", "turn_left"],
+      requires_target: false,
+    };
+  }
+  if (cardId.startsWith("desp_crack_shot")) {
+    return {
+      family: "attack",
+      value: 0,
+      base_damage: 1,
+      damage_bonus: 1,
+      orientation_options: ["up"],
+      requires_target: true,
+    };
+  }
+  return null;
+}
+
+function normalizeCardMetadata(card) {
+  if (!card?.id) return card;
+  const inferred = inferCardFromId(card.id);
+  return {
+    ...inferred,
+    ...card,
+    is_hybrid: card.is_hybrid ?? inferred.is_hybrid,
+    no_basic_face: card.no_basic_face ?? inferred.no_basic_face,
+    desperate_face: card.desperate_face ?? inferred.desperate_face,
+    effect: {
+      ...(inferred.effect || {}),
+      ...(card.effect || {}),
+    },
   };
 }
 
@@ -2683,9 +2727,8 @@ function renderActionStack(stack, stackIndex, availableCards, game, readOnly) {
   header.innerHTML = `
     <h3>Action ${stack.action_number}</h3>
     <div class="order-stack-actions">
-      <button class="seal-toggle ${stack.seal_mode}" type="button" data-stack="${stackIndex}" data-field="seal_mode"${
-        readOnly ? " disabled" : ""
-      }>
+      <button class="seal-toggle ${stack.seal_mode}" type="button" data-stack="${stackIndex}" data-field="seal_mode"${readOnly ? " disabled" : ""
+    }>
         <span class="seal-current">${stack.seal_mode === "overdrive" ? "Overdrive" : "Sealed"}</span>
         <span class="seal-hover">${stack.seal_mode === "overdrive" ? "Sealed" : "Overdrive"}</span>
       </button>
@@ -2716,28 +2759,16 @@ function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, 
       : family === "attack"
         ? "attack-card"
         : family === "move" ? "move-card" : "";
-  const detail = selectedCard
-    ? face === "desperate"
-      ? desperateFaceLabel(selectedCard)
-      : selectedCard.is_hybrid
-      ? hybridModeLabel(stack.modes[cardIndex])
-      : selectedCard.family === "attack"
-        ? effectiveCardRequiresTarget(selectedCard, stack, cardIndex)
-          ? targetChoiceLabel(stack.targets[cardIndex])
-          : "Forward-line attack"
-        : moveChoiceLabel(stack.move_choices[cardIndex])
-    : "No card";
+  const detail = selectedCard ? selectedCardDetail(selectedCard, stack, cardIndex) : "No card";
 
   slot.innerHTML = `
-    <button class="front-card ${cardTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
-      readOnly ? " disabled" : ""
+    <button class="front-card ${cardTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${readOnly ? " disabled" : ""
     }>
       <span class="card-slot-label">Card ${cardIndex + 1}</span>
       <strong>${selectedCard ? selectedCard.name : "Empty"}</strong>
       <span>${selectedCard ? selectedCard.id : detail}</span>
     </button>
-    <button class="hex-choice-summary ${desperateTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${
-      readOnly ? " disabled" : ""
+    <button class="hex-choice-summary ${desperateTone}" type="button" data-stack="${stackIndex}" data-card="${cardIndex}"${readOnly ? " disabled" : ""
     }>
       ${detail}
     </button>
@@ -2753,6 +2784,7 @@ function cardNeedsTarget(card) {
 
 function selectedFace(card, stack, cardIndex) {
   if (!card?.desperate_face) return "front";
+  if (card.no_basic_face) return "desperate";
   return stack?.faces?.[cardIndex] === "desperate" ? "desperate" : "front";
 }
 
@@ -2772,6 +2804,8 @@ function effectiveCardFamily(card, stack, cardIndex) {
   if (!card) return "";
   if (selectedFace(card, stack, cardIndex) === "desperate") {
     if (selectedOrientation(card, stack, cardIndex) === "u_turn_attack") return "attack";
+    if (selectedOrientation(card, stack, cardIndex) === "u_turn_move") return "move";
+    if (card.desperate_face?.family === "hybrid") return "";
     return card.desperate_face?.family || "";
   }
   if (card.is_hybrid) return stack?.modes?.[cardIndex] || "";
@@ -2794,7 +2828,7 @@ function stackHasTargetedAttack(stack, cardById, excludingCardIndex = null) {
   });
 }
 
-function cardUseChoices(card, stack, cardById, cardIndex) {
+function cardUseChoices(card, stack, cardById, cardIndex, game = null) {
   const lockedFamily = stackLockedFamily(stack, cardById, cardIndex);
   const choices = [];
 
@@ -2802,7 +2836,60 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
     return !lockedFamily || lockedFamily === family;
   }
 
-  if (card.is_hybrid) {
+  function pushChoice(choice) {
+    choices.push({
+      ...choice,
+      disabled: choice.disabled || !familyAllowed(choice.family),
+    });
+  }
+
+  function pushAttackTargetChoices(baseChoice) {
+    if (!baseChoice.requiresTarget || !game) {
+      pushChoice(baseChoice);
+      return;
+    }
+    attackHexChoices(game).filter((target) => !target.disabled).forEach((target) => {
+      pushChoice({
+        ...baseChoice,
+        label: `${baseChoice.label}: ${target.label}`,
+        mark: target.mark,
+        fill: target.fill || baseChoice.fill,
+        target: target.value,
+        terminal: true,
+        disabled: target.disabled,
+      });
+    });
+  }
+
+  function pushDesperateMoveChoices(face, family) {
+    const moveChoices = (face.orientation_options || ["forward"])
+      .map((value) => MOVE_CHOICE_BY_VALUE[value] || { value, label: titleCase(value.replaceAll("_", " ")), mark: "" });
+    moveChoices.forEach((moveChoice) => {
+      const choiceFamily = moveChoice.value === "u_turn_attack" ? "attack" : family === "hybrid" ? "move" : family;
+      const requiresTarget = choiceFamily === "attack" && Boolean(face.requires_target);
+      const moveLabel = face.double_turn_after_move
+        ? `Move ${face.value}, ${moveChoice.value === "turn_left" ? "Turn Left Twice" : "Turn Right Twice"}`
+        : moveChoice.label;
+      const label = family === "hybrid" || moveChoices.length > 1
+        ? `${card.name}: ${moveLabel}`
+        : `${card.name} Desperate`;
+      pushAttackTargetChoices({
+        face: "desperate",
+        mode: "",
+        family: choiceFamily,
+        label,
+        mark: moveChoice.mark || (choiceFamily === "attack" ? "D" : "M"),
+        fill: choiceFamily === "attack" ? "#c9433f" : "#3f9963",
+        orientation: moveChoice.value,
+        isDesperate: true,
+        desperateFamily: choiceFamily,
+        requiresTarget,
+        terminal: true,
+      });
+    });
+  }
+
+  if (card.is_hybrid && !card.no_basic_face) {
     choices.push({
       face: "front",
       mode: "move",
@@ -2825,20 +2912,25 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
 
   if (card.desperate_face) {
     const family = card.desperate_face.family;
-    choices.push({
-      face: "desperate",
-      mode: "",
-      family,
-      label: `${card.name} Desperate`,
-      mark: family === "attack" ? "D" : "M",
-      fill: family === "attack" ? "#c9433f" : "#3f9963",
-      isDesperate: true,
-      desperateFamily: family,
-      disabled: !familyAllowed(family),
-    });
+    if (family === "move" || family === "hybrid") {
+      pushDesperateMoveChoices(card.desperate_face, family);
+    } else {
+      pushAttackTargetChoices({
+        face: "desperate",
+        mode: "",
+        family,
+        label: `${card.name} Desperate`,
+        mark: "D",
+        fill: "#c9433f",
+        orientation: card.desperate_face.orientation_options?.[0] || "up",
+        isDesperate: true,
+        desperateFamily: family,
+        requiresTarget: Boolean(card.desperate_face.requires_target),
+      });
+    }
   }
 
-  if (!card.is_hybrid && !card.desperate_face) {
+  if (!card.no_basic_face && !card.is_hybrid && !card.desperate_face) {
     const family = card.family;
     choices.push({
       face: "front",
@@ -2849,7 +2941,7 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       fill: family === "attack" ? "#c9433f" : "#3f9963",
       disabled: !familyAllowed(family),
     });
-  } else if (!card.is_hybrid && card.family === "move") {
+  } else if (!card.no_basic_face && !card.is_hybrid && card.family === "move") {
     choices.unshift({
       face: "front",
       mode: "",
@@ -2859,7 +2951,7 @@ function cardUseChoices(card, stack, cardById, cardIndex) {
       fill: "#3f9963",
       disabled: !familyAllowed("move"),
     });
-  } else if (!card.is_hybrid && card.family === "attack") {
+  } else if (!card.no_basic_face && !card.is_hybrid && card.family === "attack") {
     choices.unshift({
       face: "front",
       mode: "",
@@ -2890,6 +2982,7 @@ function desperateFaceLabel(card) {
     if (face.movement_disabled) return `Desperate: +${face.defense_bonus} Defense`;
     if (face.side_slip_direction) return `Desperate: Side Slip ${face.value}`;
     if (face.double_turn_right) return `Desperate: Drift ${face.value}`;
+    if (face.double_turn_after_move) return `Desperate: Move ${face.value}, Turn Twice`;
     if (face.u_turn_move) return `Desperate: U-Turn Move ${face.value}`;
     if (face.active_cooling) return `Desperate: Move ${face.value}, Cool`;
     return `Desperate: Move ${face.value}`;
@@ -2910,6 +3003,39 @@ function desperateFaceLabel(card) {
 
 function moveChoiceLabel(value) {
   return MOVE_CHOICES.find((choice) => choice.value === value)?.label || "Choose move";
+}
+
+function desperateMoveChoiceLabel(face, value) {
+  if (face?.double_turn_after_move) {
+    return `Move ${face.value}, ${value === "turn_left" ? "Turn Left Twice" : "Turn Right Twice"}`;
+  }
+  if (value === "u_turn_attack") return "U-Turn Attack";
+  if (value === "u_turn_move") return "U-Turn Move";
+  return moveChoiceLabel(value);
+}
+
+function selectedCardDetail(card, stack, cardIndex) {
+  const face = selectedFace(card, stack, cardIndex);
+  const family = effectiveCardFamily(card, stack, cardIndex);
+  if (face === "desperate") {
+    if (family === "attack" && effectiveCardRequiresTarget(card, stack, cardIndex)) {
+      return `${desperateFaceLabel(card)}: ${targetChoiceLabel(stack.targets[cardIndex])}`;
+    }
+    if (family === "move" && moveChoicesForCard(card, stack, cardIndex).length > 1) {
+      return `Desperate: ${desperateMoveChoiceLabel(card.desperate_face, stack.move_choices[cardIndex])}`;
+    }
+    if (card.desperate_face?.family === "hybrid") {
+      return `Desperate: ${desperateMoveChoiceLabel(card.desperate_face, stack.move_choices[cardIndex])}`;
+    }
+    return desperateFaceLabel(card);
+  }
+  if (card.is_hybrid) return hybridModeLabel(stack.modes[cardIndex]);
+  if (card.family === "attack") {
+    return effectiveCardRequiresTarget(card, stack, cardIndex)
+      ? targetChoiceLabel(stack.targets[cardIndex])
+      : "Forward-line attack";
+  }
+  return moveChoiceLabel(stack.move_choices[cardIndex]);
 }
 
 function targetChoiceLabel(playerId) {
@@ -3004,7 +3130,7 @@ function showCardPicker(stackIndex, cardIndex) {
       columns[family].append(empty);
     }
     cards.forEach((card) => {
-      const choices = cardUseChoices(card, stack, cardById, cardIndex);
+      const choices = cardUseChoices(card, stack, cardById, cardIndex, game);
       const isUsedElsewhere = selectedIds.includes(card.id) && stack.cards[cardIndex] !== card.id;
       const hasLegalChoice = choices.some((choice) => !choice.disabled);
       const button = document.createElement("button");
@@ -3037,13 +3163,13 @@ function selectBuilderCardUse(stackIndex, cardIndex, cardId, choice) {
   if (!stack) return;
   stack.cards[cardIndex] = cardId;
   stack.faces[cardIndex] = choice?.face || "front";
-  stack.targets[cardIndex] = "";
-  stack.move_choices[cardIndex] = "forward";
+  stack.targets[cardIndex] = choice?.target || "";
+  stack.move_choices[cardIndex] = choice?.orientation || "forward";
   stack.modes[cardIndex] = choice?.mode || "";
   applyDefaultAttackTarget(stack, cardIndex);
   hideCardPickerOverlay();
   renderAll();
-  if (!showFollowupChoicePanel(stackIndex, cardIndex)) {
+  if (choice?.terminal || !showFollowupChoicePanel(stackIndex, cardIndex)) {
     showNextCardPickerIfNeeded(stackIndex, cardIndex);
   }
 }
@@ -3091,7 +3217,7 @@ function showCardUseChoicePanel(stackIndex, cardIndex, cardId) {
   `;
   panel.querySelector(".card-picker-header button").addEventListener("click", hideCardPickerOverlay);
   const grid = panel.querySelector(".hex-choice-grid");
-  cardUseChoices(card, stack, cardById, cardIndex).forEach((choice) => {
+  cardUseChoices(card, stack, cardById, cardIndex, game).forEach((choice) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `hex-choice ${choice.isDesperate ? `desperate-choice desperate-${choice.desperateFamily}-choice` : ""} ${choice.disabled ? "disabled-choice" : ""}`;
@@ -3119,6 +3245,7 @@ function showFollowupChoicePanel(stackIndex, cardIndex) {
 
   const family = effectiveCardFamily(card, stack, cardIndex);
   if (family === "attack") {
+    if (stack.targets[cardIndex]) return false;
     if (effectiveCardRequiresTarget(card, stack, cardIndex) && !stackHasTargetedAttack(stack, cardLookupForPlayer(player), cardIndex)) {
       showHexChoicePanel(stackIndex, cardIndex);
       return true;
@@ -3127,6 +3254,7 @@ function showFollowupChoicePanel(stackIndex, cardIndex) {
   }
 
   if (family === "move" && moveChoicesForCard(card, stack, cardIndex).length > 1) {
+    if (selectedFace(card, stack, cardIndex) === "desperate") return false;
     showHexChoicePanel(stackIndex, cardIndex);
     return true;
   }
@@ -3229,7 +3357,7 @@ function buildOrdersPayload() {
           const selection = {
             card_id: cardId,
             face,
-            orientation: family === "move"
+            orientation: family === "move" || (face === "desperate" && card?.desperate_face?.family === "hybrid")
               ? stack.move_choices[cardIndex]
               : "up",
             mode: card?.is_hybrid && face !== "desperate" ? stack.modes[cardIndex] : undefined,
@@ -3417,31 +3545,31 @@ function showError(error) {
 
 function showResolutionCallouts(game, previousEventCount, previousGame = null) {
   const callouts = resolutionCallouts(game, previousEventCount);
-  if (state.playbackSpeed === "instant") return Promise.resolve(() => {});
-  if (!callouts.length) return Promise.resolve(() => {});
+  if (state.playbackSpeed === "instant") return Promise.resolve(() => { });
+  if (!callouts.length) return Promise.resolve(() => { });
   const overlay = resolutionCalloutElement();
   const animationContext = createBoardAnimationContext();
   let index = 0;
 
   return new Promise((resolve) => {
     function showNext() {
-    const callout = callouts[index];
-    overlay.className = `resolution-callout visible ${callout.activity ? `activity-${callout.activity}` : ""}`;
-    overlay.innerHTML = `
+      const callout = callouts[index];
+      overlay.className = `resolution-callout visible ${callout.activity ? `activity-${callout.activity}` : ""}`;
+      overlay.innerHTML = `
       <strong>${escapeHtml(callout.title)}</strong>
       ${callout.detail ? `<span>${escapeHtml(callout.detail)}</span>` : ""}
     `;
-    if (callout.moveStep) animateBoardShip(callout.playerId, callout.moveStep.before, callout.moveStep.after, animationContext);
-    if (callout.blast) animateBoardDot(callout.blast.from, callout.blast.to, "attack");
-    index += 1;
-    window.setTimeout(() => {
-      overlay.classList.remove("visible");
-      if (index < callouts.length) {
-        window.setTimeout(showNext, playbackGap());
-      } else {
-        window.setTimeout(() => resolve(() => cleanupBoardAnimationContext(animationContext)), playbackGap());
-      }
-    }, playbackDelay(callout.duration || 1200));
+      if (callout.moveStep) animateBoardShip(callout.playerId, callout.moveStep.before, callout.moveStep.after, animationContext);
+      if (callout.blast) animateBoardDot(callout.blast.from, callout.blast.to, "attack");
+      index += 1;
+      window.setTimeout(() => {
+        overlay.classList.remove("visible");
+        if (index < callouts.length) {
+          window.setTimeout(showNext, playbackGap());
+        } else {
+          window.setTimeout(() => resolve(() => cleanupBoardAnimationContext(animationContext)), playbackGap());
+        }
+      }, playbackDelay(callout.duration || 1200));
     }
 
     showNext();
@@ -3833,4 +3961,3 @@ function getMiniHexPoints(x, y, size) {
 }
 
 refreshGames().catch(showError);
-

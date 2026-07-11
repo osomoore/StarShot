@@ -45,6 +45,8 @@ class DesperateFace:
     side_slip_direction: str | None = None
     # Drift King: turn right twice then move forward
     double_turn_right: bool = False
+    # Drift King 0.3: move forward, then turn twice in the selected direction.
+    double_turn_after_move: bool = False
     # Crazy Ivan move face: 180° flip then move forward
     u_turn_move: bool = False
     # Crazy Ivan attack face: 180° flip then untargeted attack

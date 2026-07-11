@@ -53,6 +53,15 @@ class DeckDataTests(unittest.TestCase):
         self.assertEqual(crazy_ivan.desperate_face.aim_bonus, 0)
         self.assertEqual(crazy_ivan.desperate_face.damage_bonus, 1)
 
+    def test_core_0_3_drift_king_moves_before_double_turn(self):
+        catalog = load_deck_catalog(Path("resources/decks/core_0_3"))
+
+        drift_king = catalog.desperation_card_map["desp_drift_king_a"]
+        self.assertFalse(drift_king.desperate_face.double_turn_right)
+        self.assertTrue(drift_king.desperate_face.double_turn_after_move)
+        self.assertEqual(drift_king.desperate_face.orientation_options, ("turn_right", "turn_left"))
+        self.assertEqual(drift_king.desperate_face.value, 4)
+
     def test_duplicate_card_ids_are_rejected_on_load(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             deck_path = Path(temp_dir)
