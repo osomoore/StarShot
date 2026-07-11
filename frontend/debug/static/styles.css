@@ -1171,10 +1171,10 @@ select {
   display: grid;
   gap: 14px;
   max-height: calc(100vh - 48px);
-  max-width: min(1120px, 100%);
+  max-width: min(1280px, 100%);
   overflow: auto;
   padding: 18px;
-  width: 980px;
+  width: 1180px;
 }
 
 .end-game-header {
@@ -1211,7 +1211,7 @@ select {
 .end-game-scoreboard {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .end-game-player {
@@ -1220,7 +1220,7 @@ select {
   border-radius: 6px;
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 10px;
 }
 
 .end-game-player-title {
@@ -1240,7 +1240,7 @@ select {
 
 .end-game-stat-grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -1251,7 +1251,7 @@ select {
   display: grid;
   gap: 3px;
   min-width: 0;
-  padding: 7px 8px;
+  padding: 6px 7px;
 }
 
 .summary-stat.wide {
@@ -1260,11 +1260,12 @@ select {
 
 .summary-stat span {
   color: #60706b;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   line-height: 1.15;
 }
 
 .summary-stat strong {
+  font-size: 0.9rem;
   font-weight: 800;
   line-height: 1.15;
   min-width: 0;
@@ -1292,9 +1293,12 @@ select {
 }
 
 .end-game-overall dl div {
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid #e0e5e2;
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
 }
 
 .end-game-overall dt {
@@ -1305,7 +1309,7 @@ select {
 .end-game-overall dd {
   font-weight: 800;
   margin: 0;
-  text-align: right;
+  text-align: left;
 }
 
 .resolution-callout {
@@ -1772,6 +1776,10 @@ pre {
   .columns .panel {
     margin-bottom: 12px;
   }
+
+  .end-game-scoreboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1785,5 +1793,9 @@ pre {
 
   .board-svg {
     min-height: 320px;
+  }
+
+  .end-game-scoreboard {
+    grid-template-columns: 1fr;
   }
 }

@@ -2338,6 +2338,7 @@ function endGameSummary(game) {
     baubleVp: 0,
     hitCount: 0,
     attackVp: 0,
+    eventAttackVp: 0,
     shots: 0,
     hitsByTarget: {},
     kills: [],
@@ -2359,7 +2360,7 @@ function endGameSummary(game) {
         if (event.target_id) {
           stats[event.attacker_id].hitsByTarget[event.target_id] = (stats[event.attacker_id].hitsByTarget[event.target_id] || 0) + 1;
         }
-        stats[event.attacker_id].attackVp += event.vp_awarded || 0;
+        stats[event.attacker_id].eventAttackVp += event.vp_awarded || 0;
         if (event.target_destroyed && !event.was_destroyed && stats[event.target_id]) {
           stats[event.attacker_id].kills.push(event.target_id);
           stats[event.target_id].killedBy = event.attacker_id;
@@ -2369,6 +2370,7 @@ function endGameSummary(game) {
   });
   const players = Object.values(stats).sort((left, right) => PLAYER_ORDER.indexOf(left.id) - PLAYER_ORDER.indexOf(right.id));
   players.forEach((player) => {
+    player.attackVp = Math.max(0, player.finalVp - player.baubleVp);
     player.hitPct = player.shots ? `${Math.round((player.hitCount / player.shots) * 100)}%` : "0%";
     player.mostHitTarget = mostHitTargetText(player.hitsByTarget);
     player.killsText = player.kills.length ? player.kills.map(titleCase).join(", ") : "None";
