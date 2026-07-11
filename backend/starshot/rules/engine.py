@@ -67,7 +67,7 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
-from starshot.rules.ship_layout import first_intact_component_for_lane, is_ship_destroyed
+from starshot.rules.ship_layout import detached_component_ids, first_intact_component_for_lane, is_ship_destroyed
 
 # Lateral direction offsets for Side Slip (perpendicular to facing).
 # slip_right = facing - 1 (mod 6); slip_left = facing + 1 (mod 6).
@@ -751,6 +751,7 @@ def _resolve_attack_volley(
         damage_result = _apply_unshielded_damage(state, target, damage)
         destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
         vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
+        vp_awarded += damage_result["knockoff_vp_awarded"]
         attacker.victory_points += vp_awarded
         event.update(damage_result)
         event["vp_awarded"] = vp_awarded
@@ -774,6 +775,7 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
     shots: list[dict] = []
     was_destroyed = target.ship.destroyed
     desperation_consequence_applied = False
+    knockoff_vp_awarded = 0
 
     for shot_number in range(1, damage + 1):
         lane_roll = _roll_d12(state)
@@ -785,15 +787,22 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
             "component_id": None,
             "component_type": None,
             "destroyed": False,
+            "detached_component_ids": [],
         }
         if component is not None:
             target.ship.destroyed_components.add(component.id)
             target.ship.damage_taken += 1
+            detached_ids = sorted(detached_component_ids(target.ship.destroyed_components))
+            if detached_ids:
+                target.ship.destroyed_components.update(detached_ids)
+                target.ship.damage_taken += len(detached_ids)
+                knockoff_vp_awarded += 1
             shot.update(
                 {
                     "component_id": component.id,
                     "component_type": component.component_type,
                     "destroyed": True,
+                    "detached_component_ids": detached_ids,
                 }
             )
             target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
@@ -805,6 +814,7 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
 
     return {
         "damage_applied": sum(1 for shot in shots if shot["destroyed"]),
+        "knockoff_vp_awarded": knockoff_vp_awarded,
         "damage_rolls": [shot["roll"] for shot in shots],
         "damage_shots": shots,
         "target_damage_taken": target.ship.damage_taken,

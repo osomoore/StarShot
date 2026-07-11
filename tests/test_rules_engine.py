@@ -528,6 +528,52 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(len(volleys[0]["damage_rolls"]), 1)
         self.assertEqual(len(volleys[1]["damage_shots"]), 1)
 
+    def test_destroying_connector_knocks_off_detached_components_and_awards_one_vp(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=9))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.shields = 0
+        state.players["red"].ship.destroyed_components.add("port_shields")
+        state.players["red"].ship.damage_taken = 1
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "targeted_attack_aim_2_a")
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+
+        state = resolve_next_step(state)
+
+        self.assertIn("port_inner_engines", state.players["red"].ship.destroyed_components)
+        self.assertIn("port_ion_cannon", state.players["red"].ship.destroyed_components)
+        self.assertEqual(state.players["red"].ship.damage_taken, 3)
+        self.assertEqual(state.players["blue"].victory_points, 2)
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["damage_rolls"], [6])
+        self.assertEqual(volley["damage_applied"], 1)
+        self.assertEqual(volley["knockoff_vp_awarded"], 1)
+        self.assertEqual(volley["damage_shots"][0]["detached_component_ids"], ["port_ion_cannon"])
+        self.assertEqual(volley["vp_awarded"], 2)
+
     def test_multiple_attack_cards_create_one_combined_volley(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         state.players["red"].ship.q = 0

@@ -89,6 +89,7 @@ Not implemented yet:
 - Overdrive duplicates the full order as an immediate copy. It does **not** boost card values.
 - One `overdrive_seals_pending` counter on `PlayerState` reduces the next round's draw by 1 per overdriven stack.
 - Base attack cards require `target_player_id`. Untargeted desperation attacks do not; alone they shoot forward, and with a targeted partner they share the partner's target.
+- After each component damage instance, intact ship components that are no longer connected to the Command Bridge through intact adjacent components are knocked off: they are added to `destroyed_components`, no longer block future damage lanes, and award 1 VP total for that knock-off event.
 - Hybrid desperation cards played on their basic face must submit an explicit `mode` of `move` or `attack`.
 - Desperation cards played on their Desperate face submit `face: "desperate"` and return to the shared Desperation deck during cleanup.
 - Warp Desperate faces are deterministic: NightJammer warps to the hex behind the highest-VP active opponent using that ship's facing.

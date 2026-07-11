@@ -3876,7 +3876,9 @@ function renderDamageShotLines(shots) {
 
 function formatDamageShot(shot) {
   const result = shot.destroyed ? formatComponentId(shot.component_id) : "No intact component";
-  return `<span>Lane ${shot.lane}: ${result}</span>`;
+  const detached = (shot.detached_component_ids || []).map(formatComponentId);
+  const detachedText = detached.length ? `; detached ${detached.join(", ")}` : "";
+  return `<span>Lane ${shot.lane}: ${result}${detachedText}</span>`;
 }
 
 function formatComponentId(componentId) {

@@ -50,6 +50,8 @@ BASE_SHIP_DAMAGE_LANES: dict[int, tuple[str, ...]] = {
 }
 
 BASE_SHIP_COMPONENT_BY_ID = {component.id: component for component in BASE_SHIP_COMPONENTS}
+_BASE_SHIP_COMPONENT_ID_BY_COORD = {(component.q, component.r): component.id for component in BASE_SHIP_COMPONENTS}
+_AXIAL_NEIGHBOR_OFFSETS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
 
 def components_to_dict() -> list[dict]:
@@ -76,6 +78,26 @@ def first_intact_component_for_lane(lane_roll: int, destroyed_components: set[st
         if component_id not in destroyed_components:
             return BASE_SHIP_COMPONENT_BY_ID[component_id]
     return None
+
+
+def detached_component_ids(destroyed_components: set[str]) -> set[str]:
+    """Return intact components no longer connected to the command bridge."""
+    if "command_bridge" in destroyed_components:
+        return set()
+
+    connected = {"command_bridge"}
+    frontier = ["command_bridge"]
+    while frontier:
+        component = BASE_SHIP_COMPONENT_BY_ID[frontier.pop()]
+        for dq, dr in _AXIAL_NEIGHBOR_OFFSETS:
+            neighbor_id = _BASE_SHIP_COMPONENT_ID_BY_COORD.get((component.q + dq, component.r + dr))
+            if neighbor_id is None or neighbor_id in destroyed_components or neighbor_id in connected:
+                continue
+            connected.add(neighbor_id)
+            frontier.append(neighbor_id)
+
+    intact = {component.id for component in BASE_SHIP_COMPONENTS if component.id not in destroyed_components}
+    return intact - connected
 
 
 def is_ship_destroyed(destroyed_components: set[str]) -> bool:

@@ -7,6 +7,7 @@ from typing import Literal
 
 from starshot.rules.ship_layout import (
     BASE_SHIP_COMPONENTS,
+    detached_component_ids,
     first_intact_component_for_lane,
     is_ship_destroyed,
 )
@@ -109,6 +110,12 @@ def simulate_ship_kills(
                 component_destroyed_counts[component.id] += 1
                 component_kill_shots[component.id].append(step)
                 total_component_hits += 1
+                for detached_id in detached_component_ids(destroyed_components):
+                    destroyed_components.add(detached_id)
+                    first_hit_step.setdefault(detached_id, step)
+                    component_destroyed_counts[detached_id] += 1
+                    component_kill_shots[detached_id].append(step)
+                    total_component_hits += 1
 
         death_steps.append(step)
         elimination_reasons[_elimination_reason(destroyed_components)] += 1

@@ -3,6 +3,7 @@ import unittest
 from starshot.rules.ship_layout import (
     BASE_SHIP_COMPONENTS,
     BASE_SHIP_DAMAGE_LANES,
+    detached_component_ids,
     first_intact_component_for_lane,
     is_ship_destroyed,
 )
@@ -69,6 +70,17 @@ class ShipLayoutTests(unittest.TestCase):
         self.assertFalse(is_ship_destroyed(all_weapons))
         self.assertFalse(is_ship_destroyed(all_engines))
         self.assertFalse(is_ship_destroyed(all_weapons.union(all_engines)))
+
+    def test_detached_components_are_found_from_bridge_connectivity(self):
+        self.assertEqual(
+            detached_component_ids({"port_shields", "port_inner_engines"}),
+            {"port_ion_cannon"},
+        )
+        self.assertEqual(
+            detached_component_ids({"bone_room", "port_shields", "starboard_shields"}),
+            {"forward_ion_cannon"},
+        )
+        self.assertEqual(detached_component_ids({"command_bridge"}), set())
 
 
 if __name__ == "__main__":
