@@ -660,7 +660,28 @@ class RulesEngineTests(unittest.TestCase):
 
         self.assertTrue(state.players["red"].ship.destroyed)
         self.assertIn("command_bridge", state.players["red"].ship.destroyed_components)
+        self.assertEqual(state.players["red"].ship.knocked_out_round, 1)
+        self.assertEqual(state.players["red"].ship.knocked_out_action_number, 1)
+        self.assertEqual(state.players["red"].ship.knocked_out_phase, GamePhase.ACTION_1)
         self.assertEqual(state.players["blue"].victory_points, 3)
+
+    def test_round_six_vp_winner_must_be_alive(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue", "green"), seed=1))
+        state.phase = GamePhase.CLEANUP
+        state.round_number = 6
+        state.players["red"].victory_points = 20
+        state.players["red"].ship.destroyed = True
+        state.players["red"].ship.knocked_out_round = 6
+        state.players["red"].ship.knocked_out_action_number = 3
+        state.players["red"].ship.knocked_out_phase = GamePhase.ACTION_3
+        state.players["blue"].victory_points = 8
+        state.players["green"].victory_points = 12
+
+        state = resolve_next_step(state)
+
+        self.assertEqual(state.phase, GamePhase.COMPLETE)
+        self.assertEqual(state.result.winner_ids, ("green",))
+        self.assertEqual(state.result.reason, "round_six_victory_points")
 
     def test_overdrive_seal_card_placed_on_deck_and_drawn_next_round(self):
         """One overdrive stack with 2 cards: both go to overheat, draw reduced by 1 next round.

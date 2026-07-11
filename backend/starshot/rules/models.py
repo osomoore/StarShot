@@ -116,6 +116,9 @@ class ShipState:
     damage_taken: int = 0
     destroyed_components: set[str] = field(default_factory=set)
     destroyed: bool = False
+    knocked_out_round: int | None = None
+    knocked_out_action_number: int | None = None
+    knocked_out_phase: GamePhase | None = None
     movement_this_action: int = 0
     defense_bonus_this_action: int = 0
 

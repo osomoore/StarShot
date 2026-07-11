@@ -2475,6 +2475,7 @@ function endGameSummary(game) {
     finalVp: game.players[playerId]?.victory_points || 0,
     destroyed: Boolean(game.players[playerId]?.ship?.destroyed),
     damageSustained: game.players[playerId]?.ship?.damage_taken || 0,
+    knockout: knockoutInfoForPlayer(game, playerId),
     distanceMoved: 0,
     baubleCount: 0,
     baubleVp: 0,
@@ -2518,8 +2519,8 @@ function endGameSummary(game) {
     player.killsText = player.kills.length ? player.kills.map(titleCase).join(", ") : "None";
     player.killedByText = player.destroyed
       ? player.killedBy
-        ? `Destroyed by ${titleCase(player.killedBy)}`
-        : "Destroyed"
+        ? `Destroyed by ${titleCase(player.killedBy)}${player.knockout ? ` (${player.knockout})` : ""}`
+        : `Destroyed${player.knockout ? ` (${player.knockout})` : ""}`
       : "Survived";
   });
   const resultWinners = Array.isArray(game.result?.winner_ids) ? game.result.winner_ids : null;
@@ -2539,6 +2540,41 @@ function endGameSummary(game) {
     overall,
     winners: resultWinners ?? players.filter((player) => player.finalVp === topVp).map((player) => player.id),
   };
+}
+
+function knockoutInfoForPlayer(game, playerId) {
+  const ship = game?.players?.[playerId]?.ship || {};
+  if (ship.knocked_out_round) {
+    return formatKnockoutInfo(ship.knocked_out_round, ship.knocked_out_action_number, ship.knocked_out_phase);
+  }
+  const knockoutEvent = (game?.event_log || []).find((event) => {
+    if (event.type === "volley_resolved") {
+      return event.target_id === playerId && event.target_destroyed && !event.was_destroyed;
+    }
+    if (event.type === "bauble_awarded") {
+      return (event.awards || []).some((award) => award.player_id === playerId && award.target_destroyed);
+    }
+    return false;
+  });
+  if (!knockoutEvent) return "";
+  if (knockoutEvent.type === "volley_resolved") {
+    return formatKnockoutInfo(knockoutEvent.round, knockoutEvent.action_number, `action_${knockoutEvent.action_number}`);
+  }
+  return formatKnockoutInfo(knockoutEvent.round, null, "award_baubles");
+}
+
+function formatKnockoutInfo(round, actionNumber, phase) {
+  const roundText = round ? `Round ${round}` : "Unknown round";
+  if (actionNumber) return `${roundText}, Action ${actionNumber}`;
+  return `${roundText}, ${formatPhase(phase || "")}`;
+}
+
+function formatPhase(phase) {
+  return String(phase || "Unknown phase")
+    .split("_")
+    .filter(Boolean)
+    .map(titleCase)
+    .join(" ");
 }
 
 function mostHitTargetText(hitsByTarget) {

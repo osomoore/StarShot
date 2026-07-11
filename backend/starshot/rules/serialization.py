@@ -226,6 +226,9 @@ def ship_to_dict(ship: ShipState) -> dict:
         "component_layout": components_to_dict(),
         "damage_lanes": damage_lanes_to_dict(),
         "destroyed": ship.destroyed,
+        "knocked_out_round": ship.knocked_out_round,
+        "knocked_out_action_number": ship.knocked_out_action_number,
+        "knocked_out_phase": ship.knocked_out_phase.value if ship.knocked_out_phase else None,
         "movement_this_action": ship.movement_this_action,
         "defense_bonus_this_action": ship.defense_bonus_this_action,
     }
@@ -240,6 +243,9 @@ def ship_from_dict(data: dict) -> ShipState:
         damage_taken=data.get("damage_taken", 0),
         destroyed_components=set(data.get("destroyed_components", [])),
         destroyed=data.get("destroyed", False),
+        knocked_out_round=data.get("knocked_out_round"),
+        knocked_out_action_number=data.get("knocked_out_action_number"),
+        knocked_out_phase=GamePhase(data["knocked_out_phase"]) if data.get("knocked_out_phase") else None,
         movement_this_action=data.get("movement_this_action", 0),
         defense_bonus_this_action=data.get("defense_bonus_this_action", 0),
     )

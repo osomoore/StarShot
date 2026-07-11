@@ -28,6 +28,14 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(restored.players["red"].ship.r, 0)
         self.assertEqual(restored.players["red"].ship.facing, 0)
         self.assertEqual(restored.players["red"].ship.damage_taken, 0)
+        state.players["red"].ship.destroyed = True
+        state.players["red"].ship.knocked_out_round = 3
+        state.players["red"].ship.knocked_out_action_number = 2
+        state.players["red"].ship.knocked_out_phase = state.phase
+        restored_knockout = state_from_dict(state_to_dict(state))
+        self.assertEqual(restored_knockout.players["red"].ship.knocked_out_round, 3)
+        self.assertEqual(restored_knockout.players["red"].ship.knocked_out_action_number, 2)
+        self.assertEqual(restored_knockout.players["red"].ship.knocked_out_phase, state.phase)
         self.assertEqual(restored.rng_seed, state.rng_seed)
         self.assertEqual(restored.rng_step, state.rng_step)
         self.assertEqual(len(restored.baubles), 11)

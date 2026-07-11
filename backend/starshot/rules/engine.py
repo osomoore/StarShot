@@ -242,8 +242,9 @@ def is_game_over(state: GameState) -> GameResult | None:
     if len(living) == 0:
         return GameResult(winner_ids=(), reason="all_ships_destroyed", is_tie=True)
     if state.round_number > 6:
-        top_vp = max(player.victory_points for player in state.players.values())
-        winners = tuple(player.id for player in state.players.values() if player.victory_points == top_vp)
+        contenders = [state.players[player_id] for player_id in living]
+        top_vp = max(player.victory_points for player in contenders)
+        winners = tuple(player.id for player in contenders if player.victory_points == top_vp)
         return GameResult(winner_ids=winners, reason="round_six_victory_points", is_tie=len(winners) > 1)
     return None
 
@@ -748,7 +749,7 @@ def _resolve_attack_volley(
         event["shielded"] = True
         event["vp_awarded"] = 1
     elif hit:
-        damage_result = _apply_unshielded_damage(state, target, damage)
+        damage_result = _apply_unshielded_damage(state, target, damage, action_number=action_number)
         destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
         vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
         vp_awarded += damage_result["knockoff_vp_awarded"]
@@ -771,7 +772,13 @@ def _attack_cards_for_stack(stack: ActionStack, *, include_desperate: bool = Tru
     return attack_cards
 
 
-def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int) -> dict:
+def _apply_unshielded_damage(
+    state: GameState,
+    target: PlayerState,
+    damage: int,
+    *,
+    action_number: int | None = None,
+) -> dict:
     shots: list[dict] = []
     was_destroyed = target.ship.destroyed
     desperation_consequence_applied = False
@@ -806,6 +813,10 @@ def _apply_unshielded_damage(state: GameState, target: PlayerState, damage: int)
                 }
             )
             target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
+            if target.ship.destroyed and not was_destroyed and target.ship.knocked_out_round is None:
+                target.ship.knocked_out_round = state.round_number
+                target.ship.knocked_out_action_number = action_number
+                target.ship.knocked_out_phase = state.phase
             # The first component destroyed by this volley triggers a desperation consequence.
             if not desperation_consequence_applied:
                 _apply_desperation_consequence(state, target)
@@ -1038,8 +1049,9 @@ def _round_completion_result(state: GameState) -> GameResult | None:
     if len(living) == 0:
         return GameResult(winner_ids=(), reason="all_ships_destroyed", is_tie=True)
     if state.round_number >= 6:
-        top_vp = max(player.victory_points for player in state.players.values())
-        winners = tuple(player.id for player in state.players.values() if player.victory_points == top_vp)
+        contenders = [state.players[player_id] for player_id in living]
+        top_vp = max(player.victory_points for player in contenders)
+        winners = tuple(player.id for player in contenders if player.victory_points == top_vp)
         return GameResult(winner_ids=winners, reason="round_six_victory_points", is_tie=len(winners) > 1)
     return None
 
