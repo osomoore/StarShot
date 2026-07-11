@@ -101,6 +101,9 @@ const elements = {
   redAiTypeSelect: document.querySelector("#redAiTypeSelect"),
   blueAiTypeSelect: document.querySelector("#blueAiTypeSelect"),
   resolveButton: document.querySelector("#resolveButton"),
+  finishedGameActions: document.querySelector("#finishedGameActions"),
+  replayGameButton: document.querySelector("#replayGameButton"),
+  resultsSummaryButton: document.querySelector("#resultsSummaryButton"),
   revealOrdersToggle: document.querySelector("#revealOrdersToggle"),
   builderPlayerSelect: document.querySelector("#builderPlayerSelect"),
   debugDesperationSelect: document.querySelector("#debugDesperationSelect"),
@@ -388,6 +391,28 @@ async function playEntireGame() {
     if (elements.playbackSpeedSelect) elements.playbackSpeedSelect.value = previousSpeed;
     renderAll();
   }
+}
+
+async function replayFinishedGame() {
+  const game = state.selectedState;
+  if (!game || game.phase !== "complete" || state.autoPlaying) return;
+  state.autoPlaying = true;
+  state.dismissedEndGameFor = state.selectedGameId;
+  clearTransientOverlays();
+  renderAll();
+  try {
+    const cleanupAnimations = await showResolutionCallouts(game, 0);
+    cleanupAnimations?.();
+  } finally {
+    state.autoPlaying = false;
+    renderAll();
+  }
+}
+
+function showResultsSummary() {
+  if (!state.selectedState || state.selectedState.phase !== "complete") return;
+  state.dismissedEndGameFor = null;
+  renderEndGameSummary(state.selectedState);
 }
 
 function selectedAiTypeForPlayer(playerId) {
@@ -1221,6 +1246,7 @@ function renderAll() {
   renderAiControls(game);
   renderDebugDesperationDraw(game);
   elements.resolveButton.disabled = state.autoPlaying || !canResolve(game);
+  renderFinishedGameActions(game);
   renderOrdersBuilder(game);
   renderBoard(game);
   renderMiniShipBoards(game);
@@ -1229,6 +1255,13 @@ function renderAll() {
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
   renderEndGameSummary(game);
+}
+
+function renderFinishedGameActions(game) {
+  const isFinished = game?.phase === "complete";
+  if (elements.finishedGameActions) elements.finishedGameActions.hidden = !isFinished;
+  if (elements.replayGameButton) elements.replayGameButton.disabled = !isFinished || state.autoPlaying || state.resolving;
+  if (elements.resultsSummaryButton) elements.resultsSummaryButton.disabled = !isFinished;
 }
 
 function syncAiTypeSelect(playerId, select, game) {
@@ -1782,6 +1815,7 @@ function renderShipToken(svg, player, className) {
 }
 
 function renderActionPreview(svg, game) {
+  if (game?.phase === "complete") return;
   const player = game?.players?.[state.builderPlayerId];
   if (renderSubmittedOrdersPreview(svg, game)) return;
   if (!player || !shouldShowBuilderDraft(game, player)) return;
@@ -3539,6 +3573,8 @@ elements.playbackSpeedSelect?.addEventListener("change", (event) => {
   state.playbackSpeed = event.target.value;
 });
 elements.resolveButton.addEventListener("click", () => resolveNextStep().catch(showError));
+elements.replayGameButton?.addEventListener("click", () => replayFinishedGame().catch(showError));
+elements.resultsSummaryButton?.addEventListener("click", showResultsSummary);
 elements.submitBuiltOrdersButton.addEventListener("click", () => submitBuiltOrders().catch(showError));
 elements.debugDesperationSelect?.addEventListener("change", (event) => {
   state.debugDesperationCardId = event.target.value;
@@ -3606,9 +3642,13 @@ function showError(error) {
   alert(error.message);
 }
 
+function clearTransientOverlays() {
+  elements.resolutionCallout?.classList.remove("visible");
+  hideCombatResultOverlay();
+}
+
 function showResolutionCallouts(game, previousEventCount, previousGame = null) {
   const callouts = resolutionCallouts(game, previousEventCount);
-  if (state.playbackSpeed === "instant") return Promise.resolve(() => { });
   if (!callouts.length) return Promise.resolve(() => { });
   const overlay = resolutionCalloutElement();
   const animationContext = createBoardAnimationContext();
@@ -3623,7 +3663,7 @@ function showResolutionCallouts(game, previousEventCount, previousGame = null) {
       ${callout.detail ? `<span>${escapeHtml(callout.detail)}</span>` : ""}
     `;
       if (callout.moveStep) animateBoardShip(callout.playerId, callout.moveStep.before, callout.moveStep.after, animationContext);
-      if (callout.blast) animateBoardDot(callout.blast.from, callout.blast.to, "attack");
+      if (callout.blast) animateBoardDot(callout.blast.from, callout.blast.to, "attack", callout.blast.impact);
       index += 1;
       window.setTimeout(() => {
         overlay.classList.remove("visible");
@@ -3655,10 +3695,15 @@ function cleanupBoardAnimationContext(context) {
 
 function resolutionCallouts(game, previousEventCount) {
   const events = (game?.event_log || []).slice(previousEventCount);
+  const replayPositions = replayStartingPositions(game, game?.event_log || [], previousEventCount);
   const callouts = [];
   events.forEach((event) => {
     if (event.type === "movement_resolved") {
       const firstStep = (event.steps || [])[0];
+      const lastStep = (event.steps || [])[event.steps.length - 1];
+      if (!replayPositions[event.player_id] && firstStep?.before) {
+        replayPositions[event.player_id] = { ...firstStep.before };
+      }
       if (event.overdrive_copy) {
         callouts.push({
           activity: "overdrive",
@@ -3674,11 +3719,12 @@ function resolutionCallouts(game, previousEventCount) {
         detail: `Action ${event.action_number}: ${(event.steps || []).map(englishMovementStep).join(", ")}`,
         moveStep: firstStep ? { before: firstStep.before, after: firstStep.after } : null,
       });
+      if (lastStep?.after) replayPositions[event.player_id] = { ...lastStep.after };
     } else if (event.type === "volley_resolved") {
       const attackBonus = event.attack_bonus ?? event.aim_bonus ?? 0;
       const rollTotal = event.roll + attackBonus;
-      const attacker = game.players?.[event.attacker_id]?.ship;
-      const target = game.players?.[event.target_id]?.ship;
+      const attacker = event.attacker_position || replayPositions[event.attacker_id] || game.players?.[event.attacker_id]?.ship;
+      const target = event.target_position || replayPositions[event.target_id] || game.players?.[event.target_id]?.ship;
       if (event.overdrive_copy) {
         callouts.push({
           activity: "overdrive",
@@ -3692,7 +3738,7 @@ function resolutionCallouts(game, previousEventCount) {
         title: `${titleCase(event.attacker_id)} Shoots`,
         detail: `Action ${event.action_number}: ${titleCase(event.target_id)}`,
         duration: 900,
-        blast: attacker && target ? { from: attacker, to: target } : null,
+        blast: attacker && target ? { from: attacker, to: target, impact: event.hit ? "hit" : "miss" } : null,
       });
       callouts.push({
         activity: event.hit ? "attack" : "miss",
@@ -3713,6 +3759,29 @@ function resolutionCallouts(game, previousEventCount) {
   return callouts;
 }
 
+function replayStartingPositions(game, eventLog, startIndex) {
+  const positions = {};
+  Object.entries(game?.players || {}).forEach(([playerId, player]) => {
+    if (player?.ship) positions[playerId] = { q: player.ship.q, r: player.ship.r, facing: player.ship.facing };
+  });
+  eventLog.slice(0, startIndex).forEach((event) => {
+    if (event.type !== "movement_resolved") return;
+    const lastStep = (event.steps || [])[event.steps.length - 1];
+    if (lastStep?.after) positions[event.player_id] = { ...lastStep.after };
+  });
+  eventLog.slice(startIndex).forEach((event) => {
+    if (event.type !== "movement_resolved") return;
+    const firstStep = (event.steps || [])[0];
+    if (firstStep?.before && positions[event.player_id]?._inferredFromFirstMove !== true) {
+      positions[event.player_id] = { ...firstStep.before, _inferredFromFirstMove: true };
+    }
+  });
+  Object.keys(positions).forEach((playerId) => {
+    delete positions[playerId]._inferredFromFirstMove;
+  });
+  return positions;
+}
+
 function resolutionCalloutElement() {
   if (elements.resolutionCallout) return elements.resolutionCallout;
   const overlay = document.createElement("div");
@@ -3722,7 +3791,7 @@ function resolutionCalloutElement() {
   return overlay;
 }
 
-function animateBoardDot(fromHex, toHex, activity) {
+function animateBoardDot(fromHex, toHex, activity, impact = "") {
   const start = boardScreenPoint(fromHex);
   const end = boardScreenPoint(toHex);
   if (!start || !end) return;
@@ -3733,7 +3802,19 @@ function animateBoardDot(fromHex, toHex, activity) {
   dot.style.setProperty("--motion-x", `${end.x - start.x}px`);
   dot.style.setProperty("--motion-y", `${end.y - start.y}px`);
   document.body.append(dot);
-  window.setTimeout(() => dot.remove(), playbackDelay(900));
+  window.setTimeout(() => {
+    dot.remove();
+    if (impact) animateBoardImpact(end, impact);
+  }, playbackDelay(520));
+}
+
+function animateBoardImpact(point, impact) {
+  const effect = document.createElement("div");
+  effect.className = `board-impact ${impact === "hit" ? "hit-impact" : "miss-impact"}`;
+  effect.style.left = `${point.x}px`;
+  effect.style.top = `${point.y}px`;
+  document.body.append(effect);
+  window.setTimeout(() => effect.remove(), playbackDelay(impact === "hit" ? 620 : 420));
 }
 
 function animateBoardShip(playerId, fromHex, toHex, context) {

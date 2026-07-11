@@ -720,6 +720,8 @@ def _resolve_attack_volley(
         "action_number": action_number,
         "attacker_id": attacker.id,
         "target_id": target_id,
+        "attacker_position": {"q": attacker.ship.q, "r": attacker.ship.r, "facing": attacker.ship.facing},
+        "target_position": {"q": target.ship.q, "r": target.ship.r, "facing": target.ship.facing},
         "overdrive_copy": overdrive_copy,
         "card_ids": [card.id for card, selection in attack_cards],
         "damage": damage,

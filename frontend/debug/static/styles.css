@@ -670,6 +670,17 @@ select {
   white-space: nowrap;
 }
 
+.finished-game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.finished-game-actions[hidden] {
+  display: none;
+}
+
 .board-controls {
   display: flex;
   gap: 4px;
@@ -1425,6 +1436,63 @@ select {
   box-shadow: 0 0 18px rgba(255, 91, 82, 0.85);
 }
 
+.board-impact {
+  left: 0;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+}
+
+.board-impact.hit-impact {
+  animation: hit-impact-pop 620ms ease-out forwards;
+  background: #ffcf45;
+  clip-path: polygon(
+    50% 0%,
+    59% 30%,
+    85% 15%,
+    70% 41%,
+    100% 50%,
+    70% 59%,
+    85% 85%,
+    59% 70%,
+    50% 100%,
+    41% 70%,
+    15% 85%,
+    30% 59%,
+    0% 50%,
+    30% 41%,
+    15% 15%,
+    41% 30%
+  );
+  height: 44px;
+  width: 44px;
+}
+
+.board-impact.hit-impact::after {
+  background: #ff5b52;
+  border-radius: 999px;
+  content: "";
+  height: 16px;
+  left: 14px;
+  position: absolute;
+  top: 14px;
+  width: 16px;
+}
+
+.board-impact.miss-impact {
+  animation: miss-impact-poof 420ms ease-out forwards;
+  background: rgba(231, 238, 235, 0.86);
+  border-radius: 999px;
+  box-shadow:
+    -8px 1px 0 rgba(231, 238, 235, 0.62),
+    7px -3px 0 rgba(231, 238, 235, 0.54),
+    3px 8px 0 rgba(231, 238, 235, 0.46);
+  height: 18px;
+  width: 18px;
+}
+
 .board-motion-ship {
   align-items: center;
   animation: board-ship-motion 820ms ease-in-out forwards;
@@ -1444,6 +1512,40 @@ select {
   transform: translate(-50%, -50%);
   width: 24px;
   z-index: 31;
+}
+
+@keyframes hit-impact-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.18) rotate(11deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.5) rotate(20deg);
+  }
+}
+
+@keyframes miss-impact-poof {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+
+  35% {
+    opacity: 0.86;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
 }
 
 .board-motion-ship.settled {
