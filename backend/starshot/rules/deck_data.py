@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from starshot.rules.card_effects import interpret_card
-from starshot.rules.models import Card, CardFamily, DesperateFace, OrderCardSelection, SealMode
+from starshot.rules.models import Card, CardFamily, DesperateFace, OrderCardSelection, RulesConfig, SealMode
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DECK_SET_PATH = ROOT / "resources" / "decks" / "core_0_2"
@@ -27,7 +27,7 @@ _KNOWN_WARP_DESTINATIONS = {"home", "bauble", "leader"}
 _COPY_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 _SUPPORTED_CARD_TEXT_HINT = (
     "Supported examples include: Move 2; Turn Left; Turn Right; Move 2 Right; Move 2 Left; "
-    "Attack Aim +2; Targeted Attack Aim +2; Damage +1; Defense +1; Range 3; Always Hits; "
+    "Attack; Targeted Attack; Attack Aim +2; Targeted Attack Aim +2; Damage +1; Defense +1; Range 3; Always Hits; "
     "Attack All; Warp Behind VP Leader; Move Overheat To Discard; Lead The Target; "
     "choices Forward, Turn Left, Turn Right."
 )
@@ -38,6 +38,7 @@ class DeckCatalog:
     id: str
     name: str
     rules_version: str
+    rules_config: RulesConfig
     path: Path
     base_cards: tuple[Card, ...]
     desperation_cards: tuple[Card, ...]
@@ -105,6 +106,7 @@ def load_deck_catalog(path: Path) -> DeckCatalog:
     catalog_id = _required_str(manifest, "id", "manifest.toml")
     name = _required_str(manifest, "name", "manifest.toml")
     rules_version = _required_str(manifest, "rules_version", "manifest.toml")
+    rules_config = _load_rules_config(deck_set_path / "config.toml")
 
     base_cards = tuple(_load_card_file(deck_set_path / "base_deck.toml", is_base=True))
     desperation_cards = tuple(_load_card_file(deck_set_path / "desperation_deck.toml", is_base=False))
@@ -125,6 +127,7 @@ def load_deck_catalog(path: Path) -> DeckCatalog:
         id=catalog_id,
         name=name,
         rules_version=rules_version,
+        rules_config=rules_config,
         path=deck_set_path,
         base_cards=base_cards,
         desperation_cards=desperation_cards,
@@ -134,6 +137,15 @@ def load_deck_catalog(path: Path) -> DeckCatalog:
     )
     _validate_catalog(catalog)
     return catalog
+
+
+def _load_rules_config(path: Path) -> RulesConfig:
+    if not path.exists():
+        return RulesConfig()
+    data = _read_toml(path)
+    return RulesConfig(
+        overheat_pile=_yes_no(data.get("overheat_pile", "yes"), f"{path.name}.overheat_pile"),
+    )
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -270,6 +282,8 @@ def _expand_english_card(
     desperate_spec = _face_spec(data.get("desperate"), f"{source}.desperate") if "desperate" in data else None
     if basic_spec is None and desperate_spec is None:
         raise ValueError(f"{source} must define basic or desperate card text.")
+    if basic_spec is None and desperate_spec is not None:
+        no_basic_face = True
     if no_basic_face and desperate_spec is None:
         raise ValueError(f"{source} returns to the Desperation deck but has no desperate text.")
 
@@ -448,6 +462,8 @@ def _phrase_spec(part: str, field: str) -> FaceSpec | None:
             orientation_options=("turn_left" if part == "turn left" else "turn_right",),
             requires_target=False,
         )
+    if match := re.fullmatch(r"(targeted )?attack", part):
+        return FaceSpec(family=CardFamily.ATTACK, requires_target=bool(match.group(1)))
     if match := re.fullmatch(r"(targeted )?attack aim \+(\d+)", part):
         targeted = bool(match.group(1))
         aim = int(match.group(2))
@@ -789,6 +805,18 @@ def _bool(value: Any, field: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field} must be a boolean.")
     return value
+
+
+def _yes_no(value: Any, field: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = _normalize_text(value)
+        if normalized in {"yes", "true"}:
+            return True
+        if normalized in {"no", "false"}:
+            return False
+    raise ValueError(f"{field} must be yes or no.")
 
 
 def _family(value: Any, field: str) -> CardFamily:

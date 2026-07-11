@@ -64,6 +64,11 @@ class GameConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RulesConfig:
+    overheat_pile: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class Card:
     id: str
     name: str

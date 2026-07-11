@@ -521,8 +521,12 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
             return_desperation_card(state.desperation_deck, card)
             returned_to_desperation_deck.append(card.id)
         elif stack.seal_mode == SealMode.OVERDRIVE:
-            player.overheat.append(card)
-            overheated.append(card.id)
+            if _overheat_pile_enabled():
+                player.overheat.append(card)
+                overheated.append(card.id)
+            else:
+                player.discard.append(card)
+                discarded.append(card.id)
         else:
             player.discard.append(card)
             discarded.append(card.id)
@@ -806,8 +810,10 @@ def _apply_desperation_consequence(state: GameState, player: PlayerState) -> Non
         reshuffled_discard = [card.id for card in reshuffled]
 
     moved_to_overheat = player.deck.pop(0) if player.deck else None
-    if moved_to_overheat is not None:
+    if moved_to_overheat is not None and _overheat_pile_enabled():
         player.overheat.append(moved_to_overheat)
+    elif moved_to_overheat is not None:
+        player.discard.append(moved_to_overheat)
 
     drawn = draw_desperation_card(state.desperation_deck, rng)
     player.deck.insert(0, drawn)
@@ -1034,6 +1040,10 @@ def _validate_active_deck_set(state: GameState) -> None:
     state_id = state.deck_set_id or active_id
     if state_id != active_id:
         raise RulesError(f"Game uses deck set {state_id!r}, but active deck set is {active_id!r}.")
+
+
+def _overheat_pile_enabled() -> bool:
+    return active_catalog().rules_config.overheat_pile
 
 
 def _starting_ship(index: int) -> ShipState:

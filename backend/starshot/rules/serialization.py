@@ -14,15 +14,18 @@ from starshot.rules.models import (
     OrderCardSelection,
     OrdersSubmission,
     PlayerState,
+    RulesConfig,
     SealMode,
     ShipState,
 )
+from starshot.rules.deck_data import active_catalog
 from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
 
 
 def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
     return {
         "deck_set_id": state.deck_set_id,
+        "rules_config": rules_config_to_dict(active_catalog().rules_config),
         "round_number": state.round_number,
         "phase": state.phase.value,
         "starting_player_id": state.starting_player_id,
@@ -53,6 +56,12 @@ def state_from_dict(data: dict) -> GameState:
         event_log=list(data.get("event_log", [])),
         result=result_from_dict(data["result"]) if data.get("result") else None,
     )
+
+
+def rules_config_to_dict(config: RulesConfig) -> dict:
+    return {
+        "overheat_pile": config.overheat_pile,
+    }
 
 
 def player_to_dict(player: PlayerState, *, reveal_orders: bool) -> dict:

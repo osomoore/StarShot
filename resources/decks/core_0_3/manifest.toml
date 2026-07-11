@@ -1,0 +1,4 @@
+id = "core_0_3_sides"
+name = "StarShot Core 0.3"
+rules_version = "0.3"
+description = "Default StarShot 0.3 starting and desperation decks."

@@ -21,6 +21,7 @@ from starshot.rules.models import (
     OrderCardSelection,
     OrdersSubmission,
     PlayerState,
+    RulesConfig,
     SealMode,
 )
 
@@ -38,6 +39,7 @@ __all__ = [
     "OrderCardSelection",
     "OrdersSubmission",
     "PlayerState",
+    "RulesConfig",
     "RulesError",
     "SealMode",
     "apply_action",

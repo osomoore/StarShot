@@ -1,0 +1,31 @@
+copy_id_style = "always_suffix"
+
+[[cards]]
+name = "Controlled Move 1"
+copies = 2
+side_a_type = "Basic"
+side_a_1 = "Move 1"
+side_b_type = "Basic"
+side_b_1 = "Turn Left, Move 1"
+side_b_2 = "Turn Right, Move 1"
+
+[[cards]]
+name = "Controlled Move 2"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_b_type = "Basic"
+side_b_1 = "Turn Left, Move 2"
+side_b_2 = "Turn Right, Move 2"
+
+[[cards]]
+name = "Targeted Attack"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Targeted Attack"
+
+[[cards]]
+name = "Targeted Attack Damage +1"
+copies = 2
+side_a_type = "Basic"
+side_a_1 = "Targeted Attack Damage +1"

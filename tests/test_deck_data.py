@@ -12,6 +12,7 @@ class DeckDataTests(unittest.TestCase):
         catalog = load_deck_catalog(default_deck_set_path())
 
         self.assertEqual(catalog.id, "core_0_2_sides")
+        self.assertTrue(catalog.rules_config.overheat_pile)
         self.assertEqual(len(catalog.base_cards), 10)
         self.assertEqual(len(catalog.desperation_cards), 41)
         self.assertIn("controlled_move_1_a", catalog.base_card_map)
@@ -38,6 +39,9 @@ class DeckDataTests(unittest.TestCase):
         crazy_ivan = catalog.desperation_card_map["desp_crazy_ivan_a"]
         self.assertEqual(crazy_ivan.desperate_face.family.value, "hybrid")
         self.assertEqual(crazy_ivan.desperate_face.orientation_options, ("u_turn_move", "u_turn_attack"))
+
+        afterburners = catalog.desperation_card_map["desp_afterburners_a"]
+        self.assertTrue(afterburners.no_basic_face)
 
     def test_duplicate_card_ids_are_rejected_on_load(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,6 +146,7 @@ requires_target = false
 """.strip(),
                 encoding="utf-8",
             )
+            (deck_path / "config.toml").write_text('overheat_pile = "no"\n', encoding="utf-8")
 
             try:
                 os.environ["STARSHOT_DECK_SET"] = str(deck_path)
@@ -149,6 +154,7 @@ requires_target = false
                 state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
 
                 self.assertEqual(catalog.id, "tiny_test")
+                self.assertFalse(catalog.rules_config.overheat_pile)
                 self.assertEqual(state.deck_set_id, "tiny_test")
                 self.assertEqual(
                     [card.id for card in state.players["red"].hand],

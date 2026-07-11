@@ -70,7 +70,7 @@ side_b_1 = "Attack Aim +2, Damage +1"
 
 Deferred Desperate faces are represented by omitting a Desperate side. Playing that Desperate face is rejected by the rules engine.
 
-For cards with no basic face, omit any Basic side, provide a Desperate side, and add cleanup text:
+For cards with no basic face, omit any Basic side and provide only Desperate sides. The loader automatically returns these cards to the Desperation deck after they are played.
 
 ```toml
 [[cards]]
@@ -81,7 +81,6 @@ side_a_1 = "Move 3"
 side_b_type = "Desperate"
 side_b_1 = "Turn Right, Move 3"
 side_b_2 = "Turn Left, Move 3"
-cleanup = "Return to Desperation deck"
 ```
 
 ## Supported Card Text
@@ -93,6 +92,8 @@ The card-text parser is controlled English, not free-form prose. Supported primi
 - `Move N Left`
 - `Turn Right Twice then Move N`
 - `U-Turn then Move N`
+- `Attack`
+- `Targeted Attack`
 - `Attack Aim +N`
 - `Targeted Attack Aim +N`
 - `Attack Damage +N`

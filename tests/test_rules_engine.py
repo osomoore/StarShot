@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from starshot.rules import (
     ActionStack,
@@ -8,6 +10,7 @@ from starshot.rules import (
     OrderCardSelection,
     OrdersSubmission,
     RulesError,
+    RulesConfig,
     SealMode,
     create_initial_state,
     resolve_next_step,
@@ -125,6 +128,66 @@ class RulesEngineTests(unittest.TestCase):
         self.assertIn("controlled_move_1_a", red_moves[0]["moved_to_discard"])
         self.assertIn("targeted_attack_aim_1_a", blue_moves[0]["moved_to_discard"])
         self.assertIn("controlled_move_2_a", red_moves[2]["moved_to_overheat"])
+
+    def test_no_overheat_config_moves_overdriven_cards_to_discard(self):
+        state = self._state_with_submitted_orders()
+
+        with patch(
+            "starshot.rules.engine.active_catalog",
+            return_value=SimpleNamespace(id="core_0_2_sides", rules_config=RulesConfig(overheat_pile=False)),
+        ):
+            while state.phase != GamePhase.GIVE_ORDERS or state.round_number != 2:
+                state = resolve_next_step(state)
+
+        red = state.players["red"]
+        red_moves = [
+            event for event in state.event_log
+            if event["type"] == "action_cards_moved" and event["player_id"] == "red"
+        ]
+        self.assertEqual(red.overheat, [])
+        self.assertIn("controlled_move_2_a", red_moves[2]["moved_to_discard"])
+        self.assertEqual(red_moves[2]["moved_to_overheat"], [])
+
+    def test_no_overheat_config_moves_damage_consequence_card_to_discard(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+        self._set_hand(state, "blue", "targeted_attack_aim_2_a")
+        with patch(
+            "starshot.rules.engine.active_catalog",
+            return_value=SimpleNamespace(id="core_0_2_sides", rules_config=RulesConfig(overheat_pile=False)),
+        ):
+            state = submit_orders(
+                state,
+                "red",
+                OrdersSubmission(
+                    stacks=(
+                        ActionStack(1, SealMode.SEALED),
+                        ActionStack(2, SealMode.SEALED),
+                        ActionStack(3, SealMode.SEALED),
+                    )
+                ),
+            )
+            state = submit_orders(
+                state,
+                "blue",
+                OrdersSubmission(
+                    stacks=(
+                        ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("targeted_attack_aim_2_a", target_player_id="red"),)),
+                        ActionStack(2, SealMode.SEALED),
+                        ActionStack(3, SealMode.SEALED),
+                    )
+                ),
+            )
+            state = resolve_next_step(state)
+
+        event = [event for event in state.event_log if event["type"] == "desperation_consequence"][0]
+        self.assertIsNotNone(event["moved_to_overheat_card_id"])
+        self.assertEqual(state.players["red"].overheat, [])
+        self.assertIn(event["moved_to_overheat_card_id"], {card.id for card in state.players["red"].discard})
 
     def test_overheated_cards_wait_until_deck_exhausts(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

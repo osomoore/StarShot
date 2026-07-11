@@ -76,6 +76,10 @@ const AXIAL_DIRECTIONS = [
 ];
 const START_CORNER_DIRECTIONS = [3, 0, 2, 5];
 
+function hasOverheatPile(game) {
+  return game?.rules_config?.overheat_pile !== false;
+}
+
 const elements = {
   createButton: document.querySelector("#createButton"),
   createGameControls: document.querySelector("#createGameControls"),
@@ -1355,7 +1359,9 @@ function actionLogBody(event) {
   if (event.type === "hand_discarded") return `<span>${escapeHtml((event.card_ids || []).join(", ") || "No cards")}</span>`;
   if (event.type === "action_cards_moved") {
     const discarded = event.moved_to_discard?.length ? `Discard: ${event.moved_to_discard.join(", ")}` : "";
-    const overheated = event.moved_to_overheat?.length ? `Overheat: ${event.moved_to_overheat.join(", ")}` : "";
+    const overheated = hasOverheatPile(state.selectedState) && event.moved_to_overheat?.length
+      ? `Overheat: ${event.moved_to_overheat.join(", ")}`
+      : "";
     return [discarded, overheated].filter(Boolean).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
   }
   return "";
@@ -2192,6 +2198,9 @@ function renderPlayers(game) {
     elements.playersView.replaceChildren();
     return;
   }
+  const overheatStat = (player) => hasOverheatPile(game)
+    ? `<div><dt>Overheat</dt><dd>${player.overheat.length}</dd></div>`
+    : "";
   const rows = Object.values(game.players).map((player) => {
     const row = document.createElement("article");
     row.className = player.has_submitted_orders ? "player-row orders-ready" : "player-row";
@@ -2206,7 +2215,7 @@ function renderPlayers(game) {
         <div><dt>Deck</dt><dd>${player.deck.length}</dd></div>
         <div><dt>Hand</dt><dd>${player.hand?.length ?? 0}</dd></div>
         <div><dt>Discard</dt><dd>${player.discard?.length ?? 0}</dd></div>
-        <div><dt>Overheat</dt><dd>${player.overheat.length}</dd></div>
+        ${overheatStat(player)}
         <div><dt>Hex</dt><dd>${player.ship.q}, ${player.ship.r}</dd></div>
         <div><dt>Facing</dt><dd>${player.ship.facing}</dd></div>
         <div><dt>Move</dt><dd>${player.ship.movement_this_action}</dd></div>
@@ -3664,11 +3673,14 @@ function createMiniBoardCard(color, game) {
 
   const footer = document.createElement("div");
   footer.className = "mini-ship-footer";
+  const overheatStat = hasOverheatPile(game)
+    ? `<span class="mini-stat" title="Cards in overheat"><span class="mini-icon overheat-icon">O</span>${player ? player.overheat.length : 0}</span>`
+    : "";
   footer.innerHTML = `
     <span class="mini-stat" title="Cards in hand"><span class="mini-icon hand-icon">H</span>${player ? (player.hand?.length ?? 0) : 0}</span>
     <span class="mini-stat" title="Cards in deck"><span class="mini-icon deck-icon">D</span>${player ? player.deck.length : 0}</span>
     <span class="mini-stat" title="Cards in discard"><span class="mini-icon discard-icon">X</span>${player ? (player.discard?.length ?? 0) : 0}</span>
-    <span class="mini-stat" title="Cards in overheat"><span class="mini-icon overheat-icon">O</span>${player ? player.overheat.length : 0}</span>
+    ${overheatStat}
   `;
   card.append(footer);
   return card;

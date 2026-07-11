@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
             "or start_server.bat --deck-set resources\\decks\\core_0_2"
         ),
     )
-    start.add_argument("--deck-set", type=Path, help="Deck set directory to use for new and active games.")
+    start.add_argument("-d", "--deck-set", type=Path, help="Deck set directory to use for new and active games.")
     subparsers.add_parser("stop", help="Stop the StarShot dev server.")
     subparsers.add_parser("status", help="Show StarShot dev server status.")
     args = parser.parse_args(argv)

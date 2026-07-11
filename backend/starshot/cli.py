@@ -16,7 +16,7 @@ DEFAULT_DB_PATH = Path(".starshot") / "games.sqlite3"
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="starshot")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="SQLite game database path.")
-    parser.add_argument("--deck-set", type=Path, help="Deck set directory to use.")
+    parser.add_argument("-d", "--deck-set", type=Path, help="Deck set directory to use.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     new_game = subparsers.add_parser("new-game", help="Create and persist a new game.")
