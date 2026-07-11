@@ -98,6 +98,9 @@ def create_initial_state(config: GameConfig) -> GameState:
         player_id: PlayerState(id=player_id, deck=create_base_deck(), ship=_starting_ship(index))
         for index, player_id in enumerate(player_ids)
     }
+    if config.seed is None:
+        for player in players.values():
+            setup_rng.shuffle(player.deck)
     if config.debug_start_with_attack_desperation_card:
         from starshot.rules.desperation import desperation_card_by_id
 

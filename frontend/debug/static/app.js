@@ -200,7 +200,6 @@ async function createGame(playerCount = 2) {
     method: "POST",
     body: JSON.stringify({
       player_ids: playerIds,
-      seed: 3,
     }),
   });
   state.selectedGameId = payload.game_id;
@@ -2332,6 +2331,7 @@ function endGameSummary(game) {
     id: playerId,
     aiType: selectedAiTypeForPlayer(playerId),
     finalVp: game.players[playerId]?.victory_points || 0,
+    destroyed: Boolean(game.players[playerId]?.ship?.destroyed),
     damageSustained: game.players[playerId]?.ship?.damage_taken || 0,
     distanceMoved: 0,
     baubleCount: 0,
@@ -2374,7 +2374,11 @@ function endGameSummary(game) {
     player.hitPct = player.shots ? `${Math.round((player.hitCount / player.shots) * 100)}%` : "0%";
     player.mostHitTarget = mostHitTargetText(player.hitsByTarget);
     player.killsText = player.kills.length ? player.kills.map(titleCase).join(", ") : "None";
-    player.killedByText = player.killedBy ? `Destroyed by ${titleCase(player.killedBy)}` : "Survived";
+    player.killedByText = player.destroyed
+      ? player.killedBy
+        ? `Destroyed by ${titleCase(player.killedBy)}`
+        : "Destroyed"
+      : "Survived";
   });
   const topVp = Math.max(...players.map((player) => player.finalVp), 0);
   const overallShots = players.reduce((sum, player) => sum + player.shots, 0);
