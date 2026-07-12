@@ -48,7 +48,12 @@ class SerializationTests(unittest.TestCase):
         deck_set = state_to_dict(state)["deck_set"]
         self.assertEqual(deck_set["id"], "core_0_2_sides")
         self.assertIn("core_0_2", deck_set["path"])
-        self.assertEqual(deck_set["rules_config"], {"overheat_pile": True})
+        self.assertEqual(deck_set["rules_config"], {
+            "overheat_pile": True,
+            "allow_mixed_card_type_stacks": False,
+            "overdrive_style": "copy_action",
+            "allow_overdrive_desperation": False,
+        })
         self.assertRegex(deck_set["files"]["manifest"]["sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(deck_set["files"]["config"]["sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(deck_set["files"]["base_deck"]["sha256"], r"^[0-9a-f]{64}$")

@@ -25,6 +25,11 @@ class SealMode(StrEnum):
     OVERDRIVE = "overdrive"
 
 
+class OverdriveStyle(StrEnum):
+    COPY_ACTION = "copy_action"
+    COMBINE_CARDS = "combine_cards"
+
+
 @dataclass(frozen=True, slots=True)
 class DesperateFace:
     family: CardFamily
@@ -68,6 +73,9 @@ class GameConfig:
 @dataclass(frozen=True, slots=True)
 class RulesConfig:
     overheat_pile: bool = True
+    allow_mixed_card_type_stacks: bool = False
+    overdrive_style: OverdriveStyle = OverdriveStyle.COPY_ACTION
+    allow_overdrive_desperation: bool = False
 
 
 @dataclass(frozen=True, slots=True)

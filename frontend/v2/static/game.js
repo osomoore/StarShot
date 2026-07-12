@@ -22,6 +22,7 @@
       "picker-overlay", "endgame-overlay", "board-callout", "board-wrap", "orders-panel"]) {
       els[id] = document.getElementById(id);
     }
+    els["fleet-panel"] = document.querySelector(".fleet-panel");
   }
 
   function isPhoneUser() {
@@ -36,10 +37,11 @@
     const phone = isPhoneUser();
     document.documentElement.dataset.device = phone ? "phone" : "desktop";
     if (!phone) {
-      document.body.classList.remove("mobile-orders-open");
+      setMobileSheet(null);
       return;
     }
     ensureMobileHud();
+    syncMobileHud();
   }
 
   function ensureMobileHud() {
@@ -49,15 +51,15 @@
       hud.className = "mobile-game-hud";
       hud.setAttribute("aria-label", "Mobile game controls");
       hud.innerHTML = `
-        <button class="btn gold" type="button" data-mobile-action="orders">Orders</button>
+        <button class="btn ghost" type="button" data-mobile-action="orders">Orders</button>
         <button class="btn ghost" type="button" data-mobile-action="fleet">Fleet</button>
-        <button class="btn ghost" type="button" data-mobile-action="center">Center</button>
+        <button class="btn gold" type="button" data-mobile-action="map">Map</button>
       `;
       hud.addEventListener("click", (event) => {
         const action = event.target.closest("[data-mobile-action]")?.dataset.mobileAction;
         if (action === "orders") toggleMobileOrders();
-        if (action === "fleet") showMyShipOrFleet();
-        if (action === "center") Board.resetView?.();
+        if (action === "fleet") toggleMobileFleet();
+        if (action === "map") showMobileMap();
       });
       document.body.appendChild(hud);
     }
@@ -67,27 +69,43 @@
       close.className = "btn ghost small mobile-orders-close";
       close.type = "button";
       close.textContent = "Map";
-      close.addEventListener("click", () => setMobileOrdersOpen(false));
+      close.addEventListener("click", () => setMobileSheet(null));
       els["orders-panel"].prepend(close);
     }
   }
 
+  function syncMobileHud() {
+    const hud = document.getElementById("mobile-game-hud");
+    if (!hud) return;
+    const active = document.body.classList.contains("mobile-orders-open")
+      ? "orders"
+      : document.body.classList.contains("mobile-fleet-open") ? "fleet" : "map";
+    hud.querySelectorAll("[data-mobile-action]").forEach((button) => {
+      const pressed = button.dataset.mobileAction === active;
+      button.classList.toggle("gold", pressed);
+      button.classList.toggle("ghost", !pressed);
+      button.setAttribute("aria-pressed", String(pressed));
+    });
+  }
+
   function toggleMobileOrders() {
-    setMobileOrdersOpen(!document.body.classList.contains("mobile-orders-open"));
+    setMobileSheet(document.body.classList.contains("mobile-orders-open") ? null : "orders");
   }
 
-  function setMobileOrdersOpen(open) {
-    document.body.classList.toggle("mobile-orders-open", Boolean(open));
+  function toggleMobileFleet() {
+    setMobileSheet(document.body.classList.contains("mobile-fleet-open") ? null : "fleet");
   }
 
-  function showMyShipOrFleet() {
-    if (!view) return;
-    if (you && view?.players?.[you]) {
-      showShipModal(you);
-      return;
-    }
-    const first = seatOrder()[0];
-    if (first) showShipModal(first);
+  function setMobileSheet(sheet) {
+    document.body.classList.toggle("mobile-orders-open", sheet === "orders");
+    document.body.classList.toggle("mobile-fleet-open", sheet === "fleet");
+    syncMobileHud();
+  }
+
+  function showMobileMap() {
+    targetResolver = null;
+    setMobileSheet(null);
+    hidePicker();
   }
 
   function emptyDraft() {
@@ -108,6 +126,7 @@
     // come back to a match (with a Skip button).
     animatedUpTo = parseInt(localStorage.getItem("ss_seen_" + id) || "-1", 10);
     App.showScreen("game");
+    document.body.classList.add("mobile-game-active");
     Board.build();
     Board.setShipClickHandler(handleShipClick);
     if (document.documentElement.dataset.device === "phone") Board.resetView?.();
@@ -120,7 +139,8 @@
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
     gameId = null;
-    document.body.classList.remove("mobile-orders-open");
+    document.body.classList.remove("mobile-game-active");
+    setMobileSheet(null);
   }
 
   async function fetchView(initial) {
@@ -464,8 +484,9 @@
       cardsHtml.appendChild(hint);
     }
     const seal = document.createElement("div");
+    const overdriveNote = overdriveCopiesAction() ? "OVERDRIVE x2" : "OVERDRIVE combined";
     seal.innerHTML = `<div class="seal-toggle ${slot.seal === "overdrive" ? "overdrive" : ""}" title="Toggle Sealed / Overdrive">${slot.seal === "overdrive" ? "🔥" : "☠"}</div>
-      <div class="seal-note">${slot.seal === "overdrive" ? "OVERDRIVE ×2" : "sealed"}</div>`;
+      <div class="seal-note">${slot.seal === "overdrive" ? overdriveNote : "sealed"}</div>`;
     if (ordering) {
       seal.querySelector(".seal-toggle").addEventListener("click", () => {
         slot.seal = slot.seal === "overdrive" ? "sealed" : "overdrive";
@@ -486,6 +507,10 @@
       return selection.target_player_id ? "→ " + Board.shortName(selection.target_player_id) : "→ ahead";
     }
     return Cards.orientationLabel(selection.orientation).split(" ")[0];
+  }
+
+  function overdriveCopiesAction() {
+    return (view?.rules_config?.overdrive_style || "copy_action") === "copy_action";
   }
 
   /* First living enemy on the straight line out of `pos` (untargeted volley). */
@@ -662,8 +687,9 @@
     }
 
     // 5. slot choice (skipped when the card was dropped on / armed to a slot)
+    const allowMixed = !!view.rules_config?.allow_mixed_card_type_stacks;
     const canTake = (slot) => slot.cards.length < 2
-      && (!slot.cards.length || slot.cards[0].family === selection.family);
+      && (allowMixed || !slot.cards.length || slot.cards[0].family === selection.family);
     let slotIndex = presetSlot;
     if (slotIndex !== null && slotIndex !== undefined && !canTake(draft.slots[slotIndex])) {
       App.toast("That stack can't take this card — same type, max two.");
@@ -799,7 +825,7 @@
     const color = Board.colorOf(you);
     const numerals = ["I", "II", "III"];
     draft.slots.forEach((slot, index) => {
-      const overdriven = slot.seal === "overdrive";
+      const overdriven = slot.seal === "overdrive" && overdriveCopiesAction();
       const moveSelections = slot.cards.filter((s) => s.family === "move");
       const attackSelections = slot.cards.filter((s) => s.family === "attack");
       if (moveSelections.length) {

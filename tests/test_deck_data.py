@@ -13,6 +13,9 @@ class DeckDataTests(unittest.TestCase):
 
         self.assertEqual(catalog.id, "core_0_2_sides")
         self.assertTrue(catalog.rules_config.overheat_pile)
+        self.assertFalse(catalog.rules_config.allow_mixed_card_type_stacks)
+        self.assertEqual(catalog.rules_config.overdrive_style, "copy_action")
+        self.assertFalse(catalog.rules_config.allow_overdrive_desperation)
         self.assertEqual(len(catalog.base_cards), 10)
         self.assertEqual(len(catalog.desperation_cards), 41)
         self.assertIn("controlled_move_1_a", catalog.base_card_map)
@@ -174,6 +177,8 @@ requires_target = false
 
                 self.assertEqual(catalog.id, "tiny_test")
                 self.assertFalse(catalog.rules_config.overheat_pile)
+                self.assertFalse(catalog.rules_config.allow_mixed_card_type_stacks)
+                self.assertEqual(catalog.rules_config.overdrive_style, "copy_action")
                 self.assertEqual(state.deck_set_id, "tiny_test")
                 self.assertEqual(
                     [card.id for card in state.players["red"].hand],

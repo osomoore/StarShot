@@ -1,1 +1,4 @@
 overheat_pile = "yes"
+allow_mixed_card_type_stacks = "no"
+overdrive_style = "copy_action"
+allow_overdrive_desperation = "no"

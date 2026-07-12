@@ -63,6 +63,7 @@ from starshot.rules.models import (
     GameState,
     OrderCardSelection,
     OrdersSubmission,
+    OverdriveStyle,
     PlayerState,
     SealMode,
     ShipState,
@@ -282,7 +283,7 @@ def _resolve_action_phase(state: GameState) -> None:
             }
         )
         _resolve_stack_movement(state, player, action_number, stack)
-        if stack.seal_mode == SealMode.OVERDRIVE:
+        if _overdrive_copies_action(stack):
             _resolve_stack_movement(state, player, action_number, stack, overdrive_copy=True)
 
     _resolve_combat(state, action_number, revealed_stacks)
@@ -418,7 +419,7 @@ def _resolve_stack_movement(
     for selection in stack.cards:
         card = card_by_id(selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
-        if overdrive_copy and effect.is_desperate_face:
+        if overdrive_copy and effect.is_desperate_face and not _overdrive_desperation_enabled():
             continue
         if effect.family != CardFamily.MOVE or effect.move is None:
             continue
@@ -585,8 +586,11 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         for target_id in target_ids:
             _resolve_attack_volley(state, action_number, stack, attacker, target_id, attack_cards, shielded_target_ids)
             resolved_any = True
-        if stack.seal_mode == SealMode.OVERDRIVE:
-            overdrive_attack_cards = _attack_cards_for_stack(stack, include_desperate=False)
+        if _overdrive_copies_action(stack):
+            overdrive_attack_cards = _attack_cards_for_stack(
+                stack,
+                include_desperate=_overdrive_desperation_enabled(),
+            )
             if not overdrive_attack_cards:
                 continue
             overdrive_target_ids = _target_player_ids_for_attack(state, attacker, stack, overdrive_attack_cards)
@@ -1086,6 +1090,21 @@ def _overheat_pile_enabled() -> bool:
     return active_catalog().rules_config.overheat_pile
 
 
+def _mixed_card_type_stacks_enabled() -> bool:
+    return active_catalog().rules_config.allow_mixed_card_type_stacks
+
+
+def _overdrive_copies_action(stack: ActionStack) -> bool:
+    return (
+        stack.seal_mode == SealMode.OVERDRIVE
+        and str(active_catalog().rules_config.overdrive_style) == OverdriveStyle.COPY_ACTION.value
+    )
+
+
+def _overdrive_desperation_enabled() -> bool:
+    return active_catalog().rules_config.allow_overdrive_desperation
+
+
 def _starting_ship(index: int) -> ShipState:
     q, r, facing = corner_start(index)
     return ShipState(q=q, r=r, facing=facing)
@@ -1135,6 +1154,9 @@ def _validate_stack(
             raise RulesError(f"Unsupported card face: {selection.face}")
         if selection.face == "desperate" and card.desperate_face is None:
             raise RulesError(f"Card {card.id} does not have an implemented desperate face.")
+        if stack.seal_mode == SealMode.OVERDRIVE and not _overdrive_desperation_enabled():
+            if selection.face == "desperate" or card.no_basic_face:
+                raise RulesError("Desperation cards cannot be overdriven unless the rules config allows it.")
         used_card_ids.add(selection.card_id)
         effective_family = _selected_card_family(card, selection)
         families.add(effective_family)
@@ -1149,7 +1171,7 @@ def _validate_stack(
                 raise RulesError(f"Unknown attack target: {selection.target_player_id}")
             target_player_ids.add(selection.target_player_id)
 
-    if len(families) > 1:
+    if len(families) > 1 and not _mixed_card_type_stacks_enabled():
         raise RulesError("A stack cannot mix move and attack cards.")
     if len(target_player_ids) > 1:
         raise RulesError("All targeted attacks in a stack must target the same player.")

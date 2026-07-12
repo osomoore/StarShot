@@ -104,6 +104,31 @@ def _read_deck_file(which: str) -> dict:
     return {"header": data, "cards": cards, "raw": path.read_text()}
 
 
+def _read_rules_config_file() -> dict:
+    path = CORE_0_3_PATH / "config.toml"
+    try:
+        data = tomllib.loads(path.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        data = {}
+    return {
+        "overheat_pile": str(data.get("overheat_pile", "no")).strip().lower() in {"yes", "true", "on", "1"},
+        "allow_mixed_card_type_stacks": str(data.get("allow_mixed_card_type_stacks", "no")).strip().lower() in {"yes", "true", "on", "1"},
+        "overdrive_style": str(data.get("overdrive_style", "copy_action")).strip() or "copy_action",
+        "allow_overdrive_desperation": str(data.get("allow_overdrive_desperation", "no")).strip().lower() in {"yes", "true", "on", "1"},
+    }
+
+
+def _write_rules_config_file(config: dict) -> None:
+    path = CORE_0_3_PATH / "config.toml"
+    text = (
+        f"overheat_pile = {_toml_escape('yes' if config.get('overheat_pile') else 'no')}\n"
+        f"allow_mixed_card_type_stacks = {_toml_escape('yes' if config.get('allow_mixed_card_type_stacks') else 'no')}\n"
+        f"overdrive_style = {_toml_escape(config.get('overdrive_style') or 'copy_action')}\n"
+        f"allow_overdrive_desperation = {_toml_escape('yes' if config.get('allow_overdrive_desperation') else 'no')}\n"
+    )
+    path.write_text(text, encoding="utf-8")
+
+
 def _validate_deck_candidate(which: str, toml_text: str) -> None:
     """Validate by loading a scratch copy of the whole deck set."""
     with tempfile.TemporaryDirectory() as temp:
@@ -351,12 +376,19 @@ def get_settings(request: Request) -> dict:
     from starshot.v2.settings import maintenance_message, site_auth_enabled
 
     _admin_user(request)
-    return {"site_auth": site_auth_enabled(), "maintenance": maintenance_message()}
+    return {
+        "site_auth": site_auth_enabled(),
+        "maintenance": maintenance_message(),
+        "rules_config": _read_rules_config_file(),
+    }
 
 
 class SettingsUpdate(BaseModel):
     site_auth: bool | None = None
     maintenance: str | None = Field(default=None, max_length=500)
+    allow_mixed_card_type_stacks: bool | None = None
+    overdrive_style: str | None = Field(default=None, pattern="^(copy_action|combine_cards)$")
+    allow_overdrive_desperation: bool | None = None
 
 
 @admin_router.post("/settings")
@@ -375,8 +407,30 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
         store.set_setting(SITE_AUTH_KEY, "on" if body.site_auth else "off")
     if body.maintenance is not None:
         store.set_setting(MAINTENANCE_KEY, body.maintenance.strip())
+    if (
+        body.allow_mixed_card_type_stacks is not None
+        or body.overdrive_style is not None
+        or body.allow_overdrive_desperation is not None
+    ):
+        config = _read_rules_config_file()
+        if body.allow_mixed_card_type_stacks is not None:
+            config["allow_mixed_card_type_stacks"] = body.allow_mixed_card_type_stacks
+        if body.overdrive_style is not None:
+            config["overdrive_style"] = body.overdrive_style
+        if body.allow_overdrive_desperation is not None:
+            config["allow_overdrive_desperation"] = body.allow_overdrive_desperation
+        _write_rules_config_file(config)
+        try:
+            load_deck_catalog(Path(str(CORE_0_3_PATH)))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Rules config failed validation: {exc}") from exc
+        clear_catalog_cache()
     invalidate_cache()
-    return {"site_auth": site_auth_enabled(), "maintenance": maintenance_message()}
+    return {
+        "site_auth": site_auth_enabled(),
+        "maintenance": maintenance_message(),
+        "rules_config": _read_rules_config_file(),
+    }
 
 
 # ── AI battle runner ───────────────────────────────────────────────────────

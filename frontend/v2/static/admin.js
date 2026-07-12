@@ -377,6 +377,10 @@
       const settings = await get("/admin/settings");
       document.getElementById("setting-site-auth").checked = !!settings.site_auth;
       document.getElementById("setting-maintenance").value = settings.maintenance || "";
+      const rules = settings.rules_config || {};
+      document.getElementById("setting-mixed-stacks").checked = !!rules.allow_mixed_card_type_stacks;
+      document.getElementById("setting-overdrive-style").value = rules.overdrive_style || "copy_action";
+      document.getElementById("setting-overdrive-desperation").checked = !!rules.allow_overdrive_desperation;
     } catch (err) { /* not admin yet */ }
   }
   document.getElementById("save-settings").addEventListener("click", async () => {
@@ -384,6 +388,9 @@
       const result = await post("/admin/settings", {
         site_auth: document.getElementById("setting-site-auth").checked,
         maintenance: document.getElementById("setting-maintenance").value,
+        allow_mixed_card_type_stacks: document.getElementById("setting-mixed-stacks").checked,
+        overdrive_style: document.getElementById("setting-overdrive-style").value,
+        allow_overdrive_desperation: document.getElementById("setting-overdrive-desperation").checked,
       });
       status("settings-status",
         `✔ Saved. Password gate: ${result.site_auth ? "ON" : "OFF"} · ` +

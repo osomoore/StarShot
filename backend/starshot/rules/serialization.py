@@ -65,6 +65,9 @@ def state_from_dict(data: dict) -> GameState:
 def rules_config_to_dict(config: RulesConfig) -> dict:
     return {
         "overheat_pile": config.overheat_pile,
+        "allow_mixed_card_type_stacks": config.allow_mixed_card_type_stacks,
+        "overdrive_style": getattr(config.overdrive_style, "value", config.overdrive_style),
+        "allow_overdrive_desperation": config.allow_overdrive_desperation,
     }
 
 

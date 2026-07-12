@@ -10,7 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from starshot.rules.card_effects import interpret_card
-from starshot.rules.models import Card, CardFamily, DesperateFace, OrderCardSelection, RulesConfig, SealMode
+from starshot.rules.models import (
+    Card,
+    CardFamily,
+    DesperateFace,
+    OrderCardSelection,
+    OverdriveStyle,
+    RulesConfig,
+    SealMode,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DECK_SET_PATH = ROOT / "resources" / "decks" / "core_0_2"
@@ -168,7 +176,34 @@ def _load_rules_config(path: Path) -> RulesConfig:
     data = _read_toml(path)
     return RulesConfig(
         overheat_pile=_yes_no(data.get("overheat_pile", "yes"), f"{path.name}.overheat_pile"),
+        allow_mixed_card_type_stacks=_yes_no(
+            data.get("allow_mixed_card_type_stacks", "no"),
+            f"{path.name}.allow_mixed_card_type_stacks",
+        ),
+        overdrive_style=_overdrive_style(data.get("overdrive_style", "copy_action"), f"{path.name}.overdrive_style"),
+        allow_overdrive_desperation=_yes_no(
+            data.get("allow_overdrive_desperation", "no"),
+            f"{path.name}.allow_overdrive_desperation",
+        ),
     )
+
+
+def _overdrive_style(value: object, field: str) -> OverdriveStyle:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string.")
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "copy": OverdriveStyle.COPY_ACTION,
+        "copy_action": OverdriveStyle.COPY_ACTION,
+        "copy_entire_action": OverdriveStyle.COPY_ACTION,
+        "combine": OverdriveStyle.COMBINE_CARDS,
+        "combine_cards": OverdriveStyle.COMBINE_CARDS,
+        "combine_cards_into_one_action": OverdriveStyle.COMBINE_CARDS,
+    }
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        raise ValueError(f"{field} must be copy_action or combine_cards.") from exc
 
 
 def _read_toml(path: Path) -> dict[str, Any]:

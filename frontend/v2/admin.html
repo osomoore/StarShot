@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=6">
-<link rel="stylesheet" href="/v2/static/admin.css?v=6">
+<link rel="stylesheet" href="/v2/static/admin.css?v=7">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -138,6 +138,22 @@
             <textarea id="setting-maintenance" rows="2" maxlength="500"
               placeholder="e.g. Refitting the cannons — back within the hour!"></textarea>
           </label>
+          <h3 class="panel-sub">Game rules</h3>
+          <label class="setting-row">
+            <input type="checkbox" id="setting-mixed-stacks">
+            Allow Mixed Card Type Stacks
+          </label>
+          <label class="setting-row" style="flex-direction:column;align-items:flex-start">
+            Overdrive Style
+            <select id="setting-overdrive-style">
+              <option value="copy_action">Copy entire action</option>
+              <option value="combine_cards">Combine cards into one action</option>
+            </select>
+          </label>
+          <label class="setting-row">
+            <input type="checkbox" id="setting-overdrive-desperation">
+            Allow Overdrive Desperation
+          </label>
           <button class="btn gold" id="save-settings">💾 Save site settings</button>
           <div id="settings-status" class="admin-status"></div>
         </div>
@@ -160,6 +176,6 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=6"></script>
+<script src="/v2/static/admin.js?v=7"></script>
 </body>
 </html>

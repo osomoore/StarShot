@@ -544,10 +544,6 @@ h1, h2, .brand, .poster-title, .banner-text {
     position: fixed;
   }
 
-  :root[data-device="phone"] .fleet-panel {
-    display: none;
-  }
-
   :root[data-device="phone"] .board-wrap {
     border: 0;
     border-radius: 0;
@@ -575,13 +571,13 @@ h1, h2, .brand, .poster-title, .banner-text {
     padding: 5px 8px;
   }
 
-  :root[data-device="phone"] .orders-panel {
+  :root[data-device="phone"] .orders-panel,
+  :root[data-device="phone"] .fleet-panel {
     border-radius: 10px 10px 0 0;
-    bottom: 0;
+    bottom: calc(66px + env(safe-area-inset-bottom));
     box-shadow: 0 -18px 52px rgba(0, 0, 0, 0.58);
     left: 0;
-    max-height: 72dvh;
-    overflow-y: auto;
+    max-height: min(72dvh, calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
     padding: 10px;
     position: fixed;
     right: 0;
@@ -590,8 +586,42 @@ h1, h2, .brand, .poster-title, .banner-text {
     z-index: 50;
   }
 
+  :root[data-device="phone"] .orders-panel {
+    overflow-y: auto;
+  }
+
+  :root[data-device="phone"] .fleet-panel {
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   :root[data-device="phone"] body.mobile-orders-open .orders-panel {
     transform: translateY(0);
+  }
+
+  :root[data-device="phone"] body.mobile-fleet-open .fleet-panel {
+    transform: translateY(0);
+  }
+
+  :root[data-device="phone"] #fleet-list {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 8px;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+  }
+
+  :root[data-device="phone"] .fleet-panel .panel-sub:nth-of-type(2),
+  :root[data-device="phone"] .fleet-panel .action-log {
+    display: none;
+  }
+
+  :root[data-device="phone"] .fleet-card {
+    flex: 0 0 auto;
   }
 
   :root[data-device="phone"] .mobile-orders-close {
@@ -669,7 +699,7 @@ h1, h2, .brand, .poster-title, .banner-text {
     width: 100%;
   }
 
-  :root[data-device="phone"] .mobile-game-hud {
+  :root[data-device="phone"] body.mobile-game-active .mobile-game-hud {
     background: rgba(7, 11, 22, 0.92);
     border: 1px solid rgba(212, 167, 72, 0.36);
     border-radius: 10px;
@@ -682,14 +712,10 @@ h1, h2, .brand, .poster-title, .banner-text {
     padding: 7px;
     position: fixed;
     right: 10px;
-    z-index: 44;
+    z-index: 70;
   }
 
-  :root[data-device="phone"] body.mobile-orders-open .mobile-game-hud {
-    display: none;
-  }
-
-  :root[data-device="phone"] .mobile-game-hud .btn {
+  :root[data-device="phone"] body.mobile-game-active .mobile-game-hud .btn {
     min-height: 42px;
     padding: 8px 6px;
   }

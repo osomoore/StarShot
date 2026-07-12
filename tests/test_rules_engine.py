@@ -87,6 +87,100 @@ class RulesEngineTests(unittest.TestCase):
         with self.assertRaises(RulesError):
             submit_orders(state, "red", orders)
 
+    def test_mixed_stack_config_allows_move_then_attack_resolution(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "controlled_move_1_a", "targeted_attack_aim_1_a")
+        self._set_hand(state, "blue")
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(
+                    action_number=1,
+                    seal_mode=SealMode.SEALED,
+                    cards=(
+                        OrderCardSelection(card_id="controlled_move_1_a", orientation="forward"),
+                        OrderCardSelection(card_id="targeted_attack_aim_1_a", target_player_id="blue"),
+                    ),
+                ),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(action_number=1, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+
+        config = RulesConfig(allow_mixed_card_type_stacks=True, overdrive_style="combine_cards")
+        with patch("starshot.rules.engine.active_catalog", return_value=SimpleNamespace(id=state.deck_set_id, rules_config=config)):
+            state = submit_orders(state, "red", red_orders)
+            state = submit_orders(state, "blue", blue_orders)
+            state = resolve_next_step(state)
+
+        movement = [event for event in state.event_log if event["type"] == "movement_resolved"][-1]
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][-1]
+        self.assertLess(state.event_log.index(movement), state.event_log.index(volley))
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
+        self.assertEqual(volley["attacker_position"]["q"], -10)
+        self.assertEqual(volley["card_ids"], ["targeted_attack_aim_1_a"])
+
+    def test_overdrive_desperation_is_rejected_by_default(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_afterburners_a")
+        orders = OrdersSubmission(
+            stacks=(
+                ActionStack(
+                    action_number=1,
+                    seal_mode=SealMode.OVERDRIVE,
+                    cards=(OrderCardSelection(card_id="desp_afterburners_a", face="desperate", orientation="forward"),),
+                ),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+
+        with self.assertRaisesRegex(RulesError, "Desperation cards cannot be overdriven"):
+            submit_orders(state, "red", orders)
+
+    def test_combine_overdrive_style_does_not_copy_action(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "controlled_move_1_a")
+        self._set_hand(state, "blue")
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(
+                    action_number=1,
+                    seal_mode=SealMode.OVERDRIVE,
+                    cards=(OrderCardSelection(card_id="controlled_move_1_a", orientation="forward"),),
+                ),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(action_number=1, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+
+        config = RulesConfig(overdrive_style="combine_cards")
+        with patch("starshot.rules.engine.active_catalog", return_value=SimpleNamespace(id=state.deck_set_id, rules_config=config)):
+            state = submit_orders(state, "red", red_orders)
+            state = submit_orders(state, "blue", blue_orders)
+            state = resolve_next_step(state)
+
+        movement_events = [
+            event for event in state.event_log
+            if event["type"] == "movement_resolved" and event["player_id"] == "red" and event["action_number"] == 1
+        ]
+        self.assertEqual(len(movement_events), 1)
+        self.assertFalse(movement_events[0]["overdrive_copy"])
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
+
     def test_orders_advance_to_action_one_when_all_players_submit(self):
         state = self._state_with_submitted_orders()
 
