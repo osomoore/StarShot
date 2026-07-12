@@ -2,6 +2,41 @@
 
 StarShot is a server-authoritative, turn-based tactical space combat game.
 
+## v2 — Void Corsairs (online multiplayer)
+
+`/v2` is the revamped space-pirate client + multiplayer stack, built on the same
+rules engine but using the **core 0.3** decks (v1 stays on core 0.2 via the
+process default; v2 selects its deck set per request with
+`starshot.rules.deck_data.deck_set_override`).
+
+- **Play:** `https://david.cybrwzrds.com/v2` (site gate: HTTP Basic auth, see below)
+- **Frontend:** `frontend/v2/` — vanilla JS SPA. Starfield + canvas battle
+  effects (lasers, shields, explosions, warp), physical card deck/hand-fan
+  order builder, hex board with replay animation, 2.5s auto-refresh polling.
+- **Backend:** `backend/starshot/v2/` — accounts (pbkdf2 + cookie sessions),
+  quick-match queue, open lobbies, vs-AI matches, per-viewer redacted game
+  views (opponents' hands/decks/orders and the RNG cursor are never sent),
+  and server-side AI pilots.
+- **AI pilots** (`backend/starshot/v2/ai.py`): Salvage Captain Morrigan
+  (bauble runner), Corsair Blackvane (hunter-killer), Gunner Redbeard
+  (blaster). They use the engine's own `interpret_card` for planning, predict
+  target movement from actual history, and price overdrive for the 0.3
+  no-overheat rules.
+- **API:** everything under `/api/v2/...` (auth, lobby, matches, games).
+  Order submission is bound to the signed-in session — clients cannot act for
+  other players.
+- **Site password gate:** the Apache vhost proxies the whole site to this app,
+  so the Basic-auth gate lives in FastAPI (`STARSHOT_SITE_AUTH=on`, users in
+  `.htpasswd` at the repo root, `{SHA}` format). `docs`-root
+  `.htaccess`/`.htpasswd` files also exist for any future disk-served content.
+- **Tests:** `tests/test_v2_api.py` covers auth, redaction, matchmaking,
+  security, and full games vs AI.
+
+After changing backend code, the container picks it up automatically
+(`uvicorn --reload`); the first deploy of this setup needs one
+`docker compose up -d --force-recreate` (or `docker restart starshot` if only
+code changed).
+
 ## Current Status
 
 The project has a rules extraction workflow, a first implementation spec, and an initial Python rules-engine scaffold. The current code supports:

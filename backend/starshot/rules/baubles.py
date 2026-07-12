@@ -20,11 +20,28 @@ class BaublePlacementError(ValueError):
 
 
 def create_baubles(rng: Random, players: dict[str, PlayerState]) -> list[BaubleState]:
+    """Randomly place the ten numbered baubles plus The Fang.
+
+    High numbers have the tightest center-distance rings, so they are placed
+    FIRST (most-constrained-first); and because random placement can still
+    paint itself into a corner, a dead-end restarts the whole layout instead
+    of failing game creation.
+    """
+    last_error: BaublePlacementError | None = None
+    for _attempt in range(25):
+        try:
+            return _create_baubles_once(rng, players)
+        except BaublePlacementError as exc:
+            last_error = exc
+    raise last_error  # effectively unreachable; kept for safety
+
+
+def _create_baubles_once(rng: Random, players: dict[str, PlayerState]) -> list[BaubleState]:
     occupied: set[tuple[int, int]] = set(bauble_buffer_hexes(0, 0))
     baubles: list[BaubleState] = []
     player_hexes = tuple((player.ship.q, player.ship.r) for player in players.values() if not player.eliminated)
 
-    for number in range(1, 6):
+    for number in range(5, 0, -1):
         for copy_number in range(1, 3):
             q, r = _choose_bauble_hex(rng, number, occupied, player_hexes)
             occupied.update(bauble_buffer_hexes(q, r))
@@ -38,6 +55,7 @@ def create_baubles(rng: Random, players: dict[str, PlayerState]) -> list[BaubleS
                 )
             )
 
+    baubles.sort(key=lambda bauble: bauble.id)
     baubles.append(BaubleState(id="fang", number=6, q=0, r=0, victory_points=FANG_VP, is_fang=True))
     return baubles
 

@@ -13,18 +13,81 @@ from starshot.rules.deck_data import active_catalog
 from starshot.rules import GameConfig, GameState, RulesError, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.serialization import orders_from_dict, state_to_dict
 from starshot.rules.ship_simulation import simulate_ship_kills
+from starshot.v2 import security as v2_security
+from starshot.v2.router import router as v2_router
 
 app = FastAPI(title="StarShot")
 ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_DIR = ROOT / "frontend" / "debug"
+V2_FRONTEND_DIR = ROOT / "frontend" / "v2"
 RESOURCES_DIR = ROOT / "resources"
 DEFAULT_DB_PATH = ROOT / ".starshot" / "games.sqlite3"
+SITE_HTPASSWD_PATH = Path(os.environ.get("STARSHOT_SITE_HTPASSWD", ROOT / ".htpasswd"))
+
+# Site-wide HTTP Basic auth (the Apache vhost proxies everything to this app,
+# so the password gate has to live here). Default comes from STARSHOT_SITE_AUTH
+# in docker-compose; the admin console can toggle it at runtime.
+import base64
+
+from fastapi import Request
+from fastapi.responses import Response as PlainResponse
+
+from starshot.v2.settings import site_auth_enabled
+
+
+@app.middleware("http")
+async def site_basic_auth(request: Request, call_next):
+    if not site_auth_enabled():
+        return await call_next(request)
+    header = request.headers.get("authorization", "")
+    if header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(header[6:]).decode("utf-8")
+            username, _, password = decoded.partition(":")
+        except Exception:
+            username, password = "", ""
+        users = v2_security.load_htpasswd(SITE_HTPASSWD_PATH)
+        stored = users.get(username)
+        if stored and v2_security.verify_htpasswd_password(password, stored):
+            return await call_next(request)
+    return PlainResponse(
+        content="Authentication required.",
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="StarShot"'},
+    )
+
+
+app.include_router(v2_router)
+
+from starshot.v2.admin import admin_router  # noqa: E402
+
+app.include_router(admin_router)
 
 if (FRONTEND_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 
+if (V2_FRONTEND_DIR / "static").exists():
+    app.mount("/v2/static", StaticFiles(directory=V2_FRONTEND_DIR / "static"), name="v2static")
+
 if RESOURCES_DIR.exists():
     app.mount("/resources", StaticFiles(directory=RESOURCES_DIR), name="resources")
+
+
+@app.get("/v2")
+@app.get("/v2/")
+def v2_index() -> FileResponse:
+    index_path = V2_FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="v2 frontend not built")
+    return FileResponse(index_path, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/v2/admin")
+def v2_admin_page() -> FileResponse:
+    page = V2_FRONTEND_DIR / "admin.html"
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="admin page not built")
+    return FileResponse(page, headers={"Cache-Control": "no-store"})
 
 
 class CreateGameRequest(BaseModel):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import re
 import tomllib
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,8 +75,12 @@ class FaceSpec:
     lead_the_target: bool = False
 
 
-_ACTIVE_CATALOG: DeckCatalog | None = None
-_ACTIVE_CATALOG_PATH: Path | None = None
+_CATALOG_CACHE: dict[Path, DeckCatalog] = {}
+
+# Per-request/per-task deck set override (used by the v2 API so its games can
+# run a different deck set than the process-wide default without touching the
+# environment). ContextVar so it is safe across threads and async tasks.
+_DECK_SET_OVERRIDE: ContextVar[str | None] = ContextVar("starshot_deck_set_override", default=None)
 
 
 def default_deck_set_path() -> Path:
@@ -82,18 +88,34 @@ def default_deck_set_path() -> Path:
 
 
 def active_deck_set_path() -> Path:
+    override = _DECK_SET_OVERRIDE.get()
+    if override:
+        return Path(override).expanduser()
     configured = os.environ.get(DECK_SET_ENV)
     return Path(configured).expanduser() if configured else default_deck_set_path()
 
 
-def active_catalog() -> DeckCatalog:
-    global _ACTIVE_CATALOG, _ACTIVE_CATALOG_PATH
+@contextmanager
+def deck_set_override(path: Path | str):
+    token = _DECK_SET_OVERRIDE.set(str(path))
+    try:
+        yield
+    finally:
+        _DECK_SET_OVERRIDE.reset(token)
 
+
+def active_catalog() -> DeckCatalog:
     catalog_path = active_deck_set_path().resolve()
-    if _ACTIVE_CATALOG is None or _ACTIVE_CATALOG_PATH != catalog_path:
-        _ACTIVE_CATALOG = load_deck_catalog(catalog_path)
-        _ACTIVE_CATALOG_PATH = catalog_path
-    return _ACTIVE_CATALOG
+    catalog = _CATALOG_CACHE.get(catalog_path)
+    if catalog is None:
+        catalog = load_deck_catalog(catalog_path)
+        _CATALOG_CACHE[catalog_path] = catalog
+    return catalog
+
+
+def clear_catalog_cache() -> None:
+    """Force deck sets to reload (after the admin edits decks or keywords)."""
+    _CATALOG_CACHE.clear()
 
 
 def load_deck_catalog(path: Path) -> DeckCatalog:
@@ -420,6 +442,12 @@ def _single_face_spec(text: str, field: str) -> FaceSpec:
 
 
 def _phrase_spec(part: str, field: str) -> FaceSpec | None:
+    # Admin-defined keywords take precedence so existing text can be overridden.
+    from starshot.rules.custom_keywords import custom_phrase_spec
+
+    custom = custom_phrase_spec(part)
+    if custom is not None:
+        return custom
     if match := re.fullmatch(r"move (\d+)", part):
         return FaceSpec(family=CardFamily.MOVE, value=int(match.group(1)), requires_target=False)
     if match := re.fullmatch(r"move (\d+) right", part):

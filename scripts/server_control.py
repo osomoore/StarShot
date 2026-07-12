@@ -85,7 +85,7 @@ def start_server(deck_set: Path | None = None) -> int:
             "uvicorn",
             "starshot.api.app:app",
             "--app-dir",
-            "backend",
+            str(BACKEND_DIR),
             "--host",
             HOST,
             "--port",

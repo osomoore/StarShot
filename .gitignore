@@ -32,3 +32,18 @@ __pycache__/
 # Environment files
 .env
 .env.*
+
+# Local secrets / machine-local junk
+.htpasswd
+.local/
+.cache/
+.config/
+.claude/
+.claude.json
+.starshot/
+
+# Local visual comparison/reference artifacts
+images/correct_damage_lanes.png
+images/current_incorrect_damage_lanes.png
+images/full-ship.png
+images/mini-ship.png
