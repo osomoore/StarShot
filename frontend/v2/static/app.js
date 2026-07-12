@@ -1,6 +1,76 @@
 /* App bootstrap: auth screen + screen router + toasts. */
 (function () {
   let authMode = "login";
+  let lastDeviceDiagnosticsKey = "";
+
+  function mediaMatches(query) {
+    return Boolean(window.matchMedia?.(query)?.matches);
+  }
+
+  function collectDeviceDiagnostics(reason) {
+    return {
+      app: "v2",
+      reason,
+      data_device: document.documentElement.dataset.device || "",
+      detected_phone_layout: document.documentElement.dataset.device === "phone",
+      user_agent: navigator.userAgent || "",
+      platform: navigator.platform || "",
+      vendor: navigator.vendor || "",
+      max_touch_points: navigator.maxTouchPoints || 0,
+      device_pixel_ratio: window.devicePixelRatio || 1,
+      inner_width: window.innerWidth,
+      inner_height: window.innerHeight,
+      outer_width: window.outerWidth,
+      outer_height: window.outerHeight,
+      screen_width: window.screen?.width,
+      screen_height: window.screen?.height,
+      avail_width: window.screen?.availWidth,
+      avail_height: window.screen?.availHeight,
+      visual_viewport_width: window.visualViewport?.width,
+      visual_viewport_height: window.visualViewport?.height,
+      orientation_type: window.screen?.orientation?.type || "",
+      pointer_coarse: mediaMatches("(pointer: coarse)"),
+      pointer_fine: mediaMatches("(pointer: fine)"),
+      any_pointer_coarse: mediaMatches("(any-pointer: coarse)"),
+      any_pointer_fine: mediaMatches("(any-pointer: fine)"),
+      hover_hover: mediaMatches("(hover: hover)"),
+      any_hover_hover: mediaMatches("(any-hover: hover)"),
+      max_width_760: mediaMatches("(max-width: 760px)"),
+      max_width_900: mediaMatches("(max-width: 900px)"),
+      max_width_1024: mediaMatches("(max-width: 1024px)"),
+      max_width_1180: mediaMatches("(max-width: 1180px)"),
+      max_width_1366: mediaMatches("(max-width: 1366px)"),
+      max_height_620: mediaMatches("(max-height: 620px)"),
+    };
+  }
+
+  function deviceDiagnosticsKey(diagnostics) {
+    return [
+      diagnostics.data_device,
+      diagnostics.inner_width,
+      diagnostics.inner_height,
+      diagnostics.max_touch_points,
+      diagnostics.pointer_coarse,
+      diagnostics.any_pointer_coarse,
+      diagnostics.max_width_1366,
+    ].join("|");
+  }
+
+  function reportDeviceDiagnostics(reason) {
+    const diagnostics = collectDeviceDiagnostics(reason);
+    const key = deviceDiagnosticsKey(diagnostics);
+    if (key === lastDeviceDiagnosticsKey) return;
+    lastDeviceDiagnosticsKey = key;
+    console.info("[StarShot v2 device diagnostics]", diagnostics);
+    fetch("/api/debug/device-info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(diagnostics),
+      keepalive: true,
+    }).catch((error) => {
+      console.warn("[StarShot v2 device diagnostics] server log failed", error);
+    });
+  }
 
   function showScreen(name) {
     for (const screen of ["auth", "lobby", "game"]) {
@@ -28,6 +98,12 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
+    reportDeviceDiagnostics("v2-dom-content-loaded");
+    window.addEventListener("resize", () => reportDeviceDiagnostics("v2-resize"));
+    window.addEventListener("orientationchange", () => {
+      setTimeout(() => reportDeviceDiagnostics("v2-orientationchange"), 150);
+    });
+
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
     document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));
     document.getElementById("auth-form").addEventListener("submit", async (event) => {
@@ -61,5 +137,5 @@
     }
   });
 
-  window.App = { showScreen, toast };
+  window.App = { showScreen, toast, reportDeviceDiagnostics };
 })();

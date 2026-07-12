@@ -505,7 +505,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   display: none;
 }
 
-@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+@media (max-width: 760px), (any-pointer: coarse) and (max-width: 1366px) {
   :root[data-device="phone"] #screen-game {
     height: 100dvh;
     overflow: hidden;

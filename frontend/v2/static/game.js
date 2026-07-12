@@ -27,15 +27,22 @@
 
   function isPhoneUser() {
     const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)")?.matches;
     const narrow = window.matchMedia?.("(max-width: 760px)")?.matches;
+    const tabletViewport = window.matchMedia?.("(max-width: 1366px)")?.matches;
     const compactHeight = window.matchMedia?.("(max-height: 620px)")?.matches;
     const mobileAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
-    return Boolean((coarsePointer && narrow) || (mobileAgent && (narrow || compactHeight)));
+    const touchCapable = (navigator.maxTouchPoints || 0) > 0;
+    return Boolean(
+      ((coarsePointer || anyCoarsePointer || touchCapable) && tabletViewport)
+      || (mobileAgent && (narrow || compactHeight)),
+    );
   }
 
   function applyMobileMode() {
     const phone = isPhoneUser();
     document.documentElement.dataset.device = phone ? "phone" : "desktop";
+    App.reportDeviceDiagnostics?.("v2-game-mobile-mode");
     if (!phone) {
       setMobileSheet(null);
       return;

@@ -2107,7 +2107,7 @@ pre {
   color: #e6ece9 !important;
 }
 
-@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+@media (max-width: 760px), (any-pointer: coarse) and (max-width: 1366px) {
   :root[data-device="phone"] body {
     background: #0f1415;
     overflow: hidden;

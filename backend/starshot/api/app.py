@@ -28,11 +28,15 @@ SITE_HTPASSWD_PATH = Path(os.environ.get("STARSHOT_SITE_HTPASSWD", ROOT / ".htpa
 # so the password gate has to live here). Default comes from STARSHOT_SITE_AUTH
 # in docker-compose; the admin console can toggle it at runtime.
 import base64
+import logging
 
 from fastapi import Request
 from fastapi.responses import Response as PlainResponse
 
 from starshot.v2.settings import site_auth_enabled
+
+
+device_logger = logging.getLogger("starshot.device")
 
 
 @app.middleware("http")
@@ -106,6 +110,40 @@ class DebugDrawDesperationRequest(BaseModel):
     card_id: str
 
 
+class DeviceInfoRequest(BaseModel):
+    data_device: str = ""
+    detected_phone_layout: bool = False
+    user_agent: str = ""
+    platform: str = ""
+    vendor: str = ""
+    max_touch_points: int = 0
+    device_pixel_ratio: float = 1
+    inner_width: float | None = None
+    inner_height: float | None = None
+    outer_width: float | None = None
+    outer_height: float | None = None
+    screen_width: float | None = None
+    screen_height: float | None = None
+    avail_width: float | None = None
+    avail_height: float | None = None
+    visual_viewport_width: float | None = None
+    visual_viewport_height: float | None = None
+    orientation_type: str = ""
+    pointer_coarse: bool = False
+    pointer_fine: bool = False
+    any_pointer_coarse: bool = False
+    any_pointer_fine: bool = False
+    hover_hover: bool = False
+    any_hover_hover: bool = False
+    max_width_760: bool = False
+    max_width_900: bool = False
+    max_width_1024: bool = False
+    max_width_1180: bool = False
+    max_width_1366: bool = False
+    max_height_620: bool = False
+    reason: str = ""
+
+
 def get_store() -> SQLiteGameStore:
     return SQLiteGameStore(Path(os.environ.get("STARSHOT_DB", DEFAULT_DB_PATH)))
 
@@ -170,6 +208,39 @@ def ship_simulator() -> FileResponse:
 def health() -> dict[str, str]:
     catalog = active_catalog()
     return {"status": "ok", "deck_set_id": catalog.id, "deck_set_path": str(catalog.path)}
+
+
+@app.post("/api/debug/device-info")
+def debug_device_info(payload: DeviceInfoRequest, request: Request) -> dict[str, bool]:
+    client_host = request.client.host if request.client else "unknown"
+    device_logger.warning(
+        "Device connect %s mode=%s phone=%s inner=%sx%s visual=%sx%s screen=%sx%s dpr=%s "
+        "touch=%s pointer(coarse=%s fine=%s anyCoarse=%s anyFine=%s) "
+        "widths(760=%s 900=%s 1024=%s 1180=%s 1366=%s) platform=%r ua=%r",
+        client_host,
+        payload.data_device,
+        payload.detected_phone_layout,
+        payload.inner_width,
+        payload.inner_height,
+        payload.visual_viewport_width,
+        payload.visual_viewport_height,
+        payload.screen_width,
+        payload.screen_height,
+        payload.device_pixel_ratio,
+        payload.max_touch_points,
+        payload.pointer_coarse,
+        payload.pointer_fine,
+        payload.any_pointer_coarse,
+        payload.any_pointer_fine,
+        payload.max_width_760,
+        payload.max_width_900,
+        payload.max_width_1024,
+        payload.max_width_1180,
+        payload.max_width_1366,
+        payload.platform,
+        payload.user_agent,
+    )
+    return {"ok": True}
 
 
 @app.get("/api/simulations/ship-kill")

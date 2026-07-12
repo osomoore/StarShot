@@ -27,6 +27,7 @@ const state = {
   mobileStatusOpen: false,
   mobileStatusPlayerId: "",
   mobileBoardInitialized: false,
+  lastDeviceDiagnosticsKey: "",
   resolving: false,
 };
 
@@ -137,10 +138,16 @@ const elements = {
 
 function detectPhoneLayout() {
   const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+  const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)")?.matches;
   const narrowViewport = window.matchMedia?.("(max-width: 760px)")?.matches;
+  const tabletViewport = window.matchMedia?.("(max-width: 1366px)")?.matches;
   const compactHeight = window.matchMedia?.("(max-height: 620px)")?.matches;
   const mobileAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
-  return Boolean((coarsePointer && narrowViewport) || (mobileAgent && (narrowViewport || compactHeight)));
+  const touchCapable = (navigator.maxTouchPoints || 0) > 0;
+  return Boolean(
+    ((coarsePointer || anyCoarsePointer || touchCapable) && tabletViewport)
+    || (mobileAgent && (narrowViewport || compactHeight)),
+  );
 }
 
 function applyDeviceMode() {
@@ -157,6 +164,75 @@ function applyDeviceMode() {
     document.body.classList.remove("mobile-orders-open", "mobile-status-open");
   }
   renderMobileControls();
+  reportDeviceDiagnostics("applyDeviceMode");
+}
+
+function mediaMatches(query) {
+  return Boolean(window.matchMedia?.(query)?.matches);
+}
+
+function collectDeviceDiagnostics(reason) {
+  return {
+    reason,
+    data_device: document.documentElement.dataset.device || "",
+    detected_phone_layout: state.isPhone,
+    user_agent: navigator.userAgent || "",
+    platform: navigator.platform || "",
+    vendor: navigator.vendor || "",
+    max_touch_points: navigator.maxTouchPoints || 0,
+    device_pixel_ratio: window.devicePixelRatio || 1,
+    inner_width: window.innerWidth,
+    inner_height: window.innerHeight,
+    outer_width: window.outerWidth,
+    outer_height: window.outerHeight,
+    screen_width: window.screen?.width,
+    screen_height: window.screen?.height,
+    avail_width: window.screen?.availWidth,
+    avail_height: window.screen?.availHeight,
+    visual_viewport_width: window.visualViewport?.width,
+    visual_viewport_height: window.visualViewport?.height,
+    orientation_type: window.screen?.orientation?.type || "",
+    pointer_coarse: mediaMatches("(pointer: coarse)"),
+    pointer_fine: mediaMatches("(pointer: fine)"),
+    any_pointer_coarse: mediaMatches("(any-pointer: coarse)"),
+    any_pointer_fine: mediaMatches("(any-pointer: fine)"),
+    hover_hover: mediaMatches("(hover: hover)"),
+    any_hover_hover: mediaMatches("(any-hover: hover)"),
+    max_width_760: mediaMatches("(max-width: 760px)"),
+    max_width_900: mediaMatches("(max-width: 900px)"),
+    max_width_1024: mediaMatches("(max-width: 1024px)"),
+    max_width_1180: mediaMatches("(max-width: 1180px)"),
+    max_width_1366: mediaMatches("(max-width: 1366px)"),
+    max_height_620: mediaMatches("(max-height: 620px)"),
+  };
+}
+
+function deviceDiagnosticsKey(diagnostics) {
+  return [
+    diagnostics.data_device,
+    diagnostics.inner_width,
+    diagnostics.inner_height,
+    diagnostics.max_touch_points,
+    diagnostics.pointer_coarse,
+    diagnostics.any_pointer_coarse,
+    diagnostics.max_width_1366,
+  ].join("|");
+}
+
+function reportDeviceDiagnostics(reason) {
+  const diagnostics = collectDeviceDiagnostics(reason);
+  const key = deviceDiagnosticsKey(diagnostics);
+  if (key === state.lastDeviceDiagnosticsKey) return;
+  state.lastDeviceDiagnosticsKey = key;
+  console.info("[StarShot device diagnostics]", diagnostics);
+  fetch("/api/debug/device-info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(diagnostics),
+    keepalive: true,
+  }).catch((error) => {
+    console.warn("[StarShot device diagnostics] server log failed", error);
+  });
 }
 
 function resetMobileBoardView() {

@@ -13,7 +13,7 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 - `backend/starshot/rules/`: pure deterministic rules engine.
 - `backend/starshot/api/`: FastAPI app and HTTP routes.
 - `backend/starshot/persistence/`: SQLite snapshot/event persistence.
-- `frontend/debug/`: plain HTML/CSS/JavaScript debug UI served by FastAPI at `/`.
+- `frontend/debug/`: legacy debug UI served by FastAPI at `/`; do not spend effort on it unless explicitly requested.
 - `tests/`: unittest suite for rules, persistence, serialization, and API.
 - `docs/rules/`: canonical rules PDF, extracted text, and implementation checklist.
 - `resources/decks/core_0_2/`: default human-editable TOML deck data.
@@ -99,5 +99,5 @@ Not implemented yet:
 - Prefer small working increments that can be tried in the browser.
 - When changing rules, update or add tests first or alongside the change.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
-- The debug UI is intentionally a development tool, not final game UX.
+- `/v2` is the active browser interface. Treat the non-v2 debug UI as legacy and out of scope unless the user explicitly asks for it.
 - 96 tests passing as of last session.
