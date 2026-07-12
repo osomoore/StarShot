@@ -826,6 +826,11 @@ select {
   width: 100%;
 }
 
+.mobile-game-controls,
+.mobile-sheet-close {
+  display: none;
+}
+
 .ship-boards {
   display: grid;
   gap: 12px;
@@ -2100,6 +2105,311 @@ pre {
 :root[data-theme="dark"] .combat-result-summary,
 :root[data-theme="dark"] .end-game-player-title span {
   color: #e6ece9 !important;
+}
+
+@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+  :root[data-device="phone"] body {
+    background: #0f1415;
+    overflow: hidden;
+  }
+
+  :root[data-device="phone"] .topbar,
+  :root[data-device="phone"] .sidebar,
+  :root[data-device="phone"] .control-strip,
+  :root[data-device="phone"] .lower-panels {
+    display: none;
+  }
+
+  :root[data-device="phone"] .app-shell,
+  :root[data-device="phone"] .workspace,
+  :root[data-device="phone"] .inspector,
+  :root[data-device="phone"] .play-layout,
+  :root[data-device="phone"] .play-main {
+    display: block;
+    min-height: 100dvh;
+    padding: 0;
+  }
+
+  :root[data-device="phone"] .board-panel {
+    background: #0f1718;
+    border: 0;
+    border-radius: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    inset: 0;
+    overflow: hidden;
+    padding: 0;
+    position: fixed;
+    z-index: 1;
+  }
+
+  :root[data-device="phone"] .board-header {
+    align-items: center;
+    background: rgb(15 20 21 / 0.9);
+    border-bottom: 1px solid rgb(255 255 255 / 0.1);
+    color: #e6ece9;
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    min-height: 62px;
+    padding: calc(8px + env(safe-area-inset-top)) 10px 8px;
+    position: relative;
+    z-index: 3;
+  }
+
+  :root[data-device="phone"] .board-heading {
+    gap: 2px;
+    min-width: 0;
+  }
+
+  :root[data-device="phone"] .board-heading h2 {
+    font-size: 1rem;
+  }
+
+  :root[data-device="phone"] .board-info {
+    color: #d2dcda;
+    font-size: 0.82rem;
+    gap: 8px;
+  }
+
+  :root[data-device="phone"] .board-info .label {
+    color: #95a7a5;
+    font-size: 0.62rem;
+    margin: 0;
+  }
+
+  :root[data-device="phone"] .board-actions {
+    align-items: center;
+    flex: 1 0 auto;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  :root[data-device="phone"] .board-actions button {
+    min-height: 34px;
+    padding: 5px 8px;
+  }
+
+  :root[data-device="phone"] .finished-game-actions {
+    display: none;
+  }
+
+  :root[data-device="phone"] .board-layout-container {
+    min-height: 0;
+  }
+
+  :root[data-device="phone"] .board-svg {
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+    height: 100%;
+    max-height: none;
+    min-height: 0;
+    touch-action: none;
+    width: 100vw;
+  }
+
+  :root[data-device="phone"] .ship-token {
+    cursor: pointer;
+  }
+
+  :root[data-device="phone"] .right-rail,
+  :root[data-device="phone"] .player-rail {
+    background: #ffffff;
+    border: 1px solid #bfc9c5;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 -18px 52px rgb(0 0 0 / 0.35);
+    display: block;
+    left: 0;
+    max-height: 68dvh;
+    overflow: auto;
+    padding: 10px;
+    position: fixed;
+    right: 0;
+    top: auto;
+    transform: translateY(106%);
+    transition: transform 180ms ease;
+    z-index: 60;
+  }
+
+  :root[data-device="phone"] .right-rail {
+    bottom: 0;
+  }
+
+  :root[data-device="phone"] .player-rail {
+    bottom: 0;
+  }
+
+  :root[data-device="phone"] body.mobile-orders-open .right-rail,
+  :root[data-device="phone"] body.mobile-status-open .player-rail {
+    transform: translateY(0);
+  }
+
+  :root[data-device="phone"] body.mobile-orders-open .player-rail,
+  :root[data-device="phone"] body.mobile-status-open .right-rail {
+    transform: translateY(106%);
+  }
+
+  :root[data-device="phone"] .orders-builder {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  :root[data-device="phone"] .mobile-sheet-close {
+    background: #ffffff;
+    border-color: #cdd5d1;
+    color: #182022;
+    display: inline-flex;
+    justify-self: end;
+    min-height: 32px;
+    padding: 5px 10px;
+  }
+
+  :root[data-device="phone"] .stacked-header {
+    align-items: stretch;
+    display: grid;
+    gap: 8px;
+  }
+
+  :root[data-device="phone"] .builder-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :root[data-device="phone"] .builder-preview {
+    display: none;
+  }
+
+  :root[data-device="phone"] .order-stacks {
+    gap: 10px;
+  }
+
+  :root[data-device="phone"] .order-stack {
+    padding: 10px;
+  }
+
+  :root[data-device="phone"] .order-stack-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :root[data-device="phone"] .order-stack-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :root[data-device="phone"] .card-slot {
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 0.42fr);
+  }
+
+  :root[data-device="phone"] .front-card,
+  :root[data-device="phone"] .hex-choice-summary {
+    min-height: 66px;
+    padding: 8px;
+  }
+
+  :root[data-device="phone"] .front-card strong {
+    font-size: 0.88rem;
+  }
+
+  :root[data-device="phone"] .front-card span {
+    font-size: 0.68rem;
+  }
+
+  :root[data-device="phone"] .mobile-game-controls {
+    background: rgb(15 20 21 / 0.92);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 8px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 14px 40px rgb(0 0 0 / 0.34);
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    left: 10px;
+    padding: 7px;
+    position: fixed;
+    right: 10px;
+    z-index: 45;
+  }
+
+  :root[data-device="phone"] .mobile-game-controls button {
+    min-height: 42px;
+    padding: 8px 6px;
+  }
+
+  :root[data-device="phone"] .mobile-game-controls button[aria-pressed="true"] {
+    background: #ffffff;
+    color: #182022;
+  }
+
+  :root[data-device="phone"] .card-picker-overlay {
+    align-items: flex-end;
+    background: rgb(9 13 14 / 0.26);
+    inset: 0;
+    justify-content: center;
+    padding: 76px 8px calc(70px + env(safe-area-inset-bottom));
+    width: auto;
+    z-index: 80;
+  }
+
+  :root[data-device="phone"] .card-picker-panel,
+  :root[data-device="phone"] .hex-choice-panel {
+    border-radius: 8px;
+    max-height: min(64dvh, 520px);
+    padding: 12px;
+    width: min(430px, 100%);
+  }
+
+  :root[data-device="phone"] .card-picker-columns {
+    grid-template-columns: 1fr;
+  }
+
+  :root[data-device="phone"] .picker-card {
+    aspect-ratio: auto;
+    min-height: 58px;
+  }
+
+  :root[data-device="phone"] .hex-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :root[data-device="phone"] .hex-choice {
+    min-height: 104px;
+  }
+
+  :root[data-device="phone"] .mini-boards-column {
+    gap: 8px;
+  }
+
+  :root[data-device="phone"] .mini-ship-board {
+    display: grid;
+    grid-template-columns: minmax(0, 0.7fr) minmax(96px, 0.3fr);
+  }
+
+  :root[data-device="phone"] .mini-ship-header,
+  :root[data-device="phone"] .mini-ship-footer {
+    grid-column: 1;
+  }
+
+  :root[data-device="phone"] .mini-ship-svg-container {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  :root[data-device="phone"] .mini-ship-svg {
+    max-width: 112px;
+  }
+
+  :root[data-theme="dark"][data-device="phone"] .right-rail,
+  :root[data-theme="dark"][data-device="phone"] .player-rail {
+    background: #151c1d;
+    border-color: #2e3a3c;
+  }
+
+  :root[data-theme="dark"][data-device="phone"] .mobile-sheet-close {
+    background: #1a2325;
+    border-color: #405153;
+    color: #e6ece9;
+  }
 }
 
 @media (max-width: 900px) {

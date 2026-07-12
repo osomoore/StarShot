@@ -202,21 +202,72 @@
   }
   function resetView() { zoom = 1; panX = 0; panY = 0; applyViewBox(); }
 
+  function isPhoneBoard() {
+    return document.documentElement.dataset.device === "phone";
+  }
+
+  function viewScale() {
+    const rect = svg.getBoundingClientRect();
+    const extent = HEX * SQRT3 * (RADIUS + 2);
+    return rect.width ? (extent * 2) / zoom / rect.width : 1;
+  }
+
   // drag to pan
   let dragging = false, lastX = 0, lastY = 0;
-  svg.addEventListener("mousedown", (event) => { dragging = true; lastX = event.clientX; lastY = event.clientY; });
+  svg.addEventListener("mousedown", (event) => {
+    if (isPhoneBoard()) return;
+    dragging = true; lastX = event.clientX; lastY = event.clientY;
+  });
   window.addEventListener("mouseup", () => { dragging = false; });
   window.addEventListener("mousemove", (event) => {
     if (!dragging) return;
-    const rect = svg.getBoundingClientRect();
-    const extent = HEX * SQRT3 * (RADIUS + 2);
-    const scale = (extent * 2) / zoom / rect.width;
+    const scale = viewScale();
     panX -= (event.clientX - lastX) * scale;
     panY -= (event.clientY - lastY) * scale;
     lastX = event.clientX; lastY = event.clientY;
     applyViewBox();
   });
   svg.addEventListener("wheel", (event) => { event.preventDefault(); setZoom(event.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
+
+  let touchGesture = null;
+  const touchPoints = (event) => [...event.touches].map((touch) => ({ x: touch.clientX, y: touch.clientY }));
+  const midpoint = (points) => ({
+    x: points.reduce((total, point) => total + point.x, 0) / points.length,
+    y: points.reduce((total, point) => total + point.y, 0) / points.length,
+  });
+  const distance = (left, right) => Math.hypot(left.x - right.x, left.y - right.y);
+
+  svg.addEventListener("touchstart", (event) => {
+    if (!isPhoneBoard()) return;
+    const points = touchPoints(event);
+    if (!points.length) return;
+    event.preventDefault();
+    touchGesture = {
+      points,
+      center: midpoint(points),
+      distance: points.length > 1 ? distance(points[0], points[1]) : 0,
+      zoom,
+      panX,
+      panY,
+    };
+  }, { passive: false });
+  svg.addEventListener("touchmove", (event) => {
+    if (!isPhoneBoard() || !touchGesture) return;
+    const points = touchPoints(event);
+    if (!points.length) return;
+    event.preventDefault();
+    const center = midpoint(points);
+    if (points.length > 1 && touchGesture.points.length > 1) {
+      const ratio = touchGesture.distance ? distance(points[0], points[1]) / touchGesture.distance : 1;
+      zoom = Math.min(3.2, Math.max(0.62, touchGesture.zoom * ratio));
+    }
+    const scale = viewScale();
+    panX = touchGesture.panX - (center.x - touchGesture.center.x) * scale;
+    panY = touchGesture.panY - (center.y - touchGesture.center.y) * scale;
+    applyViewBox();
+  }, { passive: false });
+  svg.addEventListener("touchend", () => { touchGesture = null; });
+  svg.addEventListener("touchcancel", () => { touchGesture = null; });
 
   document.getElementById("zoom-in").addEventListener("click", () => setZoom(1.2));
   document.getElementById("zoom-out").addEventListener("click", () => setZoom(0.83));
@@ -276,6 +327,7 @@
     hexToScreen,
     renderPreview,
     clearPreview: () => renderPreview([]),
+    resetView,
     colorOf: (playerId) => seatColorByPlayer[playerId] || "#d4a748",
     shortName,
     setNameMap: (map) => { nameMap = map || {}; },

@@ -19,9 +19,75 @@
   function grab() {
     for (const id of ["game-banner", "fleet-list", "action-log", "order-slots", "hand-area",
       "btn-submit-orders", "btn-clear-orders", "orders-hint", "deck-count", "discard-count",
-      "picker-overlay", "endgame-overlay", "board-callout", "board-wrap"]) {
+      "picker-overlay", "endgame-overlay", "board-callout", "board-wrap", "orders-panel"]) {
       els[id] = document.getElementById(id);
     }
+  }
+
+  function isPhoneUser() {
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const narrow = window.matchMedia?.("(max-width: 760px)")?.matches;
+    const compactHeight = window.matchMedia?.("(max-height: 620px)")?.matches;
+    const mobileAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
+    return Boolean((coarsePointer && narrow) || (mobileAgent && (narrow || compactHeight)));
+  }
+
+  function applyMobileMode() {
+    const phone = isPhoneUser();
+    document.documentElement.dataset.device = phone ? "phone" : "desktop";
+    if (!phone) {
+      document.body.classList.remove("mobile-orders-open");
+      return;
+    }
+    ensureMobileHud();
+  }
+
+  function ensureMobileHud() {
+    if (!document.getElementById("mobile-game-hud")) {
+      const hud = document.createElement("nav");
+      hud.id = "mobile-game-hud";
+      hud.className = "mobile-game-hud";
+      hud.setAttribute("aria-label", "Mobile game controls");
+      hud.innerHTML = `
+        <button class="btn gold" type="button" data-mobile-action="orders">Orders</button>
+        <button class="btn ghost" type="button" data-mobile-action="fleet">Fleet</button>
+        <button class="btn ghost" type="button" data-mobile-action="center">Center</button>
+      `;
+      hud.addEventListener("click", (event) => {
+        const action = event.target.closest("[data-mobile-action]")?.dataset.mobileAction;
+        if (action === "orders") toggleMobileOrders();
+        if (action === "fleet") showMyShipOrFleet();
+        if (action === "center") Board.resetView?.();
+      });
+      document.body.appendChild(hud);
+    }
+    if (!document.getElementById("mobile-orders-close") && els["orders-panel"]) {
+      const close = document.createElement("button");
+      close.id = "mobile-orders-close";
+      close.className = "btn ghost small mobile-orders-close";
+      close.type = "button";
+      close.textContent = "Map";
+      close.addEventListener("click", () => setMobileOrdersOpen(false));
+      els["orders-panel"].prepend(close);
+    }
+  }
+
+  function toggleMobileOrders() {
+    setMobileOrdersOpen(!document.body.classList.contains("mobile-orders-open"));
+  }
+
+  function setMobileOrdersOpen(open) {
+    document.body.classList.toggle("mobile-orders-open", Boolean(open));
+  }
+
+  function showMyShipOrFleet() {
+    if (!view) return;
+    if (you && view?.players?.[you]) {
+      showShipModal(you);
+      return;
+    }
+    const first = seatOrder()[0];
+    if (first) showShipModal(first);
   }
 
   function emptyDraft() {
@@ -32,6 +98,7 @@
   // ── entry / polling ────────────────────────────────────────────────────
   async function enter(id) {
     grab();
+    applyMobileMode();
     gameId = id;
     view = null; match = null; lastVersion = -1; endgameShown = false;
     draft = emptyDraft();
@@ -43,6 +110,7 @@
     App.showScreen("game");
     Board.build();
     Board.setShipClickHandler(handleShipClick);
+    if (document.documentElement.dataset.device === "phone") Board.resetView?.();
     await fetchView(true);
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => fetchView(false), POLL_MS);
@@ -52,6 +120,7 @@
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
     gameId = null;
+    document.body.classList.remove("mobile-orders-open");
   }
 
   async function fetchView(initial) {
@@ -450,6 +519,10 @@
       targetResolver = null;
       hidePicker();
       resolve(playerId);
+      return;
+    }
+    if (document.documentElement.dataset.device === "phone") {
+      showShipModal(playerId);
     }
   }
 
@@ -1108,6 +1181,14 @@
   // ── wire up ───────────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", () => {
     grab();
+    applyMobileMode();
+    window.addEventListener("resize", applyMobileMode);
+    window.addEventListener("orientationchange", () => {
+      window.setTimeout(() => {
+        applyMobileMode();
+        if (document.documentElement.dataset.device === "phone") Board.resetView?.();
+      }, 150);
+    });
     els["btn-submit-orders"].addEventListener("click", submitOrders);
     els["btn-clear-orders"].addEventListener("click", () => { draft = emptyDraft(); renderOrdersPanel(); });
     document.getElementById("btn-back-lobby").addEventListener("click", () => { leave(); Lobby.enter(); });

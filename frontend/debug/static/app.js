@@ -22,6 +22,11 @@ const state = {
   zoomScale: 1,
   panOffsetX: 0,
   panOffsetY: 0,
+  isPhone: false,
+  mobileCardSheetOpen: false,
+  mobileStatusOpen: false,
+  mobileStatusPlayerId: "",
+  mobileBoardInitialized: false,
   resolving: false,
 };
 
@@ -122,10 +127,126 @@ const elements = {
   endGameOverlay: null,
   cardPickerOverlay: null,
   resolutionCallout: null,
+  mobileControls: null,
+  mobileOrdersCloseButton: null,
+  mobileStatusCloseButton: null,
   // Zoom button handlers
   boardZoomOutButton: document.querySelector("#boardZoomOutButton"),
   boardZoomInButton: document.querySelector("#boardZoomInButton"),
 };
+
+function detectPhoneLayout() {
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+  const narrowViewport = window.matchMedia?.("(max-width: 760px)")?.matches;
+  const compactHeight = window.matchMedia?.("(max-height: 620px)")?.matches;
+  const mobileAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
+  return Boolean((coarsePointer && narrowViewport) || (mobileAgent && (narrowViewport || compactHeight)));
+}
+
+function applyDeviceMode() {
+  const wasPhone = state.isPhone;
+  state.isPhone = detectPhoneLayout();
+  document.documentElement.dataset.device = state.isPhone ? "phone" : "desktop";
+  document.body.classList.toggle("mobile-orders-open", state.isPhone && state.mobileCardSheetOpen);
+  document.body.classList.toggle("mobile-status-open", state.isPhone && state.mobileStatusOpen);
+  ensureMobileControls();
+  if (state.isPhone && !wasPhone) resetMobileBoardView();
+  if (!state.isPhone) {
+    state.mobileCardSheetOpen = false;
+    state.mobileStatusOpen = false;
+    document.body.classList.remove("mobile-orders-open", "mobile-status-open");
+  }
+  renderMobileControls();
+}
+
+function resetMobileBoardView() {
+  state.zoomScale = 1;
+  state.panOffsetX = 0;
+  state.panOffsetY = 0;
+  state.mobileBoardInitialized = true;
+  renderBoard(state.selectedState);
+}
+
+function ensureMobileControls() {
+  if (!elements.mobileControls) {
+    const controls = document.createElement("nav");
+    controls.className = "mobile-game-controls";
+    controls.setAttribute("aria-label", "Mobile game controls");
+    controls.innerHTML = `
+      <button type="button" data-mobile-action="orders">Orders</button>
+      <button type="button" data-mobile-action="status">Ships</button>
+      <button type="button" data-mobile-action="center">Center</button>
+    `;
+    controls.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-mobile-action]");
+      if (!button) return;
+      if (button.dataset.mobileAction === "orders") toggleMobileOrders();
+      if (button.dataset.mobileAction === "status") toggleMobileStatus();
+      if (button.dataset.mobileAction === "center") resetMobileBoardView();
+    });
+    document.body.append(controls);
+    elements.mobileControls = controls;
+  }
+
+  if (!elements.mobileOrdersCloseButton) {
+    const button = document.createElement("button");
+    button.className = "mobile-sheet-close";
+    button.type = "button";
+    button.textContent = "Map";
+    button.addEventListener("click", () => setMobileOrdersOpen(false));
+    const ordersBuilder = document.querySelector(".orders-builder");
+    ordersBuilder?.prepend(button);
+    elements.mobileOrdersCloseButton = button;
+  }
+
+  if (!elements.mobileStatusCloseButton) {
+    const button = document.createElement("button");
+    button.className = "mobile-sheet-close";
+    button.type = "button";
+    button.textContent = "Map";
+    button.addEventListener("click", () => setMobileStatusOpen(false));
+    document.querySelector(".player-rail")?.prepend(button);
+    elements.mobileStatusCloseButton = button;
+  }
+}
+
+function renderMobileControls() {
+  if (!elements.mobileControls) return;
+  const ordersButton = elements.mobileControls.querySelector("[data-mobile-action='orders']");
+  const statusButton = elements.mobileControls.querySelector("[data-mobile-action='status']");
+  if (ordersButton) ordersButton.setAttribute("aria-pressed", String(state.mobileCardSheetOpen));
+  if (statusButton) statusButton.setAttribute("aria-pressed", String(state.mobileStatusOpen));
+}
+
+function toggleMobileOrders() {
+  setMobileOrdersOpen(!state.mobileCardSheetOpen);
+}
+
+function setMobileOrdersOpen(isOpen) {
+  state.mobileCardSheetOpen = Boolean(isOpen);
+  if (state.mobileCardSheetOpen) state.mobileStatusOpen = false;
+  applyDeviceMode();
+}
+
+function toggleMobileStatus(playerId = "") {
+  state.mobileStatusPlayerId = playerId || state.mobileStatusPlayerId;
+  setMobileStatusOpen(!state.mobileStatusOpen || Boolean(playerId));
+}
+
+function setMobileStatusOpen(isOpen) {
+  state.mobileStatusOpen = Boolean(isOpen);
+  if (state.mobileStatusOpen) state.mobileCardSheetOpen = false;
+  applyDeviceMode();
+}
+
+applyDeviceMode();
+window.addEventListener("resize", applyDeviceMode);
+window.addEventListener("orientationchange", () => {
+  window.setTimeout(() => {
+    applyDeviceMode();
+    if (state.isPhone) resetMobileBoardView();
+  }, 150);
+});
 
 function initialTheme() {
   const stored = window.localStorage?.getItem("starshotTheme");
@@ -149,6 +270,7 @@ applyTheme(initialTheme());
 if (elements.boardZoomInButton) {
   elements.boardZoomInButton.addEventListener("click", () => {
     state.zoomScale = Math.min(state.zoomScale * 1.2, 4);
+    state.mobileBoardInitialized = true;
     renderBoard(state.selectedState);
   });
 }
@@ -156,6 +278,7 @@ if (elements.boardZoomInButton) {
 if (elements.boardZoomOutButton) {
   elements.boardZoomOutButton.addEventListener("click", () => {
     state.zoomScale = Math.max(state.zoomScale / 1.2, 0.5);
+    state.mobileBoardInitialized = true;
     renderBoard(state.selectedState);
   });
 }
@@ -164,9 +287,43 @@ if (elements.boardZoomOutButton) {
 let isPanning = false;
 let panStart = { x: 0, y: 0 };
 let panStartOffset = { x: 0, y: 0 };
+let boardTouchGesture = null;
+
+function boardViewSize() {
+  const extent = BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5;
+  return (extent * 2) / state.zoomScale;
+}
+
+function panBoardByScreenDelta(dx, dy, startOffset = { x: state.panOffsetX, y: state.panOffsetY }) {
+  const svgRect = elements.boardSvg?.getBoundingClientRect();
+  if (!svgRect?.width || !svgRect?.height) return;
+  const viewSize = boardViewSize();
+  const scaleFactorX = viewSize / svgRect.width;
+  const scaleFactorY = viewSize / svgRect.height;
+  state.panOffsetX = startOffset.x - dx * scaleFactorX;
+  state.panOffsetY = startOffset.y - dy * scaleFactorY;
+  state.mobileBoardInitialized = true;
+  renderBoard(state.selectedState);
+}
+
+function touchPoints(event) {
+  return [...event.touches].map((touch) => ({ x: touch.clientX, y: touch.clientY }));
+}
+
+function midpoint(points) {
+  return {
+    x: points.reduce((total, point) => total + point.x, 0) / points.length,
+    y: points.reduce((total, point) => total + point.y, 0) / points.length,
+  };
+}
+
+function pointDistance(left, right) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
 
 if (elements.boardSvg) {
   elements.boardSvg.addEventListener("mousedown", (e) => {
+    if (state.isPhone) return;
     isPanning = true;
     panStart = { x: e.clientX, y: e.clientY };
     panStartOffset = { x: state.panOffsetX, y: state.panOffsetY };
@@ -175,16 +332,50 @@ if (elements.boardSvg) {
     if (!isPanning) return;
     const dx = e.clientX - panStart.x;
     const dy = e.clientY - panStart.y;
-    const svgRect = elements.boardSvg.getBoundingClientRect();
-    const viewSize = (BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5) * 2 / state.zoomScale;
-    const scaleFactorX = viewSize / svgRect.width;
-    const scaleFactorY = viewSize / svgRect.height;
-    state.panOffsetX = panStartOffset.x - dx * scaleFactorX;
-    state.panOffsetY = panStartOffset.y - dy * scaleFactorY;
-    renderBoard(state.selectedState);
+    panBoardByScreenDelta(dx, dy, panStartOffset);
   });
   window.addEventListener("mouseup", () => {
     isPanning = false;
+  });
+  elements.boardSvg.addEventListener("touchstart", (event) => {
+    if (!state.isPhone) return;
+    const points = touchPoints(event);
+    if (!points.length) return;
+    event.preventDefault();
+    const center = midpoint(points);
+    boardTouchGesture = {
+      points,
+      center,
+      distance: points.length > 1 ? pointDistance(points[0], points[1]) : 0,
+      zoomScale: state.zoomScale,
+      offsetX: state.panOffsetX,
+      offsetY: state.panOffsetY,
+    };
+  }, { passive: false });
+  elements.boardSvg.addEventListener("touchmove", (event) => {
+    if (!state.isPhone || !boardTouchGesture) return;
+    const points = touchPoints(event);
+    if (!points.length) return;
+    event.preventDefault();
+    const center = midpoint(points);
+    const dx = center.x - boardTouchGesture.center.x;
+    const dy = center.y - boardTouchGesture.center.y;
+
+    if (points.length > 1 && boardTouchGesture.points.length > 1) {
+      const nextDistance = pointDistance(points[0], points[1]);
+      const ratio = boardTouchGesture.distance ? nextDistance / boardTouchGesture.distance : 1;
+      state.zoomScale = Math.min(4, Math.max(0.72, boardTouchGesture.zoomScale * ratio));
+    }
+    panBoardByScreenDelta(dx, dy, {
+      x: boardTouchGesture.offsetX,
+      y: boardTouchGesture.offsetY,
+    });
+  }, { passive: false });
+  elements.boardSvg.addEventListener("touchend", () => {
+    boardTouchGesture = null;
+  });
+  elements.boardSvg.addEventListener("touchcancel", () => {
+    boardTouchGesture = null;
   });
 }
 
@@ -257,6 +448,7 @@ async function selectGame(gameId) {
     state.builderDraft = createEmptyDraft();
     state.knownCards = {};
     state.dismissedEndGameFor = null;
+    if (state.isPhone) resetMobileBoardView();
   } else if (previousPhase === "cleanup" && payload.state.phase === "give_orders") {
     state.builderDraft = createEmptyDraft();
   }
@@ -1255,6 +1447,7 @@ function renderAll() {
   renderEvents(game);
   elements.stateJson.textContent = JSON.stringify(game || {}, null, 2);
   renderEndGameSummary(game);
+  renderMobileControls();
 }
 
 function renderFinishedGameActions(game) {
@@ -1697,6 +1890,12 @@ function playbackGap(duration = 180) {
 function renderBoard(game) {
   const svg = elements.boardSvg;
   if (!svg) return;
+  if (state.isPhone && !state.mobileBoardInitialized) {
+    state.zoomScale = 1;
+    state.panOffsetX = 0;
+    state.panOffsetY = 0;
+    state.mobileBoardInitialized = true;
+  }
   svg.replaceChildren();
 
   const extent = BOARD_RADIUS * HEX_SIZE * SQRT3 + HEX_SIZE * 1.5;
@@ -1789,6 +1988,9 @@ function renderShipToken(svg, player, className) {
   const group = svgEl("g");
   group.setAttribute("class", className);
   group.dataset.playerId = player.id;
+  group.setAttribute("role", "button");
+  group.setAttribute("tabindex", "0");
+  group.setAttribute("aria-label", `${titleCase(player.id)} ship status`);
 
   const circle = svgEl("circle");
   circle.setAttribute("cx", x);
@@ -1811,6 +2013,17 @@ function renderShipToken(svg, player, className) {
   label.textContent = player.id;
 
   group.append(circle, line, label);
+  group.addEventListener("click", () => {
+    if (!state.isPhone) return;
+    state.mobileStatusPlayerId = player.id;
+    setMobileStatusOpen(true);
+  });
+  group.addEventListener("keydown", (event) => {
+    if (!state.isPhone || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    state.mobileStatusPlayerId = player.id;
+    setMobileStatusOpen(true);
+  });
   svg.append(group);
 }
 
@@ -4030,6 +4243,13 @@ function renderMiniShipBoards(game) {
   }
 
   const colors = PLAYER_ORDER.filter((color) => game.players[color]);
+  if (state.isPhone && state.mobileStatusPlayerId && colors.includes(state.mobileStatusPlayerId)) {
+    colors.sort((left, right) => {
+      if (left === state.mobileStatusPlayerId) return -1;
+      if (right === state.mobileStatusPlayerId) return 1;
+      return PLAYER_ORDER.indexOf(left) - PLAYER_ORDER.indexOf(right);
+    });
+  }
   elements.leftMiniBoards.replaceChildren(...colors.map((color) => createMiniBoardCard(color, game)));
 }
 
@@ -4039,6 +4259,7 @@ function createMiniBoardCard(color, game) {
 
   const card = document.createElement("div");
   card.className = `mini-ship-board ${isInactive ? "inactive" : ""}`;
+  card.dataset.playerId = color;
   card.style.borderColor = SHIP_COLORS[color] || "#ccc";
 
   const header = document.createElement("div");
