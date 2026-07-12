@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StarShot — Void Corsairs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=6">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
+</head>
+<body>
+<canvas id="starfield"></canvas>
+
+<!-- ═══════════════ AUTH ═══════════════ -->
+<section id="screen-auth" class="screen">
+  <div class="auth-poster">
+    <div class="poster-skull">☠</div>
+    <h1 class="poster-title">StarShot</h1>
+    <div class="poster-sub">VOID CORSAIRS WANTED</div>
+    <p class="poster-flavor">Plunder baubles. Overdrive yer cannons.<br>Send rival captains into the black.</p>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">Sign In</button>
+      <button id="tab-register" class="auth-tab">Enlist</button>
+    </div>
+    <form id="auth-form" autocomplete="off">
+      <input id="auth-username" type="text" placeholder="Pirate name" maxlength="20" autocomplete="username" required>
+      <input id="auth-password" type="password" placeholder="Secret word" maxlength="128" autocomplete="current-password" required>
+      <button id="auth-submit" type="submit" class="btn gold big">Board the Ship</button>
+    </form>
+    <div id="auth-error" class="auth-error"></div>
+  </div>
+</section>
+
+<!-- ═══════════════ LOBBY ═══════════════ -->
+<section id="screen-lobby" class="screen hidden">
+  <header class="topbar">
+    <div class="brand"><span class="brand-skull">☠</span> StarShot <span class="brand-tag">v2 · core 0.3</span></div>
+    <div class="topbar-right">
+      <button id="btn-tutorial" class="btn ghost small">📖 How to Play</button>
+      <a id="lobby-admin-link" class="btn ghost small hidden" href="/v2/admin">⚙ Admin</a>
+      <span id="lobby-user" class="user-chip"></span>
+      <button id="btn-logout" class="btn ghost small">Abandon Ship</button>
+    </div>
+  </header>
+  <div class="lobby-grid">
+    <div class="panel lobby-main">
+      <h2 class="panel-title">⚓ Set Sail</h2>
+      <div class="sail-row">
+        <button id="btn-quickmatch" class="btn gold big">⚔ Quick Duel<span class="btn-sub">find another captain</span></button>
+        <div id="queue-status" class="queue-status hidden">
+          <span class="spinner"></span> Scanning the void for rivals… <button id="btn-queue-leave" class="btn ghost small">Belay that</button>
+        </div>
+      </div>
+      <h3 class="panel-sub">Raise a Crew</h3>
+      <div class="crew-builder">
+        <div class="crew-slot self">You</div>
+        <div id="crew-slots"></div>
+        <div class="crew-controls">
+          <label>Foes:</label>
+          <div id="ai-pickers"></div>
+          <label class="open-seats-label">Open seats for humans:
+            <select id="open-seats"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+          </label>
+          <button id="btn-create-match" class="btn crimson">🏴‍☠ Launch Raid</button>
+        </div>
+      </div>
+      <h3 class="panel-sub">Open Raids</h3>
+      <div id="open-matches" class="match-list"></div>
+      <h3 class="panel-sub">Your Battles</h3>
+      <div id="my-matches" class="match-list"></div>
+    </div>
+    <div class="panel lobby-side">
+      <h2 class="panel-title">⚓ Captains on Deck</h2>
+      <div id="challenge-banners"></div>
+      <div id="active-players" class="players-list"></div>
+      <h2 class="panel-title">🏆 Most Feared Captains</h2>
+      <table class="leaderboard" id="leaderboard"></table>
+      <h2 class="panel-title" style="margin-top:24px">📜 Your Legend</h2>
+      <div id="profile-card" class="profile-card"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ GAME ═══════════════ -->
+<section id="screen-game" class="screen hidden">
+  <header class="topbar">
+    <div class="brand"><span class="brand-skull">☠</span> StarShot</div>
+    <div id="game-banner" class="game-banner">Round 1 · Give Orders</div>
+    <div class="topbar-right">
+      <button id="btn-back-lobby" class="btn ghost small">← Port</button>
+    </div>
+  </header>
+  <div class="game-grid">
+    <aside class="panel fleet-panel">
+      <h3 class="panel-sub">Fleet Registry</h3>
+      <div id="fleet-list"></div>
+      <h3 class="panel-sub">Ship's Log</h3>
+      <div id="action-log" class="action-log"></div>
+    </aside>
+    <main class="board-wrap" id="board-wrap">
+      <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+      <canvas id="fx"></canvas>
+      <div id="board-callout" class="board-callout hidden"></div>
+      <div class="board-controls">
+        <button id="zoom-in" class="btn ghost small">＋</button>
+        <button id="zoom-out" class="btn ghost small">－</button>
+        <button id="zoom-fit" class="btn ghost small">⤢</button>
+        <button id="btn-replay-sofar" class="btn ghost small" title="Replay the battle so far">▶</button>
+      </div>
+    </main>
+    <aside class="panel orders-panel" id="orders-panel">
+      <div class="orders-head">
+        <h3 class="panel-sub">Captain's Orders</h3>
+        <div class="pile-row">
+          <div class="pile deck-pile" id="deck-pile" title="Your deck"><div class="pile-count" id="deck-count">0</div></div>
+          <div class="pile discard-pile" id="discard-pile" title="Your discard"><div class="pile-count" id="discard-count">0</div></div>
+        </div>
+      </div>
+      <div id="order-slots" class="order-slots"></div>
+      <div id="hand-area" class="hand-area"></div>
+      <div class="orders-actions">
+        <button id="btn-clear-orders" class="btn ghost">Clear</button>
+        <button id="btn-submit-orders" class="btn gold big">⚔ Seal Orders</button>
+      </div>
+      <div id="orders-hint" class="orders-hint"></div>
+    </aside>
+  </div>
+  <div id="picker-overlay" class="overlay hidden"></div>
+  <div id="endgame-overlay" class="overlay hidden"></div>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/v2/static/api.js?v=6"></script>
+<script src="/v2/static/starfield.js?v=6"></script>
+<script src="/v2/static/board.js?v=6"></script>
+<script src="/v2/static/shipview.js?v=6"></script>
+<script src="/v2/static/effects.js?v=6"></script>
+<script src="/v2/static/cards.js?v=6"></script>
+<script src="/v2/static/tutorial.js?v=6"></script>
+<script src="/v2/static/lobby.js?v=6"></script>
+<script src="/v2/static/game.js?v=6"></script>
+<script src="/v2/static/app.js?v=6"></script>
+</body>
+</html>

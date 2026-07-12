@@ -1,0 +1,482 @@
+"""SQLite persistence for the v2 multiplayer layer.
+
+Everything (users, sessions, matchmaking queue, matches, game states) lives in
+one database file so a single BEGIN IMMEDIATE transaction can cover races such
+as two players joining the last open seat at the same time.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DB_PATH = ROOT / ".starshot" / "v2.sqlite3"
+
+SESSION_TTL_DAYS = 30
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    pass_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    draws INTEGER NOT NULL DEFAULT 0,
+    games_played INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS matches (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL,               -- open | active | complete | cancelled
+    host_user_id INTEGER NOT NULL REFERENCES users(id),
+    seats INTEGER NOT NULL,
+    game_id TEXT,
+    stats_recorded INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS match_seats (
+    match_id TEXT NOT NULL REFERENCES matches(id),
+    seat_index INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    user_id INTEGER,
+    ai_type TEXT,
+    display_name TEXT NOT NULL,
+    PRIMARY KEY (match_id, seat_index)
+);
+CREATE TABLE IF NOT EXISTS queue (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    joined_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS games (
+    id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS presence (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    last_seen TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS challenges (
+    id TEXT PRIMARY KEY,
+    from_user_id INTEGER NOT NULL REFERENCES users(id),
+    to_user_id INTEGER NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL,               -- pending | accepted | declined | cancelled
+    game_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
+# Columns added after the first production deploy; applied idempotently.
+_MIGRATIONS = (
+    "ALTER TABLE match_seats ADD COLUMN abandoned INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE match_seats ADD COLUMN stats_exempt INTEGER NOT NULL DEFAULT 0",
+)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class V2Store:
+    def __init__(self, db_path: Path | None = None) -> None:
+        self.db_path = Path(db_path or os.environ.get("STARSHOT_V2_DB", DEFAULT_DB_PATH))
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as conn:
+            conn.executescript(_SCHEMA)
+            for migration in _MIGRATIONS:
+                try:
+                    conn.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+    @contextmanager
+    def _connect(self, immediate: bool = False):
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            if immediate:
+                conn.execute("BEGIN IMMEDIATE")
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    # -- users / sessions -------------------------------------------------
+
+    def create_user(self, username: str, pass_hash: str) -> dict:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO users (username, pass_hash, created_at) VALUES (?, ?, ?)",
+                (username, pass_hash, _now()),
+            )
+            return {"id": cursor.lastrowid, "username": username}
+
+    def get_user_by_name(self, username: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_user(self, user_id: int) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def create_session(self, token_hash: str, user_id: int) -> None:
+        expires = (datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (token_hash, user_id, _now(), expires),
+            )
+
+    def get_session_user(self, token_hash: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+                   WHERE s.token_hash = ? AND s.expires_at > ?""",
+                (token_hash, _now()),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def delete_session(self, token_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def update_password(self, user_id: int, pass_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user_id))
+
+    def record_result(self, user_id: int, outcome: str) -> None:
+        column = {"win": "wins", "loss": "losses", "draw": "draws"}[outcome]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE users SET {column} = {column} + 1, games_played = games_played + 1 WHERE id = ?",
+                (user_id,),
+            )
+
+    def leaderboard(self, limit: int = 20) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT username, wins, losses, draws, games_played FROM users
+                   ORDER BY wins DESC, losses ASC, username ASC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # -- settings ------------------------------------------------------------
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
+    # -- presence & challenges ----------------------------------------------
+
+    def touch_presence(self, user_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO presence (user_id, last_seen) VALUES (?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET last_seen = excluded.last_seen",
+                (user_id, _now()),
+            )
+
+    def active_players(self, within_seconds: int = 40) -> list[dict]:
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=within_seconds)).isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT u.id, u.username, u.wins, u.losses FROM presence p
+                   JOIN users u ON u.id = p.user_id
+                   WHERE p.last_seen > ? ORDER BY u.username COLLATE NOCASE""",
+                (cutoff,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def create_challenge(self, from_user_id: int, to_user_id: int) -> str:
+        challenge_id = uuid.uuid4().hex[:12]
+        with self._connect(immediate=True) as conn:
+            # One live outgoing challenge at a time; new one replaces the old.
+            conn.execute(
+                "UPDATE challenges SET status = 'cancelled' WHERE from_user_id = ? AND status = 'pending'",
+                (from_user_id,),
+            )
+            conn.execute(
+                "INSERT INTO challenges (id, from_user_id, to_user_id, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
+                (challenge_id, from_user_id, to_user_id, _now()),
+            )
+        return challenge_id
+
+    def get_challenge(self, challenge_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM challenges WHERE id = ?", (challenge_id,)).fetchone()
+            return dict(row) if row else None
+
+    def set_challenge_status(self, challenge_id: str, status: str, game_id: str | None = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE challenges SET status = ?, game_id = COALESCE(?, game_id) WHERE id = ?",
+                (status, game_id, challenge_id),
+            )
+
+    def challenges_for_user(self, user_id: int, max_age_seconds: int = 180) -> dict:
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE challenges SET status = 'cancelled' WHERE status = 'pending' AND created_at <= ?",
+                (cutoff,),
+            )
+            incoming = conn.execute(
+                """SELECT c.id, u.username AS from_username, c.created_at FROM challenges c
+                   JOIN users u ON u.id = c.from_user_id
+                   WHERE c.to_user_id = ? AND c.status = 'pending' ORDER BY c.created_at""",
+                (user_id,),
+            ).fetchall()
+            outgoing = conn.execute(
+                """SELECT c.id, u.username AS to_username, c.status, c.game_id FROM challenges c
+                   JOIN users u ON u.id = c.to_user_id
+                   WHERE c.from_user_id = ? AND (c.status = 'pending' OR
+                         (c.status = 'accepted' AND c.created_at > ?))
+                   ORDER BY c.created_at DESC LIMIT 3""",
+                (user_id, cutoff),
+            ).fetchall()
+            return {"incoming": [dict(row) for row in incoming], "outgoing": [dict(row) for row in outgoing]}
+
+    # -- matchmaking queue -------------------------------------------------
+
+    def join_queue_and_pair(self, user_id: int) -> int | None:
+        """Join the quick-match queue. Returns the opponent's user id when a
+        pairing happens, otherwise None (caller stays queued)."""
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        with self._connect(immediate=True) as conn:
+            conn.execute("DELETE FROM queue WHERE joined_at <= ?", (stale,))
+            row = conn.execute(
+                "SELECT user_id FROM queue WHERE user_id != ? ORDER BY joined_at ASC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+            if row:
+                conn.execute("DELETE FROM queue WHERE user_id IN (?, ?)", (row["user_id"], user_id))
+                return row["user_id"]
+            conn.execute(
+                "INSERT OR IGNORE INTO queue (user_id, joined_at) VALUES (?, ?)", (user_id, _now())
+            )
+            return None
+
+    def leave_queue(self, user_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM queue WHERE user_id = ?", (user_id,))
+
+    def queue_status(self, user_id: int) -> dict:
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM queue WHERE joined_at <= ?", (stale,))
+            count = conn.execute("SELECT COUNT(*) AS n FROM queue").fetchone()["n"]
+            queued = (
+                conn.execute("SELECT 1 FROM queue WHERE user_id = ?", (user_id,)).fetchone()
+                is not None
+            )
+            return {"queued": queued, "waiting": count}
+
+    # -- matches -----------------------------------------------------------
+
+    def create_match(self, name: str, host_user_id: int, seats: int, status: str) -> str:
+        match_id = uuid.uuid4().hex[:12]
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO matches (id, name, status, host_user_id, seats, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (match_id, name, status, host_user_id, seats, _now(), _now()),
+            )
+        return match_id
+
+    def add_seat(
+        self,
+        match_id: str,
+        seat_index: int,
+        player_id: str,
+        display_name: str,
+        user_id: int | None = None,
+        ai_type: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (match_id, seat_index, player_id, user_id, ai_type, display_name),
+            )
+
+    def try_join_match(self, match_id: str, user_id: int, player_id: str, display_name: str) -> dict:
+        """Claim the next free human seat. Raises ValueError when impossible."""
+        with self._connect(immediate=True) as conn:
+            match = conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+            if match is None:
+                raise KeyError(match_id)
+            if match["status"] != "open":
+                raise ValueError("Match is not open.")
+            seats = conn.execute(
+                "SELECT * FROM match_seats WHERE match_id = ? ORDER BY seat_index", (match_id,)
+            ).fetchall()
+            if any(seat["user_id"] == user_id for seat in seats):
+                raise ValueError("Already seated in this match.")
+            if len(seats) >= match["seats"]:
+                raise ValueError("Match is full.")
+            seat_index = len(seats)
+            conn.execute(
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name)
+                   VALUES (?, ?, ?, ?, NULL, ?)""",
+                (match_id, seat_index, player_id, user_id, display_name),
+            )
+            conn.execute("UPDATE matches SET updated_at = ? WHERE id = ?", (_now(), match_id))
+            return {"seat_index": seat_index, "full": seat_index + 1 >= match["seats"]}
+
+    def leave_match(self, match_id: str, user_id: int) -> None:
+        with self._connect(immediate=True) as conn:
+            match = conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+            if match is None:
+                raise KeyError(match_id)
+            if match["status"] != "open":
+                raise ValueError("Cannot leave a match that has started.")
+            conn.execute(
+                "DELETE FROM match_seats WHERE match_id = ? AND user_id = ?", (match_id, user_id)
+            )
+            remaining = conn.execute(
+                "SELECT COUNT(*) AS n FROM match_seats WHERE match_id = ? AND user_id IS NOT NULL",
+                (match_id,),
+            ).fetchone()["n"]
+            if remaining == 0 or match["host_user_id"] == user_id:
+                conn.execute("UPDATE matches SET status = 'cancelled', updated_at = ? WHERE id = ?", (_now(), match_id))
+                conn.execute("DELETE FROM match_seats WHERE match_id = ?", (match_id,))
+
+    def get_match(self, match_id: str) -> dict | None:
+        with self._connect() as conn:
+            match = conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+            if match is None:
+                return None
+            seats = conn.execute(
+                "SELECT * FROM match_seats WHERE match_id = ? ORDER BY seat_index", (match_id,)
+            ).fetchall()
+            result = dict(match)
+            result["seat_list"] = [dict(seat) for seat in seats]
+            return result
+
+    def get_match_by_game(self, game_id: str) -> dict | None:
+        with self._connect() as conn:
+            match = conn.execute("SELECT * FROM matches WHERE game_id = ?", (game_id,)).fetchone()
+        return self.get_match(match["id"]) if match else None
+
+    def set_match_started(self, match_id: str, game_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE matches SET status = 'active', game_id = ?, updated_at = ? WHERE id = ?",
+                (game_id, _now(), match_id),
+            )
+
+    def set_match_status(self, match_id: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE matches SET status = ?, updated_at = ? WHERE id = ?", (status, _now(), match_id)
+            )
+
+    def mark_stats_recorded(self, match_id: str) -> bool:
+        """Returns True exactly once per match, guarding double stat counting."""
+        with self._connect(immediate=True) as conn:
+            row = conn.execute(
+                "SELECT stats_recorded FROM matches WHERE id = ?", (match_id,)
+            ).fetchone()
+            if row is None or row["stats_recorded"]:
+                return False
+            conn.execute("UPDATE matches SET stats_recorded = 1 WHERE id = ?", (match_id,))
+            return True
+
+    def open_matches(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM matches WHERE status = 'open' ORDER BY created_at DESC LIMIT 25"
+            ).fetchall()
+        return [match for row in rows if (match := self.get_match(row["id"]))]
+
+    def matches_for_user(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT DISTINCT m.id FROM matches m JOIN match_seats s ON s.match_id = m.id
+                   WHERE s.user_id = ? AND s.abandoned = 0 AND m.status IN ('open', 'active', 'complete')
+                   ORDER BY m.updated_at DESC LIMIT 20""",
+                (user_id,),
+            ).fetchall()
+        return [match for row in rows if (match := self.get_match(row["id"]))]
+
+    def mark_seat_abandoned(self, match_id: str, user_id: int, stats_exempt: bool = False) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE match_seats SET abandoned = 1, stats_exempt = MAX(stats_exempt, ?) "
+                "WHERE match_id = ? AND user_id = ?",
+                (1 if stats_exempt else 0, match_id, user_id),
+            )
+
+    # -- game state blobs ----------------------------------------------------
+
+    def create_game(self, state_dict: dict) -> str:
+        game_id = uuid.uuid4().hex
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO games (id, state_json, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (game_id, json.dumps(state_dict, sort_keys=True), _now(), _now()),
+            )
+        return game_id
+
+    def load_game(self, game_id: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute("SELECT state_json FROM games WHERE id = ?", (game_id,)).fetchone()
+            if row is None:
+                raise KeyError(game_id)
+            return json.loads(row["state_json"])
+
+    def save_game(self, game_id: str, state_dict: dict) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE games SET state_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(state_dict, sort_keys=True), _now(), game_id),
+            )
+
+
+_STORE: V2Store | None = None
+
+
+def get_v2_store() -> V2Store:
+    global _STORE
+    configured = Path(os.environ.get("STARSHOT_V2_DB", DEFAULT_DB_PATH))
+    if _STORE is None or _STORE.db_path != configured:
+        _STORE = V2Store(configured)
+    return _STORE

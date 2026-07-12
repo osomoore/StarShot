@@ -1,0 +1,20 @@
+services:
+  web:
+    image: python:3.11
+    container_name: starshot
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - .:/app
+    ports:
+      - "8107:8000"
+    environment:
+      # Site-wide HTTP Basic auth gate (everything is served through the
+      # Apache proxy, so the password check must live in the app).
+      # Credentials: /app/.htpasswd ({SHA} format, stdlib-verifiable).
+      STARSHOT_SITE_AUTH: "on"
+    # NOTE: keep the uvicorn command on ONE line — YAML folded scalars keep
+    # newlines before more-indented lines, which silently drops the flags.
+    command: >
+      sh -c "pip install -e .[dev] &&
+      exec uvicorn starshot.api.app:app --app-dir backend --host 0.0.0.0 --port 8000 --reload --reload-dir backend"

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StarShot — Captain's Quarters</title>
+<link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=6">
+<link rel="stylesheet" href="/v2/static/admin.css?v=6">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
+</head>
+<body>
+<canvas id="starfield"></canvas>
+
+<section id="screen-admin" class="screen">
+  <header class="topbar">
+    <div class="brand"><span class="brand-skull">⚙</span> Captain's Quarters <span class="brand-tag">admin</span></div>
+    <div class="topbar-right">
+      <span id="admin-user" class="user-chip"></span>
+      <a class="btn ghost small" href="/v2">← Back to the game</a>
+    </div>
+  </header>
+
+  <div id="admin-locked" class="admin-locked hidden">
+    <div class="auth-poster">
+      <div class="poster-skull">🔒</div>
+      <h1 class="poster-title" style="font-size:40px">Restricted Deck</h1>
+      <p class="poster-flavor" id="locked-reason">Sign in as the admiral to enter.</p>
+      <form id="admin-login-form">
+        <input id="admin-login-user" type="text" placeholder="Admin name" value="davidmoore" autocomplete="username">
+        <input id="admin-login-pass" type="password" placeholder="Password" autocomplete="current-password">
+        <button class="btn gold big" type="submit">Enter</button>
+      </form>
+      <div id="admin-login-error" class="auth-error"></div>
+    </div>
+  </div>
+
+  <div id="admin-main" class="admin-grid hidden">
+    <nav class="panel admin-nav">
+      <button class="btn ghost admin-tab active" data-tab="deck">🂠 Deck Editor</button>
+      <button class="btn ghost admin-tab" data-tab="keywords">🔑 Keywords</button>
+      <button class="btn ghost admin-tab" data-tab="battle">⚔ AI Battles</button>
+      <button class="btn ghost admin-tab" data-tab="account">🛠 Account & Project</button>
+    </nav>
+
+    <div class="panel admin-body">
+      <!-- deck editor -->
+      <div id="tab-deck" class="admin-tabpage">
+        <h2 class="panel-title">Deck Configuration <span id="deck-path" class="brand-tag"></span></h2>
+        <div class="deck-set-bar">
+          <label>Deck sets:</label>
+          <select id="deck-set-select"></select>
+          <button class="btn gold small" id="deck-set-activate">⚓ Make Active</button>
+          <span class="deck-set-sep">|</span>
+          <input id="deck-saveas-name" placeholder="New deck name…" maxlength="40">
+          <button class="btn ghost small" id="deck-saveas">💾 Save current as…</button>
+        </div>
+        <p class="admin-note" id="deck-active-note"></p>
+        <p class="admin-note">Card side text uses the keyword language (e.g. <code>Move 2</code>,
+          <code>Targeted Attack Damage +1</code>, <code>Turn Left, Move 3</code>). Saving validates the whole
+          deck set and reports the exact problem if a card can't be parsed. Changes apply to <b>new</b> games.</p>
+        <div class="deck-section">
+          <h3 class="panel-sub">Base deck <span id="base-count"></span></h3>
+          <div id="base-cards" class="card-table"></div>
+          <button class="btn ghost small" id="add-base-card">＋ Add card</button>
+          <button class="btn gold" id="save-base">💾 Save base deck</button>
+        </div>
+        <div class="deck-section">
+          <h3 class="panel-sub">Desperation deck <span id="desp-count"></span></h3>
+          <div id="desp-cards" class="card-table"></div>
+          <button class="btn ghost small" id="add-desp-card">＋ Add card</button>
+          <button class="btn gold" id="save-desp">💾 Save desperation deck</button>
+        </div>
+        <div id="deck-status" class="admin-status"></div>
+      </div>
+
+      <!-- keyword manager -->
+      <div id="tab-keywords" class="admin-tabpage hidden">
+        <h2 class="panel-title">Keyword Manager</h2>
+        <p class="admin-note">A keyword is a regex over normalized card text plus a Python snippet that assigns
+          a <code>FaceSpec</code> to <code>spec</code>. Custom keywords run <b>before</b> the built-ins, so you can
+          override existing text. Use <b>Copy</b> on any keyword to start a new one from its implementation.</p>
+        <h3 class="panel-sub">Your keywords</h3>
+        <div id="custom-keywords"></div>
+        <button class="btn gold" id="new-keyword">＋ New keyword</button>
+        <h3 class="panel-sub">Built-in keywords (read-only)</h3>
+        <div id="builtin-keywords"></div>
+        <div id="keyword-editor" class="keyword-editor hidden">
+          <h3 class="panel-sub" id="kw-editor-title">Edit keyword</h3>
+          <label>Name <input id="kw-name" maxlength="60"></label>
+          <label>Pattern (regex, fullmatch against lowercase text)
+            <input id="kw-pattern" maxlength="300" spellcheck="false"></label>
+          <label>Python implementation (assign a FaceSpec to <code>spec</code>; <code>match</code>, <code>FaceSpec</code>, <code>CardFamily</code> are in scope)
+            <textarea id="kw-code" rows="6" spellcheck="false"></textarea></label>
+          <div class="kw-test-row">
+            <input id="kw-sample" placeholder="Sample card text, e.g. Move 4" maxlength="200">
+            <button class="btn ghost small" id="kw-test">▶ Test</button>
+          </div>
+          <pre id="kw-test-result" class="kw-test-result"></pre>
+          <div>
+            <button class="btn gold" id="kw-save">💾 Save keyword</button>
+            <button class="btn ghost" id="kw-cancel">Cancel</button>
+          </div>
+        </div>
+        <div id="keyword-status" class="admin-status"></div>
+      </div>
+
+      <!-- AI battles -->
+      <div id="tab-battle" class="admin-tabpage hidden">
+        <h2 class="panel-title">AI Battle Arena</h2>
+        <p class="admin-note">Pit the AI captains against each other with no human at the wheel.
+          One click runs the <b>entire game</b> to completion on the server; watch the replay afterwards
+          or just read the score. Handy for balance-testing deck and keyword changes.</p>
+        <div class="battle-crew">
+          <label>Combatants:</label>
+          <select id="battle-ai-1"></select>
+          <select id="battle-ai-2"></select>
+          <select id="battle-ai-3"><option value="">— none —</option></select>
+          <select id="battle-ai-4"><option value="">— none —</option></select>
+        </div>
+        <button class="btn crimson big" id="run-battle">⚔ Run Full Battle</button>
+        <span id="battle-running" class="hidden"><span class="spinner"></span> Cannons firing…</span>
+        <div id="battle-results"></div>
+      </div>
+
+      <!-- account / project -->
+      <div id="tab-account" class="admin-tabpage hidden">
+        <h2 class="panel-title">Account & Project</h2>
+        <h3 class="panel-sub">Site settings</h3>
+        <div class="site-settings">
+          <label class="setting-row">
+            <input type="checkbox" id="setting-site-auth">
+            Site password gate (HTTP Basic auth for the whole site)
+          </label>
+          <label class="setting-row" style="flex-direction:column;align-items:flex-start">
+            "Under construction" message — while set, players can't submit orders or start/join
+            games (you're exempt). Leave empty to open the site:
+            <textarea id="setting-maintenance" rows="2" maxlength="500"
+              placeholder="e.g. Refitting the cannons — back within the hour!"></textarea>
+          </label>
+          <button class="btn gold" id="save-settings">💾 Save site settings</button>
+          <div id="settings-status" class="admin-status"></div>
+        </div>
+        <h3 class="panel-sub" style="margin-top:26px">Download project</h3>
+        <p class="admin-note">Zips the current project source (excluding databases, secrets, and caches).</p>
+        <a class="btn gold" href="/api/v2/admin/download">⬇ Download project zip</a>
+        <h3 class="panel-sub" style="margin-top:26px">Change your password</h3>
+        <form id="pw-form" class="pw-form">
+          <input id="pw-current" type="password" placeholder="Current password" autocomplete="current-password">
+          <input id="pw-new" type="password" placeholder="New password (min 4 chars)" autocomplete="new-password">
+          <button class="btn crimson" type="submit">Change password</button>
+        </form>
+        <div id="account-status" class="admin-status"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/v2/static/api.js?v=6"></script>
+<script src="/v2/static/starfield.js?v=6"></script>
+<script src="/v2/static/admin.js?v=6"></script>
+</body>
+</html>
