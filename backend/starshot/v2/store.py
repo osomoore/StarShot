@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS feedback (
     thoughts TEXT NOT NULL DEFAULT '',
     match_id TEXT,
     game_id TEXT,
+    is_bug_report INTEGER NOT NULL DEFAULT 0,
+    game_log TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS leaderboard_results (
@@ -132,6 +134,8 @@ _MIGRATIONS = (
     "ALTER TABLE challenges ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE leaderboard_results ADD COLUMN score INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE leaderboard_results ADD COLUMN ship_losses INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE feedback ADD COLUMN is_bug_report INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE feedback ADD COLUMN game_log TEXT NOT NULL DEFAULT ''",
 )
 
 
@@ -381,14 +385,17 @@ class V2Store:
         thoughts: str,
         match_id: str | None = None,
         game_id: str | None = None,
+        is_bug_report: bool = False,
+        game_log: str = "",
     ) -> dict:
         feedback_id = uuid.uuid4().hex[:12]
         created_at = _now()
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO feedback
-                   (id, user_id, rating, liked, disliked, thoughts, match_id, game_id, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, user_id, rating, liked, disliked, thoughts, match_id, game_id,
+                    is_bug_report, game_log, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     feedback_id,
                     user_id,
@@ -398,6 +405,8 @@ class V2Store:
                     thoughts,
                     match_id,
                     game_id,
+                    1 if is_bug_report else 0,
+                    game_log,
                     created_at,
                 ),
             )

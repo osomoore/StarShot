@@ -582,6 +582,16 @@ h1, h2, .brand, .poster-title, .banner-text {
 .feedback-copy { color: var(--ink-dim); line-height: 1.5; margin: -4px 0 14px; text-align: center; }
 .feedback-form { display: flex; flex-direction: column; gap: 12px; }
 .feedback-form label { color: var(--ink-dim); display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.feedback-form .feedback-bug-report {
+  flex-direction: row;
+  align-items: center;
+  color: var(--gold-bright);
+  border: 1px solid rgba(212,167,72,.45);
+  border-radius: 8px;
+  background: rgba(212,167,72,.08);
+  padding: 8px 10px;
+}
+.feedback-bug-report input { accent-color: var(--gold); }
 .feedback-form textarea {
   background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 8px;
   color: var(--ink); font-family: inherit; line-height: 1.4; max-height: 126px;

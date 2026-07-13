@@ -24,6 +24,7 @@ from starshot.v2.service import (
 )
 from starshot.rules.engine import choose_captain
 from starshot.rules.serialization import state_from_dict, state_to_dict
+from starshot.v2.game_log import build_debug_log
 from starshot.v2.store import get_v2_store
 from starshot.v2.views import game_view
 
@@ -183,12 +184,21 @@ class FeedbackRequest(BaseModel):
     thoughts: str = Field(default="", max_length=3000)
     match_id: str | None = Field(default=None, max_length=40)
     game_id: str | None = Field(default=None, max_length=80)
+    is_bug_report: bool = False
 
 
 @router.post("/feedback")
 def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
     user = _current_user(request)
     store = get_v2_store()
+    game_log = ""
+    if body.is_bug_report and body.game_id:
+        match = store.get_match_by_game(body.game_id)
+        if match and seat_for_user(match, user["id"]):
+            try:
+                game_log = build_debug_log(store.load_game(body.game_id), match, game_id=body.game_id)
+            except KeyError:
+                game_log = ""
     feedback = store.create_feedback(
         user_id=user["id"],
         rating=body.rating,
@@ -197,6 +207,8 @@ def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
         thoughts=body.thoughts.strip(),
         match_id=body.match_id,
         game_id=body.game_id,
+        is_bug_report=body.is_bug_report,
+        game_log=game_log,
     )
     return {
         "ok": True,
@@ -522,6 +534,19 @@ def view_game(game_id: str, request: Request, since: int = -1) -> dict:
         "you": viewer_player_id,
         "state": view,
     }
+
+
+@router.get("/games/{game_id}/debug-log")
+def debug_log(game_id: str, request: Request) -> dict:
+    _, match, seat = _match_and_seat(request, game_id)
+    if seat is None:
+        raise HTTPException(status_code=403, detail="Spectators cannot export battle logs.")
+    store = get_v2_store()
+    try:
+        state_dict = store.load_game(game_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Game not found.")
+    return {"log": build_debug_log(state_dict, match, game_id=game_id)}
 
 
 class OrdersRequest(BaseModel):

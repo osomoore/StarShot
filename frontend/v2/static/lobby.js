@@ -506,7 +506,7 @@
     const box = document.createElement("div");
     box.className = "picker feedback-modal";
     box.innerHTML = `
-      <h3>Playtest Feedback</h3>
+      <h3>Feedback and Bugs</h3>
       <p class="feedback-copy">We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
       <form id="feedback-form" class="feedback-form">
         <label>Rating
@@ -523,9 +523,14 @@
         <label>General Thoughts
           <textarea id="feedback-thoughts" rows="5" maxlength="3000"></textarea>
         </label>
+        ${context.gameId ? `
+        <label class="feedback-bug-report">
+          <input id="feedback-bug-report" type="checkbox">
+          <span>report a bug - include the game log</span>
+        </label>` : ""}
         <div class="feedback-actions">
           <button type="button" class="btn ghost" id="feedback-cancel">Cancel</button>
-          <button type="submit" class="btn gold">Submit Feedback</button>
+          <button type="submit" class="btn gold">Submit Feedback and Bugs</button>
         </div>
         <div id="feedback-status" class="auth-error"></div>
       </form>`;
@@ -559,6 +564,7 @@
           thoughts: document.getElementById("feedback-thoughts").value,
           match_id: context.matchId || null,
           game_id: context.gameId || null,
+          is_bug_report: !!document.getElementById("feedback-bug-report")?.checked,
         });
         overlay.classList.add("hidden");
         App.toast(`Feedback sent - badge count: ${result.feedback_count}`, true);

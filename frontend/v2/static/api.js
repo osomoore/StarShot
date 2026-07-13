@@ -37,6 +37,7 @@
     respondChallenge: (id, accept) => post(`/lobby/challenge/${id}/respond`, { accept }),
     cancelChallenge: (id) => post(`/lobby/challenge/${id}/cancel`),
     gameView: (gameId, since) => get(`/games/${gameId}/view` + (since >= 0 ? `?since=${since}` : "")),
+    debugLog: (gameId) => get(`/games/${gameId}/debug-log`),
     chooseCaptain: (gameId, captainId) => post(`/games/${gameId}/captain`, { captain_id: captainId }),
     submitOrders: (gameId, orders) => post(`/games/${gameId}/orders`, { orders }),
   };

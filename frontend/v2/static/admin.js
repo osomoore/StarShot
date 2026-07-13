@@ -722,7 +722,12 @@
   // feedback
   let feedbackEntries = [];
   const stars = (rating) => "★".repeat(Number(rating || 0)) + "☆".repeat(Math.max(0, 5 - Number(rating || 0)));
-  const feedbackText = (entry) => [entry.liked, entry.disliked, entry.thoughts].filter(Boolean).join(" ").toLowerCase();
+  const feedbackText = (entry) => [
+    entry.liked,
+    entry.disliked,
+    entry.thoughts,
+    entry.is_bug_report ? "bug report game log" : "",
+  ].filter(Boolean).join(" ").toLowerCase();
 
   async function loadFeedback() {
     try {
@@ -743,9 +748,9 @@
     body.innerHTML = rows.length ? "" : `<tr><td colspan="4" class="muted">No feedback yet.</td></tr>`;
     for (const entry of rows) {
       const tr = document.createElement("tr");
-      tr.className = "feedback-row";
+      tr.className = "feedback-row" + (entry.is_bug_report ? " bug-report" : "");
       tr.innerHTML = `
-        <td>${esc(entry.username)}</td>
+        <td>${entry.is_bug_report ? '<span class="bug-pill">BUG</span> ' : ""}${esc(entry.username)}</td>
         <td><span class="feedback-rating">${stars(entry.rating)}</span></td>
         <td>${entry.feedback_count}</td>
         <td>${new Date(entry.created_at).toLocaleString()}</td>`;
@@ -764,7 +769,7 @@
         ${entries.map((entry) => `
           <article class="feedback-entry">
             <div class="feedback-entry-head">
-              <span class="feedback-rating">${stars(entry.rating)}</span>
+              <span>${entry.is_bug_report ? '<span class="bug-pill">BUG REPORT</span> ' : ""}<span class="feedback-rating">${stars(entry.rating)}</span></span>
               <span>${new Date(entry.created_at).toLocaleString()}</span>
             </div>
             ${entry.match_id || entry.game_id ? `<div class="feedback-context">${entry.match_id ? `Match ${esc(entry.match_id)}` : ""}${entry.match_id && entry.game_id ? " · " : ""}${entry.game_id ? `Game ${esc(entry.game_id)}` : ""}</div>` : ""}
@@ -774,6 +779,7 @@
             <p>${esc(entry.disliked || "-")}</p>
             <h4>General Thoughts</h4>
             <p>${esc(entry.thoughts || "-")}</p>
+            ${entry.game_log ? `<h4>Included Game Log</h4><pre class="feedback-game-log">${esc(entry.game_log)}</pre>` : ""}
           </article>`).join("")}`;
     } catch (error) { toast(error.message); }
   }

@@ -75,7 +75,7 @@ from starshot.rules.ship_layout import (
     first_intact_component_for_lane,
     is_ship_destroyed,
 )
-from starshot.rules.star_command import CAPTAINS, EXPANSION_ID as STAR_COMMAND_ID, STARFALLS, STARFALLS_BY_ID
+from starshot.rules.star_command import CAPTAINS, CAPTAINS_BY_ID, EXPANSION_ID as STAR_COMMAND_ID, STARFALLS, STARFALLS_BY_ID
 
 # Lateral direction offsets for Side Slip (perpendicular to facing).
 # slip_right = facing - 1 (mod 6); slip_left = facing + 1 (mod 6).
@@ -248,12 +248,15 @@ def choose_captain(state: GameState, player_id: str, captain_id: str) -> GameSta
         raise RulesError("That captain is not one of this player's options.")
     player.captain_id = captain_id
     _apply_captain_setup(player)
+    captain = CAPTAINS_BY_ID[captain_id]
     next_state.event_log.append(
         {
             "type": "captain_chosen",
             "round": next_state.round_number,
             "player_id": player_id,
             "captain_id": captain_id,
+            "captain_name": captain.name,
+            "captain_callsign": captain.callsign,
         }
     )
     return next_state

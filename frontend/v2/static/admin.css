@@ -109,7 +109,24 @@
 }
 .feedback-table { min-width: 620px; }
 .feedback-row { cursor: pointer; }
+.feedback-row.bug-report td {
+  background: rgba(201,80,62,.12);
+  border-top-color: rgba(201,80,62,.45);
+}
 .feedback-row:hover td { background: rgba(212,167,72,.08); }
+.feedback-row.bug-report:hover td { background: rgba(201,80,62,.18); }
+.bug-pill {
+  display: inline-block;
+  border: 1px solid rgba(255,154,138,.75);
+  border-radius: 999px;
+  color: #ffb0a2;
+  background: rgba(201,80,62,.14);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
 .feedback-rating { color: var(--gold-bright); letter-spacing: 1px; white-space: nowrap; }
 .feedback-detail {
   background: #0d1426; border: 1px solid var(--panel-edge); border-radius: 8px;
@@ -123,6 +140,18 @@
 .feedback-context { color: var(--ink-dim); font-size: 11px; margin-top: 3px; }
 .feedback-entry h4 { color: var(--gold); font-size: 11px; margin: 10px 0 3px; text-transform: uppercase; letter-spacing: .06em; }
 .feedback-entry p { white-space: pre-wrap; line-height: 1.45; margin: 0; }
+.feedback-game-log {
+  background: #050914;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+  max-height: 340px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
 
 .deck-set-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .deck-set-bar select, .deck-set-bar input {

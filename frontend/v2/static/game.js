@@ -386,7 +386,10 @@
       case "phase_changed": return event.phase && event.phase.startsWith("action")
         ? { cls: "round", text: `⚔ ${PHASE_LABELS[event.phase] || event.phase}` } : null;
       case "orders_submitted": return { cls: "", text: `${name(event.player_id)} sealed their orders.` };
-      case "captain_chosen": return { cls: "loot", text: `${name(event.player_id)} chooses a StarCommand captain.` };
+      case "captain_chosen": {
+        const captain = event.captain_name || event.captain_callsign || event.captain_id || "a StarCommand captain";
+        return { cls: "loot", text: `${name(event.player_id)} chooses ${captain}.` };
+      }
       case "starfall_revealed": return { cls: "round", text: `Starfall: ${event.starfall} - ${event.text}` };
       case "movement_resolved": {
         const dist = (event.steps || []).reduce((total, step) => total + (step.distance || 0), 0);
@@ -1455,9 +1458,9 @@
         }).join("")}
       </div>
       <div class="feedback-spot">
-        <h3>Feedback</h3>
+        <h3>Feedback and Bugs</h3>
         <p>We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
-        <button class="btn gold" id="btn-endgame-feedback">★ Share Feedback</button>
+        <button class="btn gold" id="btn-endgame-feedback">Feedback and Bugs</button>
       </div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn ghost" id="btn-endgame-view">👁 View Battlefield</button>
@@ -1498,6 +1501,67 @@
       document.querySelector(".board-controls").appendChild(node);
     } else if (!wanted && node) {
       node.remove();
+    }
+    let exportButton = document.getElementById("btn-export-log");
+    if (view && gameId && !exportButton) {
+      exportButton = document.createElement("button");
+      exportButton.id = "btn-export-log";
+      exportButton.className = "btn ghost small";
+      exportButton.textContent = "Export Log";
+      exportButton.title = "Copy a debugging log to the clipboard";
+      exportButton.addEventListener("click", exportDebugLog);
+      document.querySelector(".board-controls").appendChild(exportButton);
+    } else if ((!view || !gameId) && exportButton) {
+      exportButton.remove();
+    }
+    let feedbackButton = document.getElementById("btn-game-feedback");
+    if (view && gameId && !feedbackButton) {
+      feedbackButton = document.createElement("button");
+      feedbackButton.id = "btn-game-feedback";
+      feedbackButton.className = "btn gold small";
+      feedbackButton.textContent = "Feedback and Bugs";
+      feedbackButton.title = "Send playtest feedback or report a bug with this battle log";
+      feedbackButton.addEventListener("click", () => {
+        window.Feedback?.open({ gameId, matchId: match && match.id });
+      });
+      document.querySelector(".board-controls").appendChild(feedbackButton);
+    } else if ((!view || !gameId) && feedbackButton) {
+      feedbackButton.remove();
+    }
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    if (!ok) throw new Error("Clipboard copy failed.");
+  }
+
+  async function exportDebugLog() {
+    const button = document.getElementById("btn-export-log");
+    if (!gameId || !button) return;
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Copying...";
+    try {
+      const result = await API.debugLog(gameId);
+      await copyText(result.log || "");
+      App.toast("Debug log copied to clipboard.", true);
+    } catch (error) {
+      App.toast(error.message || "Could not export log.");
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
     }
   }
 

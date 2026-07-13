@@ -119,6 +119,7 @@ class FeedbackTests(unittest.TestCase):
                 "disliked": "Hard to read",
                 "thoughts": "Needs clearer summaries.",
                 "game_id": "game-feedback-test",
+                "is_bug_report": True,
             },
         )
         self.assertEqual(second.status_code, 200, second.text)
@@ -136,12 +137,47 @@ class FeedbackTests(unittest.TestCase):
         latest_row = next(entry for entry in latest.json()["entries"] if entry["username"] == "feedback_alice")
         self.assertEqual(latest_row["rating"], 2)
         self.assertEqual(latest_row["feedback_count"], 2)
+        self.assertEqual(latest_row["is_bug_report"], 1)
 
         history = admin.get(f"/api/v2/admin/feedback/users/{latest_row['user_id']}")
         self.assertEqual(history.status_code, 200, history.text)
         entries = history.json()["entries"]
         self.assertEqual([entry["rating"] for entry in entries], [2, 4])
         self.assertEqual(entries[0]["game_id"], "game-feedback-test")
+        self.assertEqual(entries[0]["is_bug_report"], 1)
+
+    def test_debug_log_export_includes_state_and_event_details(self) -> None:
+        alice = make_client()
+        bob = make_client()
+        register(alice, "log_alice")
+        register(bob, "log_bob")
+        create = alice.post("/api/v2/matches", json={"open_seats": 1})
+        self.assertEqual(create.status_code, 200, create.text)
+        match_id = create.json()["match"]["id"]
+        joined = bob.post(f"/api/v2/matches/{match_id}/join")
+        self.assertEqual(joined.status_code, 200, joined.text)
+        game_id = joined.json()["game_id"]
+
+        exported = alice.get(f"/api/v2/games/{game_id}/debug-log")
+        self.assertEqual(exported.status_code, 200, exported.text)
+        text = exported.json()["log"]
+        self.assertIn("StarShot Debug Log", text)
+        self.assertIn("Baubles", text)
+        self.assertIn("Round 1", text)
+        self.assertIn("Event Log JSON", text)
+
+        feedback = alice.post(
+            "/api/v2/feedback",
+            json={
+                "rating": 3,
+                "thoughts": "Something odd happened.",
+                "game_id": game_id,
+                "match_id": match_id,
+                "is_bug_report": True,
+            },
+        )
+        self.assertEqual(feedback.status_code, 200, feedback.text)
+        self.assertIn("StarShot Debug Log", feedback.json()["feedback"]["game_log"])
 
     def test_feedback_validates_rating(self) -> None:
         player = make_client()
