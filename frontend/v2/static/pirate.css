@@ -587,6 +587,16 @@ h1, h2, .brand, .poster-title, .banner-text {
 
 .feedback-modal { width: min(560px, 94vw); max-width: 560px; text-align: left; }
 .feedback-modal h3 { text-align: center; }
+.feedback-host-warning {
+  border: 1px solid rgba(212,167,72,.55);
+  border-radius: 8px;
+  background: rgba(212,167,72,.1);
+  color: var(--gold-bright);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: -4px 0 12px;
+  padding: 8px 10px;
+}
 .feedback-copy { color: var(--ink-dim); line-height: 1.5; margin: -4px 0 14px; text-align: center; }
 .feedback-form { display: flex; flex-direction: column; gap: 12px; }
 .feedback-form label { color: var(--ink-dim); display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
@@ -612,7 +622,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   text-shadow: 0 1px 2px rgba(0,0,0,.55);
 }
 .star-choice.selected { color: var(--gold-bright); filter: drop-shadow(0 0 6px rgba(212,167,72,.55)); }
-.feedback-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.feedback-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* toast */
 .toast {

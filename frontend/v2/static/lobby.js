@@ -493,7 +493,72 @@
         <td>${entry.wins}</td><td>${entry.losses}</td><td>${entry.games_played}</td></tr>`).join("");
   }
 
+  const FEEDBACK_RENDER_WARNING = "If you're playing via starshot-1i2t.onrender.com, it is a free server that doesn't keep data between sessions. Please submit feedback via the /r/StarShotBoardgame subreddit instead. After making your feedback report, use the Copy to clipboard for /r/StarShotBoardgame posting button.";
+
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    if (!ok) throw new Error("Clipboard copy failed.");
+  }
+
+  function currentFeedbackPayload(context, rating) {
+    return {
+      rating,
+      liked: document.getElementById("feedback-liked").value.trim(),
+      disliked: document.getElementById("feedback-disliked").value.trim(),
+      thoughts: document.getElementById("feedback-thoughts").value.trim(),
+      matchId: context.matchId || "",
+      gameId: context.gameId || "",
+      isBugReport: !!document.getElementById("feedback-bug-report")?.checked,
+      gameLog: "",
+    };
+  }
+
+  function feedbackPostText(payload) {
+    const lines = [
+      "StarShot Feedback and Bugs",
+      "",
+      `Rating: ${payload.rating}/5`,
+      `Bug report: ${payload.isBugReport ? "yes" : "no"}`,
+    ];
+    if (payload.matchId) lines.push(`Match: ${payload.matchId}`);
+    if (payload.gameId) lines.push(`Game: ${payload.gameId}`);
+    lines.push(
+      "",
+      "What I liked:",
+      payload.liked || "(blank)",
+      "",
+      "What I didn't like:",
+      payload.disliked || "(blank)",
+      "",
+      "General thoughts:",
+      payload.thoughts || "(blank)",
+    );
+    if (payload.gameLog) {
+      lines.push(
+        "",
+        "Included Game Log:",
+        "```",
+        payload.gameLog,
+        "```",
+      );
+    }
+    return lines.join("\n");
+  }
+
   function openFeedback(context = {}) {
+    alert(FEEDBACK_RENDER_WARNING);
     let overlay = document.getElementById("feedback-overlay");
     if (!overlay) {
       overlay = document.createElement("div");
@@ -507,6 +572,7 @@
     box.className = "picker feedback-modal";
     box.innerHTML = `
       <h3>Feedback and Bugs</h3>
+      <p class="feedback-host-warning">${FEEDBACK_RENDER_WARNING}</p>
       <p class="feedback-copy">We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
       <form id="feedback-form" class="feedback-form">
         <label>Rating
@@ -529,6 +595,7 @@
           <span>report a bug - include the game log</span>
         </label>` : ""}
         <div class="feedback-actions">
+          <button type="button" class="btn ghost" id="feedback-copy-reddit">Copy to clipboard for /r/StarShotBoardgame posting</button>
           <button type="button" class="btn ghost" id="feedback-cancel">Cancel</button>
           <button type="submit" class="btn gold">Submit Feedback and Bugs</button>
         </div>
@@ -552,19 +619,43 @@
     overlay.onclick = (event) => {
       if (event.target === overlay) overlay.classList.add("hidden");
     };
+    document.getElementById("feedback-copy-reddit").addEventListener("click", async () => {
+      const status = document.getElementById("feedback-status");
+      const button = document.getElementById("feedback-copy-reddit");
+      const oldText = button.textContent;
+      status.textContent = "";
+      button.disabled = true;
+      button.textContent = "Copying...";
+      try {
+        const payload = currentFeedbackPayload(context, rating);
+        if (payload.gameId) {
+          const result = await API.debugLog(payload.gameId);
+          payload.gameLog = result.log || "";
+        }
+        await copyText(feedbackPostText(payload));
+        status.textContent = "Copied for posting to /r/StarShotBoardgame.";
+        App.toast("Feedback copied to clipboard.", true);
+      } catch (error) {
+        status.textContent = error.message || "Could not copy feedback.";
+      } finally {
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    });
     document.getElementById("feedback-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const status = document.getElementById("feedback-status");
       status.textContent = "";
       try {
+        const payload = currentFeedbackPayload(context, rating);
         const result = await API.submitFeedback({
-          rating,
-          liked: document.getElementById("feedback-liked").value,
-          disliked: document.getElementById("feedback-disliked").value,
-          thoughts: document.getElementById("feedback-thoughts").value,
-          match_id: context.matchId || null,
-          game_id: context.gameId || null,
-          is_bug_report: !!document.getElementById("feedback-bug-report")?.checked,
+          rating: payload.rating,
+          liked: payload.liked,
+          disliked: payload.disliked,
+          thoughts: payload.thoughts,
+          match_id: payload.matchId || null,
+          game_id: payload.gameId || null,
+          is_bug_report: payload.isBugReport,
         });
         overlay.classList.add("hidden");
         App.toast(`Feedback sent - badge count: ${result.feedback_count}`, true);
