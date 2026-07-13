@@ -317,14 +317,23 @@ def _record_completion(store: V2Store, match: dict, state: GameState) -> None:
             outcome = "win"
         else:
             outcome = "loss"
-        store.record_result(seat["user_id"], outcome, category=category)
+        score = ai_score_for_match(match) if category == "ai" and outcome == "win" else 0
+        player = state.players.get(seat["player_id"])
+        store.record_result(
+            seat["user_id"],
+            outcome,
+            category=category,
+            score=score,
+            ship_loss=bool(player and player.ship.destroyed),
+        )
 
 
 def leaderboard_category_for_match(match: dict) -> str:
-    ai = ai_seats(match)
-    if not ai:
-        return "humans"
-    return match.get("ai_level") or "deck_hand"
+    return "humans" if len(human_seats(match)) >= 2 else "ai"
+
+
+def ai_score_for_match(match: dict) -> int:
+    return {"deck_hand": 1, "buccaneer": 2, "pirate_king": 3}.get(match.get("ai_level"), 1)
 
 
 def match_turn_info(store: V2Store, match: dict, player_id: str | None) -> dict | None:

@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS leaderboard_results (
     losses INTEGER NOT NULL DEFAULT 0,
     draws INTEGER NOT NULL DEFAULT 0,
     games_played INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    ship_losses INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, category)
 );
 """
@@ -128,6 +130,8 @@ _MIGRATIONS = (
     "ALTER TABLE matches ADD COLUMN ai_level TEXT NOT NULL DEFAULT 'deck_hand'",
     "ALTER TABLE matches ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE challenges ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE leaderboard_results ADD COLUMN score INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE leaderboard_results ADD COLUMN ship_losses INTEGER NOT NULL DEFAULT 0",
 )
 
 
@@ -211,7 +215,14 @@ class V2Store:
         with self._connect() as conn:
             conn.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user_id))
 
-    def record_result(self, user_id: int, outcome: str, category: str = "humans") -> None:
+    def record_result(
+        self,
+        user_id: int,
+        outcome: str,
+        category: str = "humans",
+        score: int = 0,
+        ship_loss: bool = False,
+    ) -> None:
         column = {"win": "wins", "loss": "losses", "draw": "draws"}[outcome]
         with self._connect() as conn:
             conn.execute(
@@ -224,8 +235,9 @@ class V2Store:
             )
             conn.execute(
                 f"UPDATE leaderboard_results SET {column} = {column} + 1, "
-                "games_played = games_played + 1 WHERE user_id = ? AND category = ?",
-                (user_id, category),
+                "games_played = games_played + 1, score = score + ?, ship_losses = ship_losses + ? "
+                "WHERE user_id = ? AND category = ?",
+                (score, 1 if ship_loss else 0, user_id, category),
             )
 
     def leaderboard(self, limit: int = 20) -> list[dict]:
@@ -241,7 +253,7 @@ class V2Store:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def category_leaderboard(self, category: str, limit: int = 20, legacy_humans: bool = False) -> list[dict]:
+    def category_leaderboard(self, category: str, limit: int = 10, legacy_humans: bool = False) -> list[dict]:
         if category == "humans" and legacy_humans:
             return self.leaderboard(limit)
         with self._connect() as conn:
@@ -251,43 +263,64 @@ class V2Store:
                           COALESCE(r.losses, 0) AS losses,
                           COALESCE(r.draws, 0) AS draws,
                           COALESCE(r.games_played, 0) AS games_played,
+                          COALESCE(r.score, 0) AS score,
+                          COALESCE(r.ship_losses, 0) AS ship_losses,
                           COUNT(f.id) AS feedback_count
                    FROM users u
                    LEFT JOIN leaderboard_results r ON r.user_id = u.id AND r.category = ?
                    LEFT JOIN feedback f ON f.user_id = u.id
                    WHERE COALESCE(r.games_played, 0) > 0
                    GROUP BY u.id
-                   ORDER BY wins DESC, losses ASC, username ASC LIMIT ?""",
-                (category, limit),
+                   ORDER BY
+                     CASE WHEN ? = 'ai' THEN COALESCE(r.score, 0) ELSE COALESCE(r.wins, 0) END DESC,
+                     COALESCE(r.games_played, 0) DESC,
+                     username ASC LIMIT ?""",
+                (category, category, limit),
             ).fetchall()
-            return [dict(row) for row in rows]
+            result = []
+            for row in rows:
+                entry = dict(row)
+                entry["average_score"] = (
+                    entry["score"] / entry["games_played"] if entry["games_played"] else 0
+                )
+                result.append(entry)
+            return result
 
-    def leaderboard_bundle(self, limit: int = 20) -> dict:
+    def leaderboard_bundle(self, limit: int = 10) -> dict:
         categories = [
-            ("humans", "Players Only", 3),
-            ("deck_hand", "Deck Hand", 1),
-            ("buccaneer", "Buccaneer", 2),
-            ("pirate_king", "Pirate King", 3),
+            ("humans", "Real Players"),
+            ("ai", "AI Games"),
         ]
         boards = [
             {
                 "key": key,
                 "label": label,
-                "weight": weight,
                 "entries": self.category_leaderboard(key, limit),
             }
-            for key, label, weight in categories
+            for key, label in categories
         ]
-        return {"boards": boards, "titles": self.title_holders()}
+        return {"boards": boards, "titles": self.title_holders(), "infamy": self.infamy_leader()}
 
-    def title_holders(self) -> list[dict]:
-        weights = {"deck_hand": 1, "buccaneer": 2, "pirate_king": 3, "humans": 3}
+    def infamy_leader(self) -> dict | None:
         with self._connect() as conn:
-            rows = conn.execute(
-                """SELECT u.id AS user_id, u.username, r.category, r.wins
+            row = conn.execute(
+                """SELECT u.id AS user_id, u.username, SUM(r.ship_losses) AS ship_losses
                    FROM leaderboard_results r
                    JOIN users u ON u.id = r.user_id
-                   WHERE r.wins > 0"""
+                   GROUP BY u.id
+                   HAVING ship_losses > 0
+                   ORDER BY ship_losses DESC, u.username ASC
+                   LIMIT 1"""
+            ).fetchone()
+        return dict(row) if row else None
+
+    def title_holders(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT u.id AS user_id, u.username, r.category, r.wins, r.score
+                   FROM leaderboard_results r
+                   JOIN users u ON u.id = r.user_id
+                   WHERE r.wins > 0 OR r.score > 0"""
             ).fetchall()
             feedback_rows = conn.execute(
                 "SELECT user_id, COUNT(*) AS feedback_count FROM feedback GROUP BY user_id"
@@ -304,7 +337,7 @@ class V2Store:
                 {"user_id": user_id, "username": row["username"], "points": 0, "wins": 0},
             )
             wins = int(row["wins"] or 0)
-            entry["points"] += wins * weights.get(row["category"], 0)
+            entry["points"] += int(row["score"] or 0) if row["category"] == "ai" else wins * 3
             entry["wins"] += wins
         # Legacy aggregate wins predate category tracking. Treat them as players-only
         # only when the category table has no scored rows for that user.
@@ -316,7 +349,7 @@ class V2Store:
             scores[user_id] = {
                 "user_id": user_id,
                 "username": row["username"],
-                "points": wins * weights["humans"],
+                "points": wins * 3,
                 "wins": wins,
             }
         ranked = sorted(

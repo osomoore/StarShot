@@ -423,10 +423,12 @@
   }
 
   function renderLeaderboardBundle(payload) {
-    leaderboardCycle = payload && payload.boards ? payload.boards : null;
-    renderTitleList(payload && payload.titles);
+    leaderboardCycle = payload && payload.boards
+      ? payload.boards.filter((board) => board && (board.key === "humans" || board.key === "ai"))
+      : null;
+    renderInfamy(payload && payload.infamy);
     if (!leaderboardCycle || !leaderboardCycle.length) {
-      renderLeaderboard(payload && payload.leaderboard);
+      renderLeaderboard({ key: "legacy", entries: payload && payload.leaderboard });
       paintLeaderboardExtras("Most Feared Captains");
       return;
     }
@@ -443,7 +445,7 @@
 
   function renderLeaderboardPage(resetTimer) {
     const board = leaderboardCycle[leaderboardIndex];
-    renderLeaderboard(board.entries || []);
+    renderLeaderboard(board);
     paintLeaderboardExtras(`${board.label} Leaderboard`, resetTimer);
   }
 
@@ -461,8 +463,30 @@
     if (resetTimer || !bar.firstChild) bar.innerHTML = `<span></span>`;
   }
 
-  function renderLeaderboard(entries) {
+  function renderInfamy(infamy) {
+    let node = document.getElementById("davey-locker");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "davey-locker";
+      node.className = "title-holders davey-locker";
+      const timer = document.getElementById("leaderboard-timer");
+      (timer || document.getElementById("leaderboard")).after(node);
+    }
+    node.innerHTML = infamy
+      ? `<div class="title-row"><span class="title-name">Davey Jones Locker</span><span>${esc(infamy.username)}</span><b>${infamy.ship_losses}</b></div>`
+      : `<div class="title-row empty-note">Davey Jones Locker is empty.</div>`;
+  }
+
+  function renderLeaderboard(board) {
+    const entries = (board && board.entries) || [];
     const table = document.getElementById("leaderboard");
+    if (board && board.key === "ai") {
+      table.innerHTML = "<tr><th>#</th><th>Name</th><th>Score</th><th>Games Played</th><th>Avg Score</th></tr>" +
+        entries.map((entry, index) => `
+        <tr><td>${index === 0 ? "#" + 1 : index + 1}</td><td>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
+        <td>${entry.score}</td><td>${entry.games_played}</td><td>${Number(entry.average_score || 0).toFixed(2)}</td></tr>`).join("");
+      return;
+    }
     table.innerHTML = "<tr><th>#</th><th>Captain</th><th>W</th><th>L</th><th>Battles</th></tr>" +
       (entries || []).map((entry, index) => `
         <tr><td>${index === 0 ? "👑" : index + 1}</td><td>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</td>

@@ -146,7 +146,7 @@ class FeedbackTests(unittest.TestCase):
 
 
 class LeaderboardTests(unittest.TestCase):
-    def test_leaderboard_bundle_has_categories_and_weighted_titles(self) -> None:
+    def test_leaderboard_bundle_has_real_player_ai_and_infamy_boards(self) -> None:
         alpha = make_client()
         beta = make_client()
         register(alpha, "leader_alpha")
@@ -155,22 +155,24 @@ class LeaderboardTests(unittest.TestCase):
         alpha_user = store.get_user_by_name("leader_alpha")
         beta_user = store.get_user_by_name("leader_beta")
 
-        store.record_result(alpha_user["id"], "win", category="deck_hand")
-        store.record_result(alpha_user["id"], "win", category="buccaneer")
-        store.record_result(beta_user["id"], "win", category="pirate_king")
-        store.record_result(beta_user["id"], "win", category="pirate_king")
+        store.record_result(alpha_user["id"], "win", category="humans")
+        store.record_result(alpha_user["id"], "win", category="ai", score=2, ship_loss=True)
+        store.record_result(beta_user["id"], "win", category="ai", score=3)
+        store.record_result(beta_user["id"], "loss", category="ai", ship_loss=True)
+        store.record_result(beta_user["id"], "loss", category="ai", ship_loss=True)
 
         payload = alpha.get("/api/v2/leaderboard").json()
         self.assertEqual(
             {board["key"] for board in payload["boards"]},
-            {"humans", "deck_hand", "buccaneer", "pirate_king"},
+            {"humans", "ai"},
         )
-        pirate_board = next(board for board in payload["boards"] if board["key"] == "pirate_king")
-        self.assertEqual(pirate_board["entries"][0]["username"], "leader_beta")
-        self.assertEqual(
-            [(entry["title"], entry["username"], entry["points"]) for entry in payload["titles"]],
-            [("Pirate King", "leader_beta", 6), ("First Mate", "leader_alpha", 3)],
-        )
+        ai_board = next(board for board in payload["boards"] if board["key"] == "ai")
+        self.assertEqual(ai_board["entries"][0]["username"], "leader_beta")
+        self.assertEqual(ai_board["entries"][0]["score"], 3)
+        self.assertEqual(ai_board["entries"][0]["games_played"], 3)
+        self.assertAlmostEqual(ai_board["entries"][0]["average_score"], 1.0)
+        self.assertEqual(payload["infamy"]["username"], "leader_beta")
+        self.assertEqual(payload["infamy"]["ship_losses"], 2)
 
 
 class AiMatchTests(unittest.TestCase):
