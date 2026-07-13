@@ -82,6 +82,69 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class FeedbackTests(unittest.TestCase):
+    def admin_client(self) -> TestClient:
+        client = make_client()
+        client.get("/api/v2/admin/deck")
+        login = client.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"})
+        self.assertEqual(login.status_code, 200, login.text)
+        return client
+
+    def test_feedback_repeats_increment_badge_and_admin_history(self) -> None:
+        player = make_client()
+        register(player, "feedback_alice")
+
+        first = player.post(
+            "/api/v2/feedback",
+            json={
+                "rating": 4,
+                "liked": "Fast turns",
+                "disliked": "Tiny buttons",
+                "thoughts": "Good bones.",
+            },
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["feedback_count"], 1)
+
+        second = player.post(
+            "/api/v2/feedback",
+            json={
+                "rating": 2,
+                "liked": "Ships",
+                "disliked": "Hard to read",
+                "thoughts": "Needs clearer summaries.",
+                "game_id": "game-feedback-test",
+            },
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["feedback_count"], 2)
+
+        me = player.get("/api/v2/me").json()["user"]
+        self.assertEqual(me["feedback_count"], 2)
+        leaderboard = player.get("/api/v2/leaderboard").json()["leaderboard"]
+        row = next(entry for entry in leaderboard if entry["username"] == "feedback_alice")
+        self.assertEqual(row["feedback_count"], 2)
+
+        admin = self.admin_client()
+        latest = admin.get("/api/v2/admin/feedback")
+        self.assertEqual(latest.status_code, 200, latest.text)
+        latest_row = next(entry for entry in latest.json()["entries"] if entry["username"] == "feedback_alice")
+        self.assertEqual(latest_row["rating"], 2)
+        self.assertEqual(latest_row["feedback_count"], 2)
+
+        history = admin.get(f"/api/v2/admin/feedback/users/{latest_row['user_id']}")
+        self.assertEqual(history.status_code, 200, history.text)
+        entries = history.json()["entries"]
+        self.assertEqual([entry["rating"] for entry in entries], [2, 4])
+        self.assertEqual(entries[0]["game_id"], "game-feedback-test")
+
+    def test_feedback_validates_rating(self) -> None:
+        player = make_client()
+        register(player, "feedback_bob")
+        response = player.post("/api/v2/feedback", json={"rating": 6})
+        self.assertEqual(response.status_code, 422)
+
+
 class AiMatchTests(unittest.TestCase):
     def test_vs_ai_game_runs_and_hides_secrets(self) -> None:
         client = make_client()

@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS ai_battle_runs (
     detail_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    liked TEXT NOT NULL DEFAULT '',
+    disliked TEXT NOT NULL DEFAULT '',
+    thoughts TEXT NOT NULL DEFAULT '',
+    match_id TEXT,
+    game_id TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 # Columns added after the first production deploy; applied idempotently.
@@ -196,9 +207,94 @@ class V2Store:
     def leaderboard(self, limit: int = 20) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT username, wins, losses, draws, games_played FROM users
+                """SELECT u.username, u.wins, u.losses, u.draws, u.games_played,
+                          COUNT(f.id) AS feedback_count
+                   FROM users u
+                   LEFT JOIN feedback f ON f.user_id = u.id
+                   GROUP BY u.id
                    ORDER BY wins DESC, losses ASC, username ASC LIMIT ?""",
                 (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # -- playtest feedback --------------------------------------------------
+
+    def feedback_count(self, user_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM feedback WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            return int(row["n"] if row else 0)
+
+    def create_feedback(
+        self,
+        *,
+        user_id: int,
+        rating: int,
+        liked: str,
+        disliked: str,
+        thoughts: str,
+        match_id: str | None = None,
+        game_id: str | None = None,
+    ) -> dict:
+        feedback_id = uuid.uuid4().hex[:12]
+        created_at = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO feedback
+                   (id, user_id, rating, liked, disliked, thoughts, match_id, game_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    feedback_id,
+                    user_id,
+                    rating,
+                    liked,
+                    disliked,
+                    thoughts,
+                    match_id,
+                    game_id,
+                    created_at,
+                ),
+            )
+        return self.get_feedback(feedback_id)
+
+    def get_feedback(self, feedback_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT f.*, u.username FROM feedback f
+                   JOIN users u ON u.id = f.user_id
+                   WHERE f.id = ?""",
+                (feedback_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_feedback_latest_by_user(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT f.*, u.username, counts.feedback_count
+                   FROM feedback f
+                   JOIN users u ON u.id = f.user_id
+                   JOIN (
+                     SELECT user_id, MAX(created_at) AS latest_at, COUNT(*) AS feedback_count
+                     FROM feedback GROUP BY user_id
+                   ) counts ON counts.user_id = f.user_id AND counts.latest_at = f.created_at
+                   WHERE f.id = (
+                     SELECT f2.id FROM feedback f2
+                     WHERE f2.user_id = f.user_id
+                     ORDER BY f2.created_at DESC, f2.id DESC LIMIT 1
+                   )
+                   ORDER BY f.created_at DESC"""
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def feedback_for_user(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT f.*, u.username FROM feedback f
+                   JOIN users u ON u.id = f.user_id
+                   WHERE f.user_id = ?
+                   ORDER BY f.created_at DESC, f.id DESC""",
+                (user_id,),
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -295,9 +391,13 @@ class V2Store:
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=within_seconds)).isoformat()
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT u.id, u.username, u.wins, u.losses FROM presence p
+                """SELECT u.id, u.username, u.wins, u.losses, COUNT(f.id) AS feedback_count
+                   FROM presence p
                    JOIN users u ON u.id = p.user_id
-                   WHERE p.last_seen > ? ORDER BY u.username COLLATE NOCASE""",
+                   LEFT JOIN feedback f ON f.user_id = u.id
+                   WHERE p.last_seen > ?
+                   GROUP BY u.id
+                   ORDER BY u.username COLLATE NOCASE""",
                 (cutoff,),
             ).fetchall()
             return [dict(row) for row in rows]

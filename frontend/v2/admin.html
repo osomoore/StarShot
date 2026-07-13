@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=6">
-<link rel="stylesheet" href="/v2/static/admin.css?v=8">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=11">
+<link rel="stylesheet" href="/v2/static/admin.css?v=9">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -40,6 +40,7 @@
       <button class="btn ghost admin-tab active" data-tab="deck">🂠 Deck Editor</button>
       <button class="btn ghost admin-tab" data-tab="keywords">🔑 Keywords</button>
       <button class="btn ghost admin-tab" data-tab="battle">⚔ AI Battles</button>
+      <button class="btn ghost admin-tab" data-tab="feedback">Feedback</button>
       <button class="btn ghost admin-tab" data-tab="account">🛠 Account & Project</button>
     </nav>
 
@@ -157,6 +158,29 @@
         <div id="battle-detail-overlay" class="battle-detail-overlay hidden"></div>
       </div>
 
+      <!-- feedback -->
+      <div id="tab-feedback" class="admin-tabpage hidden">
+        <h2 class="panel-title">Playtest Feedback</h2>
+        <p class="admin-note">Latest rating per player is shown in the list. Click a player to scan their submitted review text and timestamps.</p>
+        <div class="feedback-admin-grid">
+          <div>
+            <div class="battle-history-head">
+              <h3 class="panel-sub">Latest Replies</h3>
+              <input id="feedback-filter" placeholder="Filter by player, rating, text">
+            </div>
+            <div class="battle-table-wrap">
+              <table class="leaderboard feedback-table" id="feedback-table">
+                <thead>
+                  <tr><th>Player</th><th>Latest</th><th>Replies</th><th>Submitted</th></tr>
+                </thead>
+                <tbody id="feedback-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="feedback-detail" class="feedback-detail admin-note">Select a player to read their feedback.</div>
+        </div>
+      </div>
+
       <!-- account / project -->
       <div id="tab-account" class="admin-tabpage hidden">
         <h2 class="panel-title">Account & Project</h2>
@@ -210,6 +234,6 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=12"></script>
+<script src="/v2/static/admin.js?v=13"></script>
 </body>
 </html>

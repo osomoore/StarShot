@@ -53,7 +53,7 @@
       document.getElementById("admin-user").textContent = "⚙ " + me.user.username;
       document.getElementById("admin-locked").classList.add("hidden");
       document.getElementById("admin-main").classList.remove("hidden");
-      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory()]);
+      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadFeedback()]);
     } catch (err) {
       showLocked("Sign in as the admiral to enter.");
     }
@@ -599,6 +599,67 @@
       renderBattleHistory();
     });
   });
+
+  // feedback
+  let feedbackEntries = [];
+  const stars = (rating) => "★".repeat(Number(rating || 0)) + "☆".repeat(Math.max(0, 5 - Number(rating || 0)));
+  const feedbackText = (entry) => [entry.liked, entry.disliked, entry.thoughts].filter(Boolean).join(" ").toLowerCase();
+
+  async function loadFeedback() {
+    try {
+      const data = await get("/admin/feedback");
+      feedbackEntries = data.entries || [];
+      renderFeedback();
+    } catch (err) { /* not admin yet */ }
+  }
+
+  function renderFeedback() {
+    const body = document.getElementById("feedback-body");
+    if (!body) return;
+    const filter = (document.getElementById("feedback-filter").value || "").trim().toLowerCase();
+    const rows = feedbackEntries.filter((entry) => {
+      const haystack = [entry.username, entry.rating, feedbackText(entry)].join(" ").toLowerCase();
+      return !filter || haystack.includes(filter);
+    });
+    body.innerHTML = rows.length ? "" : `<tr><td colspan="4" class="muted">No feedback yet.</td></tr>`;
+    for (const entry of rows) {
+      const tr = document.createElement("tr");
+      tr.className = "feedback-row";
+      tr.innerHTML = `
+        <td>${esc(entry.username)}</td>
+        <td><span class="feedback-rating">${stars(entry.rating)}</span></td>
+        <td>${entry.feedback_count}</td>
+        <td>${new Date(entry.created_at).toLocaleString()}</td>`;
+      tr.addEventListener("click", () => openFeedbackDetail(entry.user_id));
+      body.appendChild(tr);
+    }
+  }
+
+  async function openFeedbackDetail(userId) {
+    try {
+      const data = await get("/admin/feedback/users/" + encodeURIComponent(userId));
+      const detail = document.getElementById("feedback-detail");
+      const entries = data.entries || [];
+      detail.innerHTML = `
+        <h3 class="panel-sub">${esc(data.user.username)} - ${entries.length} repl${entries.length === 1 ? "y" : "ies"}</h3>
+        ${entries.map((entry) => `
+          <article class="feedback-entry">
+            <div class="feedback-entry-head">
+              <span class="feedback-rating">${stars(entry.rating)}</span>
+              <span>${new Date(entry.created_at).toLocaleString()}</span>
+            </div>
+            ${entry.match_id || entry.game_id ? `<div class="feedback-context">${entry.match_id ? `Match ${esc(entry.match_id)}` : ""}${entry.match_id && entry.game_id ? " · " : ""}${entry.game_id ? `Game ${esc(entry.game_id)}` : ""}</div>` : ""}
+            <h4>What I liked</h4>
+            <p>${esc(entry.liked || "-")}</p>
+            <h4>What I didn't like</h4>
+            <p>${esc(entry.disliked || "-")}</p>
+            <h4>General Thoughts</h4>
+            <p>${esc(entry.thoughts || "-")}</p>
+          </article>`).join("")}`;
+    } catch (error) { toast(error.message); }
+  }
+
+  document.getElementById("feedback-filter").addEventListener("input", renderFeedback);
 
   async function loadSettings() {
     try {

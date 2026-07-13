@@ -25,6 +25,7 @@
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
     leaderboard: () => get("/leaderboard"),
+    submitFeedback: (body) => post("/feedback", body),
     lobby: () => get("/lobby"),
     queue: (action) => post("/lobby/queue", { action }),
     createMatch: (body) => post("/matches", body),

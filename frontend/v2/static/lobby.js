@@ -11,6 +11,9 @@
   let crew = [];        // selected ai types
   const autoEntered = new Set();  // pairings/challenges already jumped into
   const esc = (value) => Cards.escapeHtml(value);
+  const feedbackBadge = (count) => Number(count || 0) > 0
+    ? `<span class="feedback-badge" title="Feedback shared ${Number(count)} time${Number(count) === 1 ? "" : "s"}">★ ${Number(count)}</span>`
+    : "";
 
   async function enter() {
     App.showScreen("lobby");
@@ -239,6 +242,7 @@
       row.className = "player-row";
       row.innerHTML = `<span class="player-dot">●</span>
         <span class="player-name">${esc(player.username)}</span>
+        ${feedbackBadge(player.feedback_count)}
         <span class="player-record">${player.wins}W / ${player.losses}L</span>`;
       const button = document.createElement("button");
       button.className = "btn crimson small";
@@ -319,6 +323,7 @@
     const rate = total ? Math.round((user.wins / total) * 100) : 0;
     document.getElementById("profile-card").innerHTML = `
       <b>☠ ${esc(user.username)}</b><br>
+      ${feedbackBadge(user.feedback_count)}<br>
       Victories: <b>${user.wins}</b> · Defeats: <b>${user.losses}</b> · Draws: <b>${user.draws}</b><br>
       Battles fought: <b>${total}</b> · Win rate: <b>${rate}%</b><br>
       Sailing since: <b>${formatDate(user.created_at)}</b>`;
@@ -328,8 +333,84 @@
     const table = document.getElementById("leaderboard");
     table.innerHTML = "<tr><th>#</th><th>Captain</th><th>W</th><th>L</th><th>Battles</th></tr>" +
       (entries || []).map((entry, index) => `
-        <tr><td>${index === 0 ? "👑" : index + 1}</td><td>${esc(entry.username)}</td>
+        <tr><td>${index === 0 ? "👑" : index + 1}</td><td>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
         <td>${entry.wins}</td><td>${entry.losses}</td><td>${entry.games_played}</td></tr>`).join("");
+  }
+
+  function openFeedback(context = {}) {
+    let overlay = document.getElementById("feedback-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "feedback-overlay";
+      overlay.className = "overlay hidden";
+      document.body.appendChild(overlay);
+    }
+    overlay.innerHTML = "";
+    overlay.classList.remove("hidden");
+    const box = document.createElement("div");
+    box.className = "picker feedback-modal";
+    box.innerHTML = `
+      <h3>Playtest Feedback</h3>
+      <p class="feedback-copy">We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
+      <form id="feedback-form" class="feedback-form">
+        <label>Rating
+          <div class="rating-stars" role="radiogroup" aria-label="Rating">
+            ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="star-choice" data-rating="${n}" aria-label="${n} star${n === 1 ? "" : "s"}">★</button>`).join("")}
+          </div>
+        </label>
+        <label>What I liked
+          <textarea id="feedback-liked" rows="4" maxlength="2000"></textarea>
+        </label>
+        <label>What I didn't like
+          <textarea id="feedback-disliked" rows="4" maxlength="2000"></textarea>
+        </label>
+        <label>General Thoughts
+          <textarea id="feedback-thoughts" rows="5" maxlength="3000"></textarea>
+        </label>
+        <div class="feedback-actions">
+          <button type="button" class="btn ghost" id="feedback-cancel">Cancel</button>
+          <button type="submit" class="btn gold">Submit Feedback</button>
+        </div>
+        <div id="feedback-status" class="auth-error"></div>
+      </form>`;
+    overlay.appendChild(box);
+    let rating = 5;
+    const paintStars = () => {
+      box.querySelectorAll(".star-choice").forEach((button) => {
+        button.classList.toggle("selected", Number(button.dataset.rating) <= rating);
+      });
+    };
+    box.querySelectorAll(".star-choice").forEach((button) => {
+      button.addEventListener("click", () => {
+        rating = Number(button.dataset.rating) || 5;
+        paintStars();
+      });
+    });
+    paintStars();
+    document.getElementById("feedback-cancel").addEventListener("click", () => overlay.classList.add("hidden"));
+    overlay.onclick = (event) => {
+      if (event.target === overlay) overlay.classList.add("hidden");
+    };
+    document.getElementById("feedback-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const status = document.getElementById("feedback-status");
+      status.textContent = "";
+      try {
+        const result = await API.submitFeedback({
+          rating,
+          liked: document.getElementById("feedback-liked").value,
+          disliked: document.getElementById("feedback-disliked").value,
+          thoughts: document.getElementById("feedback-thoughts").value,
+          match_id: context.matchId || null,
+          game_id: context.gameId || null,
+        });
+        overlay.classList.add("hidden");
+        App.toast(`Feedback sent - badge count: ${result.feedback_count}`, true);
+        refresh().catch(() => {});
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -355,6 +436,7 @@
       } catch (error) { App.toast(error.message); }
     });
     document.getElementById("btn-tutorial").addEventListener("click", () => Tutorial.start());
+    document.getElementById("btn-feedback-lobby").addEventListener("click", () => openFeedback());
     document.getElementById("btn-logout").addEventListener("click", async () => {
       try { await API.logout(); } catch (err) {}
       leave();
@@ -362,5 +444,6 @@
     });
   });
 
+  window.Feedback = { open: openFeedback };
   window.Lobby = { enter, leave };
 })();

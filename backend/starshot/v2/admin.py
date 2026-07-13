@@ -567,6 +567,24 @@ def ai_battle_detail(entry_id: str, request: Request) -> dict:
     return {"entry": entry}
 
 
+@admin_router.get("/feedback")
+def feedback_summary(request: Request) -> dict:
+    _admin_user(request)
+    return {"entries": get_v2_store().list_feedback_latest_by_user()}
+
+
+@admin_router.get("/feedback/users/{user_id}")
+def feedback_for_user(user_id: int, request: Request) -> dict:
+    _admin_user(request)
+    user = get_v2_store().get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {
+        "user": {"id": user["id"], "username": user["username"]},
+        "entries": get_v2_store().feedback_for_user(user_id),
+    }
+
+
 # ── project download ───────────────────────────────────────────────────────
 
 _ZIP_EXCLUDE_DIRS = {".git", ".starshot", ".local", ".cache", ".config", ".claude",

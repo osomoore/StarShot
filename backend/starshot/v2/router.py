@@ -71,6 +71,7 @@ def _check_maintenance(user: dict) -> None:
 
 
 def _public_profile(user: dict) -> dict:
+    store = get_v2_store()
     return {
         "username": user["username"],
         "wins": user["wins"],
@@ -78,6 +79,7 @@ def _public_profile(user: dict) -> dict:
         "draws": user["draws"],
         "games_played": user["games_played"],
         "created_at": user["created_at"],
+        "feedback_count": user.get("feedback_count", store.feedback_count(user["id"])),
     }
 
 
@@ -160,6 +162,35 @@ def player_profile(username: str) -> dict:
 @router.get("/leaderboard")
 def leaderboard() -> dict:
     return {"leaderboard": get_v2_store().leaderboard()}
+
+
+class FeedbackRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    liked: str = Field(default="", max_length=2000)
+    disliked: str = Field(default="", max_length=2000)
+    thoughts: str = Field(default="", max_length=3000)
+    match_id: str | None = Field(default=None, max_length=40)
+    game_id: str | None = Field(default=None, max_length=80)
+
+
+@router.post("/feedback")
+def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
+    user = _current_user(request)
+    store = get_v2_store()
+    feedback = store.create_feedback(
+        user_id=user["id"],
+        rating=body.rating,
+        liked=body.liked.strip(),
+        disliked=body.disliked.strip(),
+        thoughts=body.thoughts.strip(),
+        match_id=body.match_id,
+        game_id=body.game_id,
+    )
+    return {
+        "ok": True,
+        "feedback": feedback,
+        "feedback_count": store.feedback_count(user["id"]),
+    }
 
 
 # --------------------------------------------------------------------------

@@ -1209,6 +1209,11 @@
           </div>`;
         }).join("")}
       </div>
+      <div class="feedback-spot">
+        <h3>Feedback</h3>
+        <p>We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
+        <button class="btn gold" id="btn-endgame-feedback">★ Share Feedback</button>
+      </div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn ghost" id="btn-endgame-view">👁 View Battlefield</button>
         <button class="btn crimson" id="btn-endgame-replay">▶ Replay the Battle</button>
@@ -1222,6 +1227,9 @@
     });
     document.getElementById("btn-endgame-view").addEventListener("click", () => {
       overlay.classList.add("hidden");
+    });
+    document.getElementById("btn-endgame-feedback").addEventListener("click", () => {
+      window.Feedback?.open({ gameId, matchId: match && match.id });
     });
     document.getElementById("btn-endgame-replay").addEventListener("click", async () => {
       overlay.classList.add("hidden");
