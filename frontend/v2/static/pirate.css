@@ -341,17 +341,25 @@ h1, h2, .brand, .poster-title, .banner-text {
   z-index: 5; white-space: nowrap;
 }
 .board-callout.crimson { color: #ff8d7a; text-shadow: 0 0 18px rgba(201,80,62,.7), 0 2px 4px #000; }
-.starfall-status {
+.board-status-stack {
   position: absolute; left: 14px; top: 12px; z-index: 4;
   max-width: min(420px, calc(100% - 110px));
+  display: flex; flex-direction: column; gap: 8px;
+}
+.starfall-status,
+.captain-status {
   border: 1px solid rgba(212,167,72,.65);
   border-radius: 8px;
   padding: 8px 10px;
   background: rgba(9,14,27,.84);
   box-shadow: 0 6px 20px rgba(0,0,0,.35);
 }
-.starfall-status b { display: block; color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 18px; line-height: 1; }
-.starfall-status span { display: block; color: var(--ink-dim); font-size: 11px; line-height: 1.25; margin-top: 3px; }
+.captain-status { border-color: rgba(126,216,255,.55); }
+.starfall-status b,
+.captain-status b { display: block; color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 18px; line-height: 1; }
+.captain-status b { color: #9ee7ff; }
+.starfall-status span,
+.captain-status span { display: block; color: var(--ink-dim); font-size: 11px; line-height: 1.25; margin-top: 3px; }
 @keyframes calloutPop {
   0% { transform: translateX(-50%) scale(.6); opacity: 0; }
   60% { transform: translateX(-50%) scale(1.08); opacity: 1; }
@@ -684,6 +692,20 @@ h1, h2, .brand, .poster-title, .banner-text {
     min-height: 34px;
     min-width: 38px;
     padding: 5px 8px;
+  }
+
+  :root[data-device="phone"] #zoom-in,
+  :root[data-device="phone"] #zoom-out,
+  :root[data-device="phone"] #btn-export-log {
+    display: none;
+  }
+
+  :root[data-device="phone"] .board-status-stack {
+    left: 10px;
+    max-width: calc(100vw - 20px);
+    right: 10px;
+    top: calc(70px + env(safe-area-inset-top));
+    z-index: 19;
   }
 
   :root[data-device="phone"] .orders-panel,

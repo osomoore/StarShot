@@ -11,6 +11,7 @@
   let animatedUpTo = 0;
   let pollTimer = null;
   let animating = false;
+  let replayShipStates = null;
   let endgameShown = false;
   let draft = null;
   let pendingFetch = false;
@@ -191,7 +192,7 @@
       animating = true;   // keep the endgame modal from popping mid-setup
       renderAll();
       animating = false;
-      if (events.some(isVisualEvent)) {
+      if (events.some(shouldOfferEntryReplay)) {
         offerEntryChoice();
       } else {
         renderAll();
@@ -249,6 +250,11 @@
       "starfall_take_cover_damage", "captain_cleanup_movement"].includes(event.type);
   }
 
+  function shouldOfferEntryReplay(event) {
+    if (!isVisualEvent(event)) return false;
+    return !["round_advanced", "starfall_revealed"].includes(event.type);
+  }
+
   function saveAnimCursor() {
     try { localStorage.setItem("ss_seen_" + gameId, String(animatedUpTo)); } catch (err) {}
   }
@@ -280,6 +286,7 @@
     Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
     Board.renderShips(view.players, seatOrder(), you);
     renderStarfallStatus();
+    renderCaptainStatus();
     renderFleet();
     renderLog();
     renderOrdersPanel();
@@ -297,10 +304,38 @@
       node = document.createElement("div");
       node.id = "starfall-status";
       node.className = "starfall-status";
-      els["board-wrap"].appendChild(node);
+      statusStack().appendChild(node);
     }
     const sf = view.active_starfall;
     node.innerHTML = `<b>${esc(sf.name)}</b><span>${esc(sf.text)}</span>`;
+  }
+
+  function renderCaptainStatus() {
+    let node = document.getElementById("captain-status");
+    const me = view.players[you];
+    const captain = me && me.captain;
+    if (!captain) {
+      if (node) node.remove();
+      return;
+    }
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "captain-status";
+      node.className = "captain-status";
+      statusStack().appendChild(node);
+    }
+    node.innerHTML = `<b>${esc(captain.callsign || captain.name)}</b><span>${esc(captain.text)}</span>`;
+  }
+
+  function statusStack() {
+    let node = document.getElementById("board-status-stack");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "board-status-stack";
+      node.className = "board-status-stack";
+      els["board-wrap"].appendChild(node);
+    }
+    return node;
   }
 
   function extraActiveBaubleNumbers() {
@@ -315,7 +350,7 @@
     for (const playerId of seatOrder()) {
       const player = view.players[playerId];
       if (!player) continue;
-      const ship = player.ship || {};
+      const ship = displayShipFor(playerId);
       const seat = match && match.seat_list.find((s) => s.player_id === playerId);
       const dead = ship.destroyed || player.eliminated;
       const card = document.createElement("div");
@@ -353,7 +388,7 @@
   function showShipModal(playerId) {
     const player = view.players[playerId];
     if (!player) return;
-    const ship = player.ship || {};
+    const ship = displayShipFor(playerId);
     const overlay = els["picker-overlay"];
     overlay.innerHTML = "";
     overlay.classList.remove("hidden");
@@ -562,7 +597,7 @@
       cardsHtml.appendChild(hint);
     }
     const seal = document.createElement("div");
-    const overdriveNote = overdriveCopiesAction() ? "OVERDRIVE x2" : "OVERDRIVE combined";
+    const overdriveNote = overdriveCopiesAction() ? "OVERDRIVE x2" : "OVERDRIVE";
     seal.innerHTML = `<div class="seal-toggle ${slot.seal === "overdrive" ? "overdrive" : ""}" title="Toggle Sealed / Overdrive">${slot.seal === "overdrive" ? "🔥" : "☠"}</div>
       <div class="seal-note">${slot.seal === "overdrive" ? overdriveNote : "sealed"}</div>`;
     if (ordering) {
@@ -1149,6 +1184,7 @@
   async function playEvents(events) {
     animating = true;
     skipReplay = false;
+    replayShipStates = buildReplayShipStates(events);
     replayControls(events.length >= 4);
     try {
       // Every ship sails alive at the start of the tale; the replay itself
@@ -1176,6 +1212,7 @@
         const start = positions[playerId];
         Board.placeShip(playerId, start.q, start.r, start.facing);
       }
+      renderFleet();
       for (let index = 0; index < events.length; index++) {
         const event = events[index];
         if (event.type === "movement_resolved") {
@@ -1196,8 +1233,98 @@
     } finally {
       animating = false;
       skipReplay = false;
+      replayShipStates = null;
       replayControls(false);
     }
+  }
+
+  function displayShipFor(playerId) {
+    return (replayShipStates && replayShipStates[playerId]) || view.players[playerId]?.ship || {};
+  }
+
+  function buildReplayShipStates(events) {
+    const ships = {};
+    for (const playerId of seatOrder()) {
+      const ship = view.players[playerId]?.ship;
+      if (ship) ships[playerId] = JSON.parse(JSON.stringify(ship));
+    }
+    for (let index = events.length - 1; index >= 0; index--) {
+      reverseShipEvent(ships, events[index]);
+    }
+    return ships;
+  }
+
+  function reverseShipEvent(ships, event) {
+    if (event.type === "volley_resolved") {
+      const ship = ships[event.target_id];
+      if (!ship) return;
+      if (event.shielded) ship.shields = (ship.shields || 0) + 1;
+      reverseDamageResult(ship, event);
+      if (event.target_destroyed) {
+        ship.destroyed = false;
+        ship.knocked_out_round = null;
+        ship.knocked_out_action_number = null;
+        ship.knocked_out_phase = null;
+      }
+    } else if (event.type === "ramming_resolved") {
+      reverseDamageResult(ships[event.target_id], event.target_damage || {});
+      reverseDamageResult(ships[event.attacker_id], event.attacker_damage || {});
+    } else if (event.type === "starfall_take_cover_damage" || event.type === "starfall_revealed") {
+      for (const result of event.targets || []) {
+        const ship = ships[result.player_id];
+        if (!ship) continue;
+        if (result.shield_hits) ship.shields = (ship.shields || 0) + result.shield_hits;
+        reverseDamageResult(ship, result);
+        if (result.target_destroyed) ship.destroyed = false;
+      }
+    }
+  }
+
+  function reverseDamageResult(ship, result) {
+    if (!ship || !result) return;
+    const destroyed = new Set(ship.destroyed_components || []);
+    let restored = 0;
+    for (const shot of result.damage_shots || []) {
+      if (!shot.destroyed) continue;
+      if (shot.component_id && destroyed.delete(shot.component_id)) restored++;
+      for (const detachedId of shot.detached_component_ids || []) {
+        if (destroyed.delete(detachedId)) restored++;
+      }
+    }
+    ship.destroyed_components = Array.from(destroyed);
+    ship.damage_taken = Math.max(0, (ship.damage_taken || 0) - restored);
+  }
+
+  function applyShipEvent(event) {
+    if (!replayShipStates) return;
+    if (event.type === "volley_resolved" && event.shielded) {
+      const ship = replayShipStates[event.target_id];
+      if (ship) ship.shields = Math.max(0, (ship.shields || 0) - 1);
+    } else if (event.type === "starfall_take_cover_damage" || event.type === "starfall_revealed") {
+      for (const result of event.targets || []) applyDamageResult(result.player_id, result);
+    } else if (event.type === "ramming_resolved") {
+      applyDamageResult(event.target_id, event.target_damage || {});
+      applyDamageResult(event.attacker_id, event.attacker_damage || {});
+    }
+    renderFleet();
+  }
+
+  function applyDamageResult(playerId, result) {
+    const ship = replayShipStates && replayShipStates[playerId];
+    if (!ship || !result) return;
+    if (result.shield_hits) ship.shields = Math.max(0, (ship.shields || 0) - result.shield_hits);
+    for (const shot of result.damage_shots || []) applyDamageShot(playerId, shot);
+    if (result.target_destroyed) ship.destroyed = true;
+  }
+
+  function applyDamageShot(playerId, shot) {
+    const ship = replayShipStates && replayShipStates[playerId];
+    if (!ship || !shot || !shot.destroyed) return;
+    const destroyed = new Set(ship.destroyed_components || []);
+    if (shot.component_id) destroyed.add(shot.component_id);
+    for (const detachedId of shot.detached_component_ids || []) destroyed.add(detachedId);
+    ship.destroyed_components = Array.from(destroyed);
+    ship.damage_taken = destroyed.size;
   }
 
   async function playMovementEvents(events) {
@@ -1282,6 +1409,7 @@
       case "starfall_revealed": {
         callout(`Starfall: ${event.starfall}`, true);
         playStarfallFx(event);
+        applyShipEvent(event);
         await wait(1200);
         return;
       }
@@ -1293,6 +1421,7 @@
           const at = Board.hexToScreen(player.ship.q, player.ship.r);
           FX.impact(at, true);
         }
+        applyShipEvent(event);
         await wait(700);
         return;
       }
@@ -1304,6 +1433,7 @@
         const rollText = `🎲 ${event.roll}${event.aim_bonus ? "+" + event.aim_bonus : ""} vs ${event.defense_threshold}`;
         if (event.shielded) {
           FX.shield(to);
+          applyShipEvent(event);
           FX.floatText(to, rollText + " — SHIELDED", "#7ed8ff");
         } else if (event.hit) {
           FX.impact(to, (event.damage_applied || 0) > 1);
@@ -1316,6 +1446,8 @@
           for (const shot of event.damage_shots || []) {
             if (!shot.destroyed) continue;
             await wait(340);
+            applyDamageShot(event.target_id, shot);
+            renderFleet();
             FX.floatText(to, `⚀${shot.lane} → ${layout[shot.component_id] || shot.component_id} destroyed!`, "#ff8d7a", 12);
             for (const detachedId of shot.detached_component_ids || []) {
               await wait(280);
@@ -1328,6 +1460,10 @@
         }
         if (event.target_destroyed) {
           await wait(350);
+          if (replayShipStates && replayShipStates[event.target_id]) {
+            replayShipStates[event.target_id].destroyed = true;
+            renderFleet();
+          }
           FX.explosion(to);
           Board.setShipDead(event.target_id, true);
           callout(`☠ ${Board.shortName(event.target_id)} IS SUNK!`, true);

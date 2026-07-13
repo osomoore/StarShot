@@ -305,7 +305,7 @@ def _resolve_action_phase(state: GameState) -> None:
         player.ship.defense_bonus_this_action = 0
 
     for player in state.players.values():
-        if player.eliminated or player.prepared_orders is None:
+        if player.eliminated or player.ship.destroyed or player.prepared_orders is None:
             continue
         stack = player.prepared_orders.stacks[action_number - 1]
         revealed_stacks[player.id] = stack
@@ -926,7 +926,8 @@ def _resolve_attack_volley(
     roll = _roll_attack(state)
     roll_total = roll + aim_bonus
     in_range = max_range is None or distance <= max_range
-    hit = in_range and (always_hits or roll_total >= defense_threshold)
+    natural_auto_hit = roll >= (18 if _active_starfall(state, "clear_skies") else 12)
+    hit = in_range and (always_hits or natural_auto_hit or roll_total >= defense_threshold)
     event = {
         "type": "volley_resolved",
         "round": state.round_number,
@@ -948,6 +949,7 @@ def _resolve_attack_volley(
         "in_range": in_range,
         "roll": roll,
         "roll_total": roll_total,
+        "natural_auto_hit": natural_auto_hit,
         "always_hits": always_hits,
         "lead_the_target": lead_the_target,
         "u_turn_attack": u_turn_atk,

@@ -804,6 +804,141 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.players["red"].ship.knocked_out_phase, GamePhase.ACTION_1)
         self.assertEqual(state.players["blue"].victory_points, 3)
 
+    def test_destroyed_ship_does_not_reveal_future_actions(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=2))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = 1
+        state.players["blue"].ship.r = 0
+        state.players["red"].ship.destroyed_components.update(
+            {"port_outer_engines", "port_life_support"}
+        )
+        state.players["red"].ship.damage_taken = 2
+        self._set_hand(state, "red", "targeted_attack_aim_1_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_b")
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED),
+                    ActionStack(2, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="blue"),)),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_b", target_player_id="red"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+
+        state = resolve_next_step(state)
+        self.assertTrue(state.players["red"].ship.destroyed)
+        state = resolve_next_step(state)
+
+        red_action_two_reveals = [
+            event for event in state.event_log
+            if event["type"] == "action_revealed" and event["player_id"] == "red" and event["action_number"] == 2
+        ]
+        red_action_two_volleys = [
+            event for event in state.event_log
+            if event["type"] == "volley_resolved" and event["attacker_id"] == "red" and event["action_number"] == 2
+        ]
+        self.assertEqual(red_action_two_reveals, [])
+        self.assertEqual(red_action_two_volleys, [])
+
+    def test_natural_twelve_attack_roll_auto_hits(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=20))
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = -10
+        state.players["blue"].ship.r = 0
+        self._set_hand(state, "red", "controlled_move_2_a")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a")
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_2_a", orientation="forward"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+
+        state = resolve_next_step(state)
+
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["roll"], 12)
+        self.assertLess(volley["roll_total"], volley["defense_threshold"])
+        self.assertTrue(volley["natural_auto_hit"])
+        self.assertTrue(volley["hit"])
+
+    def test_clear_skies_natural_eighteen_attack_roll_auto_hits(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=376))
+        state.active_starfall_id = "clear_skies"
+        state.active_starfall_round = state.round_number
+        state.players["red"].ship.q = 4
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        state.players["red"].ship.shields = 0
+        state.players["blue"].ship.q = -5
+        state.players["blue"].ship.r = 0
+        self._set_hand(state, "red", "desp_turbo_ions")
+        self._set_hand(state, "blue", "targeted_attack_aim_1_a")
+        state = submit_orders(
+            state,
+            "red",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_turbo_ions", face="desperate"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+        state = submit_orders(
+            state,
+            "blue",
+            OrdersSubmission(
+                stacks=(
+                    ActionStack(1, SealMode.SEALED, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="red"),)),
+                    ActionStack(2, SealMode.SEALED),
+                    ActionStack(3, SealMode.SEALED),
+                )
+            ),
+        )
+
+        state = resolve_next_step(state)
+
+        volley = [event for event in state.event_log if event["type"] == "volley_resolved"][0]
+        self.assertEqual(volley["roll"], 18)
+        self.assertLess(volley["roll_total"], volley["defense_threshold"])
+        self.assertTrue(volley["natural_auto_hit"])
+        self.assertTrue(volley["hit"])
+
     def test_round_six_vp_winner_must_be_alive(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green"), seed=1))
         state.phase = GamePhase.CLEANUP

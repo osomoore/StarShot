@@ -16,8 +16,8 @@
     },
     {
       icon: "🂠", title: "Your hand and the three stacks",
-      body: `You draw <b>5 cards</b> (6 once your shields are gone). Load <b>up to two cards of the SAME
-        type</b> (move or attack) into each Action stack — click, drag, or click a stack first and then
+      body: `You draw <b>5 cards</b> (6 once your shields are gone). Load <b>up to two cards</b>
+        into each Action stack — current raids can mix move and attack cards, so click, drag, or click a stack first and then
         pick its cards. Leftover cards go to your discard, and your discard shuffles back in when your
         deck runs dry — nothing is lost forever.`,
     },
