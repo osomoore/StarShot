@@ -416,98 +416,100 @@ def _resolve_stack_movement(
     overdrive_copy: bool = False,
 ) -> None:
     movement_steps: list[dict] = []
-    for selection in stack.cards:
-        card = card_by_id(selection.card_id)
-        effect = _card_effect(card, selection, stack.seal_mode)
-        if overdrive_copy and effect.is_desperate_face and not _overdrive_desperation_enabled():
-            continue
-        if effect.family != CardFamily.MOVE or effect.move is None:
-            continue
+    passes = 2 if _overdrive_copies_cards(stack) and not overdrive_copy else 1
+    for _ in range(passes):
+        for selection in stack.cards:
+            card = card_by_id(selection.card_id)
+            effect = _card_effect(card, selection, stack.seal_mode)
+            if overdrive_copy and effect.is_desperate_face and not _overdrive_desperation_enabled():
+                continue
+            if effect.family != CardFamily.MOVE or effect.move is None:
+                continue
 
-        move_effect = effect.move
-        defense_bonus = move_effect.defense_bonus
-        if defense_bonus:
-            player.ship.defense_bonus_this_action += defense_bonus
+            move_effect = effect.move
+            defense_bonus = move_effect.defense_bonus
+            if defense_bonus:
+                player.ship.defense_bonus_this_action += defense_bonus
 
-        move_choice = _normalize_move_choice(selection.orientation)
-        orientation_options = move_effect.orientation_options
-        if move_choice not in orientation_options:
-            raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
+            move_choice = _normalize_move_choice(selection.orientation)
+            orientation_options = move_effect.orientation_options
+            if move_choice not in orientation_options:
+                raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
 
-        distance = move_effect.distance
-        before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
-        attempted_q = player.ship.q
-        attempted_r = player.ship.r
-        warp_destination = move_effect.warp_destination
+            distance = move_effect.distance
+            before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
+            attempted_q = player.ship.q
+            attempted_r = player.ship.r
+            warp_destination = move_effect.warp_destination
 
-        if warp_destination:
-            attempted_q, attempted_r, attempted_facing = _resolve_warp_destination(state, player, warp_destination)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            if attempted_facing is not None:
-                player.ship.facing = attempted_facing
-        elif move_effect.movement_disabled:
-            pass
-        elif move_effect.double_turn_right:
-            player.ship.facing = turn_right(turn_right(player.ship.facing))
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        elif move_effect.double_turn_after_move:
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            if move_choice == "turn_left":
-                player.ship.facing = turn_left(turn_left(player.ship.facing))
-            else:
+            if warp_destination:
+                attempted_q, attempted_r, attempted_facing = _resolve_warp_destination(state, player, warp_destination)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                if attempted_facing is not None:
+                    player.ship.facing = attempted_facing
+            elif move_effect.movement_disabled:
+                pass
+            elif move_effect.double_turn_right:
                 player.ship.facing = turn_right(turn_right(player.ship.facing))
-            player.ship.movement_this_action += distance
-        elif move_effect.u_turn_move:
-            player.ship.facing = u_turn(player.ship.facing)
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        elif move_effect.side_slip_direction:
-            slip_facing = (player.ship.facing + (_SLIP_RIGHT_OFFSET if move_choice == "slip_right" else _SLIP_LEFT_OFFSET)) % 6
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, slip_facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        elif move_choice == "forward":
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        elif move_choice == "turn_left":
-            player.ship.facing = turn_left(player.ship.facing)
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        elif move_choice == "turn_right":
-            player.ship.facing = turn_right(player.ship.facing)
-            attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
-            player.ship.q, player.ship.r = attempted_q, attempted_r
-            player.ship.movement_this_action += distance
-        else:
-            raise RulesError(f"Unsupported move orientation: {move_choice}")
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            elif move_effect.double_turn_after_move:
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                if move_choice == "turn_left":
+                    player.ship.facing = turn_left(turn_left(player.ship.facing))
+                else:
+                    player.ship.facing = turn_right(turn_right(player.ship.facing))
+                player.ship.movement_this_action += distance
+            elif move_effect.u_turn_move:
+                player.ship.facing = u_turn(player.ship.facing)
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            elif move_effect.side_slip_direction:
+                slip_facing = (player.ship.facing + (_SLIP_RIGHT_OFFSET if move_choice == "slip_right" else _SLIP_LEFT_OFFSET)) % 6
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, slip_facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            elif move_choice == "forward":
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            elif move_choice == "turn_left":
+                player.ship.facing = turn_left(player.ship.facing)
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            elif move_choice == "turn_right":
+                player.ship.facing = turn_right(player.ship.facing)
+                attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
+                player.ship.q, player.ship.r = attempted_q, attempted_r
+                player.ship.movement_this_action += distance
+            else:
+                raise RulesError(f"Unsupported move orientation: {move_choice}")
 
-        player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
+            player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
 
-        if move_effect.active_cooling:
-            player.discard.extend(player.overheat)
-            player.overheat = []
+            if move_effect.active_cooling:
+                player.discard.extend(player.overheat)
+                player.overheat = []
 
-        movement_steps.append(
-            {
-                "card_id": card.id,
-                "face": selection.face,
-                "choice": move_choice,
-                "distance": 0 if move_effect.movement_disabled or warp_destination else distance,
-                "warp_destination": warp_destination,
-                "defense_bonus": defense_bonus,
-                "active_cooling": move_effect.active_cooling,
-                "before": before,
-                "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
-                "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
-                "clamped": (attempted_q, attempted_r) != (player.ship.q, player.ship.r),
-            }
-        )
+            movement_steps.append(
+                {
+                    "card_id": card.id,
+                    "face": selection.face,
+                    "choice": move_choice,
+                    "distance": 0 if move_effect.movement_disabled or warp_destination else distance,
+                    "warp_destination": warp_destination,
+                    "defense_bonus": defense_bonus,
+                    "active_cooling": move_effect.active_cooling,
+                    "before": before,
+                    "attempted": {"q": attempted_q, "r": attempted_r, "facing": player.ship.facing},
+                    "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing},
+                    "clamped": (attempted_q, attempted_r) != (player.ship.q, player.ship.r),
+                }
+            )
 
     if movement_steps:
         state.event_log.append(
@@ -575,9 +577,10 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         if not attack_cards:
             continue
 
-        # Crazy Ivan u_turn_attack: flip facing before resolving targets
         attack_effects = [_card_effect(card, sel, stack.seal_mode) for card, sel in attack_cards]
-        if any(e.attack is not None and e.attack.u_turn_attack for e in attack_effects):
+        # Crazy Ivan u_turn_attack: each copied card flips facing once.
+        u_turn_attack_count = sum(1 for e in attack_effects if e.attack is not None and e.attack.u_turn_attack)
+        if u_turn_attack_count % 2:
             attacker.ship.facing = u_turn(attacker.ship.facing)
 
         target_ids = _target_player_ids_for_attack(state, attacker, stack, attack_cards)
@@ -768,13 +771,15 @@ def _resolve_attack_volley(
 
 def _attack_cards_for_stack(stack: ActionStack, *, include_desperate: bool = True) -> list[tuple[Card, OrderCardSelection]]:
     attack_cards: list[tuple[Card, OrderCardSelection]] = []
-    for selection in stack.cards:
-        card = card_by_id(selection.card_id)
-        effect = _card_effect(card, selection, stack.seal_mode)
-        if not include_desperate and effect.is_desperate_face:
-            continue
-        if effect.family == CardFamily.ATTACK:
-            attack_cards.append((card, selection))
+    passes = 2 if _overdrive_copies_cards(stack) else 1
+    for _ in range(passes):
+        for selection in stack.cards:
+            card = card_by_id(selection.card_id)
+            effect = _card_effect(card, selection, stack.seal_mode)
+            if not include_desperate and effect.is_desperate_face:
+                continue
+            if effect.family == CardFamily.ATTACK:
+                attack_cards.append((card, selection))
     return attack_cards
 
 
@@ -1098,6 +1103,13 @@ def _overdrive_copies_action(stack: ActionStack) -> bool:
     return (
         stack.seal_mode == SealMode.OVERDRIVE
         and str(active_catalog().rules_config.overdrive_style) == OverdriveStyle.COPY_ACTION.value
+    )
+
+
+def _overdrive_copies_cards(stack: ActionStack) -> bool:
+    return (
+        stack.seal_mode == SealMode.OVERDRIVE
+        and str(active_catalog().rules_config.overdrive_style) == OverdriveStyle.COMBINE_CARDS.value
     )
 
 

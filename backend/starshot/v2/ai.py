@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from random import Random
 
 from starshot.rules.card_effects import CardEffect, interpret_card
+from starshot.rules.deck_data import active_catalog
 from starshot.rules.hex import (
     clamp_to_board,
     hex_distance,
@@ -45,6 +46,7 @@ from starshot.rules.models import (
     CardFamily,
     GameState,
     OrderCardSelection,
+    OverdriveStyle,
     OrdersSubmission,
     PlayerState,
     SealMode,
@@ -105,6 +107,24 @@ class AttackUse:
 class StackPlan:
     cards: list[OrderCardSelection] = field(default_factory=list)
     seal_mode: SealMode = SealMode.SEALED
+
+
+@dataclass(frozen=True)
+class AiRules:
+    allow_mixed_stacks: bool
+    overdrive_copies_action: bool
+    overdrive_copies_cards: bool
+    allow_overdrive_desperation: bool
+
+
+def _active_ai_rules() -> AiRules:
+    config = active_catalog().rules_config
+    return AiRules(
+        allow_mixed_stacks=config.allow_mixed_card_type_stacks,
+        overdrive_copies_action=str(config.overdrive_style) == OverdriveStyle.COPY_ACTION.value,
+        overdrive_copies_cards=str(config.overdrive_style) == OverdriveStyle.COMBINE_CARDS.value,
+        allow_overdrive_desperation=config.allow_overdrive_desperation,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -217,16 +237,26 @@ class MoveStackOption:
     overdrive: bool
 
 
-def _move_stack_options(hand_moves: list[MoveUse], pos: Pos, allow_overdrive: bool) -> list[MoveStackOption]:
+def _move_stack_options(
+    hand_moves: list[MoveUse],
+    pos: Pos,
+    allow_overdrive: bool,
+    rules: AiRules,
+) -> list[MoveStackOption]:
     """All 1- and 2-card move stacks from the given position."""
     options: list[MoveStackOption] = []
 
     def record(uses: list[MoveUse], seal: SealMode) -> None:
         current, moved = pos, 0
-        passes = 2 if seal == SealMode.OVERDRIVE else 1
+        passes = 2 if seal == SealMode.OVERDRIVE and (rules.overdrive_copies_action or rules.overdrive_copies_cards) else 1
         for pass_index in range(passes):
             for use in uses:
-                if pass_index > 0 and use.is_desperate:
+                if (
+                    pass_index > 0
+                    and rules.overdrive_copies_action
+                    and use.is_desperate
+                    and not rules.allow_overdrive_desperation
+                ):
                     continue  # desperate faces are not copied by overdrive
                 current, step = _apply_move(current, use)
                 moved += step
@@ -240,10 +270,13 @@ def _move_stack_options(hand_moves: list[MoveUse], pos: Pos, allow_overdrive: bo
             )
         )
 
-    seals = [SealMode.SEALED] + ([SealMode.OVERDRIVE] if allow_overdrive else [])
+    can_overdrive = allow_overdrive and (rules.overdrive_copies_action or rules.overdrive_copies_cards)
+    seals = [SealMode.SEALED] + ([SealMode.OVERDRIVE] if can_overdrive else [])
     singles = hand_moves
     for use in singles:
         for seal in seals:
+            if seal == SealMode.OVERDRIVE and use.is_desperate and not rules.allow_overdrive_desperation:
+                continue
             record([use], seal)
     by_card: dict[str, list[MoveUse]] = {}
     for use in hand_moves:
@@ -252,6 +285,12 @@ def _move_stack_options(hand_moves: list[MoveUse], pos: Pos, allow_overdrive: bo
         for first in by_card[first_id][:3]:
             for second in by_card[second_id][:3]:
                 for seal in seals:
+                    if (
+                        seal == SealMode.OVERDRIVE
+                        and not rules.allow_overdrive_desperation
+                        and (first.is_desperate or second.is_desperate)
+                    ):
+                        continue
                     record([first, second], seal)
     return options
 
@@ -262,10 +301,11 @@ def _move_stack_options(hand_moves: list[MoveUse], pos: Pos, allow_overdrive: bo
 
 
 class Situation:
-    def __init__(self, state: GameState, me: PlayerState, rng: Random) -> None:
+    def __init__(self, state: GameState, me: PlayerState, rng: Random, rules: AiRules) -> None:
         self.state = state
         self.me = me
         self.rng = rng
+        self.rules = rules
         self.enemies = [
             player
             for player in state.players.values()
@@ -391,13 +431,87 @@ def _attack_stack(
     p_hit = situation.hit_chance(from_pos, enemy, aim, lead, always)
     # Overdrive repeats the volley (desperate faces excluded from the copy).
     copies_help = any(not use.is_desperate for use in combo)
+    overdrive_legal = situation.rules.allow_overdrive_desperation or not any(use.is_desperate for use in combo)
     seal = (
         SealMode.OVERDRIVE
-        if copies_help and p_hit >= overdrive_threshold
+        if (
+            (situation.rules.overdrive_copies_action or situation.rules.overdrive_copies_cards)
+            and overdrive_legal
+            and copies_help
+            and p_hit >= overdrive_threshold
+        )
         else SealMode.SEALED
     )
     cards = [_targeted(use.selection, use.effect, enemy.id) for use in combo]
     return StackPlan(cards=cards, seal_mode=seal), combo
+
+
+def _mixed_move_attack_stack(
+    situation: Situation,
+    moves: list[MoveUse],
+    attacks: list[AttackUse],
+    from_pos: Pos,
+    enemy: PlayerState,
+    allow_desperate: bool,
+    overdrive_threshold: float,
+) -> tuple[StackPlan | None, MoveUse | None, AttackUse | None, Pos, float]:
+    """Try a legal move+attack stack. Movement resolves before combat, so this
+    is valuable when a single move creates a better shot in the same action."""
+    if not situation.rules.allow_mixed_stacks:
+        return None, None, None, from_pos, -1.0
+    move_pool = [use for use in moves if allow_desperate or not use.is_desperate]
+    attack_pool = [use for use in attacks if allow_desperate or not use.is_desperate]
+    if not move_pool or not attack_pool:
+        return None, None, None, from_pos, -1.0
+
+    baseline = 0.0
+    baseline_combo = _best_attack_uses(situation, attacks, from_pos, enemy, allow_desperate)
+    if baseline_combo:
+        baseline = situation.attack_value(from_pos, enemy, baseline_combo)
+
+    best: tuple[StackPlan | None, MoveUse | None, AttackUse | None, Pos, float] = (None, None, None, from_pos, -1.0)
+    for move_use in move_pool:
+        moved_pos, moved = _apply_move(from_pos, move_use)
+        for attack_use in attack_pool:
+            if move_use.selection.card_id == attack_use.selection.card_id:
+                continue
+            value = situation.attack_value(moved_pos, enemy, [attack_use])
+            value -= 0.04 * max(0, moved)
+            value -= 0.16 * int(move_use.is_desperate or attack_use.is_desperate)
+            if value <= baseline + 0.08:
+                continue
+            p_hit = situation.hit_chance(
+                moved_pos,
+                enemy,
+                attack_use.effect.attack.aim_bonus if attack_use.effect.attack else 0,
+                attack_use.effect.attack.lead_the_target if attack_use.effect.attack else False,
+                attack_use.effect.attack.always_hits if attack_use.effect.attack else False,
+            )
+            overdrive_legal = (
+                situation.rules.allow_overdrive_desperation
+                or not (move_use.is_desperate or attack_use.is_desperate)
+            )
+            seal = (
+                SealMode.OVERDRIVE
+                if (
+                    (situation.rules.overdrive_copies_action or situation.rules.overdrive_copies_cards)
+                    and overdrive_legal
+                    and not move_use.is_desperate
+                    and not attack_use.is_desperate
+                    and p_hit >= overdrive_threshold
+                )
+                else SealMode.SEALED
+            )
+            plan = StackPlan(
+                cards=[
+                    move_use.selection,
+                    _targeted(attack_use.selection, attack_use.effect, enemy.id),
+                ],
+                seal_mode=seal,
+            )
+            if value > best[4]:
+                best = (plan, move_use, attack_use, moved_pos, value)
+    return best
 
 
 def _remove_uses(pool: list, consumed: list) -> list:
@@ -417,7 +531,12 @@ def _consume_plan(plan: StackPlan, moves: list[MoveUse], attacks: list[AttackUse
 
 def _defensive_move(situation: Situation, moves: list[MoveUse], pos: Pos) -> tuple[StackPlan | None, list[MoveUse], Pos]:
     """Pick the move stack that minimizes exposure (movement itself is defense)."""
-    options = _move_stack_options([use for use in moves if not use.is_desperate], pos, allow_overdrive=False)
+    options = _move_stack_options(
+        [use for use in moves if not use.is_desperate],
+        pos,
+        allow_overdrive=False,
+        rules=situation.rules,
+    )
     if not options:
         return None, moves, pos
     best = min(options, key=lambda option: (situation.exposure(option.end, option.moved), -option.moved))
@@ -489,7 +608,7 @@ def _plan_route(
                 for use in moves
                 if use.selection.card_id not in used and (allow_desperate or not use.is_desperate)
             ]
-            options = _move_stack_options(pool, pos, allow_overdrive=True)
+            options = _move_stack_options(pool, pos, allow_overdrive=True, rules=situation.rules)
             options.sort(key=lambda option: goal_distance(option.end))
             for option in options[:12]:
                 option_cost = (
@@ -540,12 +659,30 @@ def _plan_bauble_runner(situation: Situation) -> OrdersSubmission:
     while len(plans) < 3:
         best_enemy = None
         best_value = 0.55
+        played_mixed_stack = False
         for enemy in situation.enemies:
             combo = _best_attack_uses(situation, attacks, pos, enemy, allow_desperate=False)
             if combo:
                 value = situation.attack_value(pos, enemy, combo)
                 if value > best_value:
                     best_value, best_enemy = value, enemy
+            mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
+                situation,
+                moves,
+                attacks,
+                pos,
+                enemy,
+                allow_desperate=False,
+                overdrive_threshold=0.6,
+            )
+            if mixed_plan and mixed_value > best_value:
+                plans.append(mixed_plan)
+                moves, attacks = _consume_plan(mixed_plan, moves, attacks)
+                pos = mixed_pos
+                played_mixed_stack = True
+                break
+        if played_mixed_stack:
+            continue
         if best_enemy is not None:
             plan, consumed = _attack_stack(
                 situation, attacks, pos, best_enemy, allow_desperate=False, overdrive_threshold=0.6
@@ -563,7 +700,12 @@ def _plan_bauble_runner(situation: Situation) -> OrdersSubmission:
         # No route landed on the bauble: still grind toward it greedily.
         if targets and moves:
             goal = targets[0]
-            options = _move_stack_options([use for use in moves if not use.is_desperate], pos, allow_overdrive=True)
+            options = _move_stack_options(
+                [use for use in moves if not use.is_desperate],
+                pos,
+                allow_overdrive=True,
+                rules=situation.rules,
+            )
             if options:
                 best = min(
                     options,
@@ -606,7 +748,7 @@ def _pick_prey(situation: Situation) -> PlayerState | None:
 
 def _chase_move(situation: Situation, moves: list[MoveUse], pos: Pos, enemy: PlayerState, allow_desperate: bool) -> MoveStackOption | None:
     pool = [use for use in moves if allow_desperate or not use.is_desperate]
-    options = _move_stack_options(pool, pos, allow_overdrive=True)
+    options = _move_stack_options(pool, pos, allow_overdrive=True, rules=situation.rules)
     if not options:
         return None
 
@@ -640,6 +782,23 @@ def _plan_hunter_killer(situation: Situation) -> OrdersSubmission:
             p_hit = situation.hit_chance(pos, prey, aim, lead, always)
         must_attack = remaining <= attack_stacks_wanted and combo
         good_shot = combo and p_hit >= 0.5
+        allow_mixed_desperate = situation.kill_pressure(prey) > 0.4 or p_hit < 0.25
+        mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
+            situation,
+            moves,
+            attacks,
+            pos,
+            prey,
+            allow_desperate=allow_mixed_desperate,
+            overdrive_threshold=0.45,
+        )
+        pure_value = situation.attack_value(pos, prey, combo) if combo else 0.0
+        if mixed_plan and (mixed_value >= 0.55 or mixed_value > pure_value + 0.15):
+            plans.append(mixed_plan)
+            moves, attacks = _consume_plan(mixed_plan, moves, attacks)
+            pos = mixed_pos
+            attack_stacks_wanted -= 1
+            continue
         if good_shot or must_attack:
             # Spend desperate firepower only when it makes the kill likely.
             allow_desperate = situation.kill_pressure(prey) > 0.4 or p_hit < 0.35
@@ -670,6 +829,7 @@ def _plan_blaster(situation: Situation) -> OrdersSubmission:
 
     for _ in range(3):
         best_enemy, best_combo, best_value = None, None, 0.35
+        best_mixed: tuple[StackPlan | None, Pos, float] = (None, pos, 0.35)
         for enemy in situation.enemies:
             combo = _best_attack_uses(situation, attacks, pos, enemy, allow_desperate=True)
             if not combo:
@@ -679,6 +839,23 @@ def _plan_blaster(situation: Situation) -> OrdersSubmission:
             value += 0.5 * situation.kill_pressure(enemy) - 0.05 * enemy.ship.shields
             if value > best_value:
                 best_enemy, best_combo, best_value = enemy, combo, value
+            mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
+                situation,
+                moves,
+                attacks,
+                pos,
+                enemy,
+                allow_desperate=True,
+                overdrive_threshold=0.5,
+            )
+            mixed_value += 0.5 * situation.kill_pressure(enemy) - 0.05 * enemy.ship.shields
+            if mixed_plan and mixed_value > best_mixed[2]:
+                best_mixed = (mixed_plan, mixed_pos, mixed_value)
+        if best_mixed[0] and best_mixed[2] > best_value + 0.08:
+            plans.append(best_mixed[0])
+            moves, attacks = _consume_plan(best_mixed[0], moves, attacks)
+            pos = best_mixed[1]
+            continue
         if best_enemy is not None and best_combo:
             allow_desperate = best_value > 1.0 or situation.kill_pressure(best_enemy) > 0.5
             plan, consumed = _attack_stack(
@@ -722,7 +899,7 @@ _PLANNERS = {
 def build_ai_orders(state: GameState, player_id: str, ai_type: str) -> OrdersSubmission:
     me = state.players[player_id]
     seed_material = (state.rng_seed or 1) * 31 + len(state.event_log)
-    situation = Situation(state, me, Random(seed_material))
+    situation = Situation(state, me, Random(seed_material), _active_ai_rules())
     planner = _PLANNERS.get(ai_type, _plan_blaster)
     try:
         return planner(situation)

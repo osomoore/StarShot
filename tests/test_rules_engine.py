@@ -144,7 +144,7 @@ class RulesEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(RulesError, "Desperation cards cannot be overdriven"):
             submit_orders(state, "red", orders)
 
-    def test_combine_overdrive_style_does_not_copy_action(self):
+    def test_combine_overdrive_style_copies_card_without_copying_action(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "controlled_move_1_a")
         self._set_hand(state, "blue")
@@ -179,7 +179,52 @@ class RulesEngineTests(unittest.TestCase):
         ]
         self.assertEqual(len(movement_events), 1)
         self.assertFalse(movement_events[0]["overdrive_copy"])
-        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-10, 0))
+        self.assertEqual([step["card_id"] for step in movement_events[0]["steps"]], ["controlled_move_1_a"] * 2)
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-9, 0))
+
+    def test_combine_overdrive_style_executes_stack_as_a_b_a_b(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "controlled_move_1_a", "controlled_move_2_a")
+        self._set_hand(state, "blue")
+        red_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(
+                    action_number=1,
+                    seal_mode=SealMode.OVERDRIVE,
+                    cards=(
+                        OrderCardSelection(card_id="controlled_move_1_a", orientation="turn_left"),
+                        OrderCardSelection(card_id="controlled_move_2_a", orientation="forward"),
+                    ),
+                ),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+        blue_orders = OrdersSubmission(
+            stacks=(
+                ActionStack(action_number=1, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=2, seal_mode=SealMode.SEALED),
+                ActionStack(action_number=3, seal_mode=SealMode.SEALED),
+            )
+        )
+
+        config = RulesConfig(overdrive_style="combine_cards")
+        with patch("starshot.rules.engine.active_catalog", return_value=SimpleNamespace(id=state.deck_set_id, rules_config=config)):
+            state = submit_orders(state, "red", red_orders)
+            state = submit_orders(state, "blue", blue_orders)
+            state = resolve_next_step(state)
+
+        movement = [
+            event for event in state.event_log
+            if event["type"] == "movement_resolved" and event["player_id"] == "red" and event["action_number"] == 1
+        ][0]
+        self.assertFalse(movement["overdrive_copy"])
+        self.assertEqual(
+            [step["card_id"] for step in movement["steps"]],
+            ["controlled_move_1_a", "controlled_move_2_a", "controlled_move_1_a", "controlled_move_2_a"],
+        )
+        self.assertEqual((state.players["red"].ship.q, state.players["red"].ship.r), (-8, -6))
+        self.assertEqual(state.players["red"].ship.facing, 2)
 
     def test_orders_advance_to_action_one_when_all_players_submit(self):
         state = self._state_with_submitted_orders()

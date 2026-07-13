@@ -520,6 +520,10 @@
     return (view?.rules_config?.overdrive_style || "copy_action") === "copy_action";
   }
 
+  function overdriveCopiesCards() {
+    return (view?.rules_config?.overdrive_style || "copy_action") === "combine_cards";
+  }
+
   /* First living enemy on the straight line out of `pos` (untargeted volley). */
   function forwardTarget(pos) {
     for (let distance = 1; distance <= Board.RADIUS * 2; distance++) {
@@ -832,15 +836,22 @@
     const color = Board.colorOf(you);
     const numerals = ["I", "II", "III"];
     draft.slots.forEach((slot, index) => {
-      const overdriven = slot.seal === "overdrive" && overdriveCopiesAction();
+      const overdriven = slot.seal === "overdrive";
+      const actionCopy = overdriven && overdriveCopiesAction();
+      const cardCopy = overdriven && overdriveCopiesCards();
       const moveSelections = slot.cards.filter((s) => s.family === "move");
       const attackSelections = slot.cards.filter((s) => s.family === "attack");
       if (moveSelections.length) {
         const points = [{ q: pos.q, r: pos.r }];
-        const passes = overdriven ? 2 : 1;
+        const passes = actionCopy || cardCopy ? 2 : 1;
         for (let pass = 0; pass < passes; pass++) {
           for (const selection of moveSelections) {
-            if (pass > 0 && selection.face === "desperate") continue; // not copied
+            if (
+              pass > 0
+              && actionCopy
+              && selection.face === "desperate"
+              && !view.rules_config?.allow_overdrive_desperation
+            ) continue;
             const result = simMove(pos, selection);
             pos = result.pos;
             points.push({ q: pos.q, r: pos.r });
