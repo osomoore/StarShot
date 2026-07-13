@@ -172,8 +172,13 @@
     lastVersion = payload.version;
     if (match) {
       const names = {};
-      for (const seat of match.seat_list) names[seat.player_id] = seat.display_name;
+      const titles = {};
+      for (const seat of match.seat_list) {
+        names[seat.player_id] = seat.display_name;
+        if (seat.title) titles[seat.player_id] = seat.title;
+      }
       Board.setNameMap(names);
+      Board.setTitleMap(titles);
     }
     const events = view.event_log || [];
     if (animatedUpTo < 0) animatedUpTo = 0;
@@ -263,6 +268,11 @@
     return seat ? seat.display_name : playerId;
   }
 
+  function titleFor(playerId) {
+    const seat = match && match.seat_list.find((s) => s.player_id === playerId);
+    return seat && seat.title ? seat.title : "";
+  }
+
   function renderAll() {
     if (!view) return;
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
@@ -296,6 +306,7 @@
         <div class="fc-name">
           <span>${esc(displayName(playerId))}
             ${playerId === you ? '<span class="badge-you">YOU</span>' : ""}
+            ${titleFor(playerId) ? `<span class="badge-title">${esc(titleFor(playerId))}</span>` : ""}
             ${seat && seat.is_ai ? `<span class="badge-ai">${esc(seat.ai_label || "AI")}</span>` : ""}
           </span>
           <span class="vp">${player.victory_points} VP</span>

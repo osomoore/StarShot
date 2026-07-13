@@ -27,7 +27,7 @@ the AI can never disagree with the rules about what a card does.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from random import Random
 
 from starshot.rules.card_effects import CardEffect, interpret_card
@@ -51,6 +51,12 @@ from starshot.rules.models import (
     PlayerState,
     SealMode,
 )
+
+AI_LEVELS = {
+    "deck_hand": "Deck Hand",
+    "buccaneer": "Buccaneer",
+    "pirate_king": "Pirate King",
+}
 
 AI_TYPES = {
     "bauble_runner": "Salvage Captain",
@@ -896,12 +902,24 @@ _PLANNERS = {
 }
 
 
-def build_ai_orders(state: GameState, player_id: str, ai_type: str) -> OrdersSubmission:
+def build_ai_orders(state: GameState, player_id: str, ai_type: str, ai_level: str = "pirate_king") -> OrdersSubmission:
     me = state.players[player_id]
     seed_material = (state.rng_seed or 1) * 31 + len(state.event_log)
     situation = Situation(state, me, Random(seed_material), _active_ai_rules())
     planner = _PLANNERS.get(ai_type, _plan_blaster)
     try:
-        return planner(situation)
+        orders = planner(situation)
+        if ai_level == "deck_hand":
+            # Deck Hands know the personality's broad plan, but they avoid
+            # advanced tempo spending. Buccaneers and Pirate Kings use the
+            # full planner today; this keeps the level model explicit without
+            # rewriting each personality into three separate bots.
+            orders = OrdersSubmission(
+                stacks=tuple(
+                    replace(stack, seal_mode=SealMode.SEALED)
+                    for stack in orders.stacks
+                )  # type: ignore[arg-type]
+            )
+        return orders
     except Exception:
         return fallback_orders()

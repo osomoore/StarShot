@@ -13,6 +13,7 @@
   let shipLayer = null, baubleLayer = null, hexLayer = null, previewLayer = null;
   let seatColorByPlayer = {};
   let nameMap = {};
+  let titleMap = {};
   let onShipClick = null;
   const shipEls = {};
 
@@ -149,8 +150,10 @@
           el("circle", { cx: 0, cy: 0, r: 20, fill: "none", stroke: "#3ea8d8", "stroke-width": 0.8, "stroke-dasharray": "3 4", opacity: 0.5 }, group);
         }
       }
-      el("text", { x: 0, y: 29, class: "ship-label" }, group).textContent =
+      const label = el("text", { x: 0, y: 29, class: "ship-label" }, group);
+      label.textContent =
         (playerId === youId ? "★ " : "") + shortName(playerId);
+      if (titleMap[playerId] === "Pirate King") label.textContent = "Cpt.";
       group.addEventListener("click", () => { if (onShipClick) onShipClick(playerId); });
       shipEls[playerId] = { group, body };
     });
@@ -331,6 +334,7 @@
     colorOf: (playerId) => seatColorByPlayer[playerId] || "#d4a748",
     shortName,
     setNameMap: (map) => { nameMap = map || {}; },
+    setTitleMap: (map) => { titleMap = map || {}; },
     setShipClickHandler: (fn) => { onShipClick = fn; },
     hexDistance,
     DIRECTIONS,

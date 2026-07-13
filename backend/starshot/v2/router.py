@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from starshot.rules import RulesError
 from starshot.v2 import security
-from starshot.v2.ai import AI_TYPES
+from starshot.v2.ai import AI_LEVELS, AI_TYPES
 from starshot.v2.service import (
     advance_game,
     ai_display_name,
@@ -161,7 +161,8 @@ def player_profile(username: str) -> dict:
 
 @router.get("/leaderboard")
 def leaderboard() -> dict:
-    return {"leaderboard": get_v2_store().leaderboard()}
+    store = get_v2_store()
+    return {"leaderboard": store.leaderboard(), **store.leaderboard_bundle()}
 
 
 class FeedbackRequest(BaseModel):
@@ -217,6 +218,7 @@ def lobby(request: Request) -> dict:
         "open_matches": [build_match_meta(match, None) for match in store.open_matches()],
         "my_matches": my_matches,
         "ai_types": AI_TYPES,
+        "ai_difficulties": AI_LEVELS,
         "active_players": [
             player for player in store.active_players() if player["id"] != user["id"]
         ],
@@ -320,6 +322,7 @@ def quick_match(body: QueueRequest, request: Request) -> dict:
 class CreateMatchRequest(BaseModel):
     name: str = Field(default="", max_length=40)
     ai_types: list[str] = Field(default_factory=list, max_length=3)
+    ai_level: str = Field(default="deck_hand")
     open_seats: int = Field(default=0, ge=0, le=3)
 
 
@@ -330,13 +333,15 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     for ai_type in body.ai_types:
         if ai_type not in AI_TYPES:
             raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
+    if body.ai_types and body.ai_level not in AI_LEVELS:
+        raise HTTPException(status_code=400, detail=f"Unknown AI level: {body.ai_level}")
     total = 1 + len(body.ai_types) + body.open_seats
     if total < 2 or total > 4:
         raise HTTPException(status_code=400, detail="Matches need 2 to 4 combatants.")
     store = get_v2_store()
     store.leave_queue(user["id"])  # starting your own battle cancels quick-match
     name = body.name.strip() or f"{user['username']}'s raid"
-    match_id = store.create_match(name, user["id"], seats=total, status="open")
+    match_id = store.create_match(name, user["id"], seats=total, status="open", ai_level=body.ai_level)
     store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"])
     counts: dict[str, int] = {}
     for index, ai_type in enumerate(body.ai_types):

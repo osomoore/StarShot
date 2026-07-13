@@ -227,6 +227,37 @@ h1, h2, .brand, .poster-title, .banner-text {
 .leaderboard th { text-align: left; color: var(--ink-dim); font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; padding: 4px 6px; }
 .leaderboard td { padding: 6px; border-top: 1px solid rgba(42,53,84,.5); }
 .leaderboard tr:first-child td { color: var(--gold-bright); }
+.title-holders {
+  border: 1px solid rgba(212,167,72,.42);
+  border-radius: 8px;
+  background: rgba(212,167,72,.08);
+  margin-bottom: 14px;
+  padding: 8px 10px;
+}
+.title-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 86px minmax(0, 1fr) auto;
+  font-size: 12px;
+  padding: 3px 0;
+}
+.title-name { color: var(--gold-bright); font-weight: 700; }
+.leaderboard-timer {
+  background: rgba(154,151,168,.18);
+  border-radius: 999px;
+  height: 4px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.leaderboard-timer span {
+  animation: leaderboardFill 10s linear forwards;
+  background: var(--gold);
+  display: block;
+  height: 100%;
+  width: 0;
+}
+@keyframes leaderboardFill { to { width: 100%; } }
 .profile-card { line-height: 1.9; color: var(--ink-dim); }
 .profile-card b { color: var(--ink); }
 .feedback-badge {
@@ -269,6 +300,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .hull-pips { letter-spacing: 2px; color: var(--crimson); }
 .badge-ai { background: rgba(139,111,201,.25); color: #c9b3ee; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
 .badge-you { background: rgba(212,167,72,.25); color: var(--gold-bright); border-radius: 4px; padding: 1px 6px; font-size: 10px; }
+.badge-title { background: rgba(62,168,155,.22); color: #9ce7db; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
 .badge-wait { color: var(--ink-dim); font-size: 10px; }
 .badge-ready { color: var(--move); font-size: 10px; }
 

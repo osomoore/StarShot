@@ -166,8 +166,8 @@ def seat_for_user(match: dict, user_id: int) -> dict | None:
     return None
 
 
-def _submit_ai_orders(state: GameState, seat: dict) -> GameState:
-    orders = build_ai_orders(state, seat["player_id"], seat["ai_type"])
+def _submit_ai_orders(state: GameState, seat: dict, ai_level: str = "pirate_king") -> GameState:
+    orders = build_ai_orders(state, seat["player_id"], seat["ai_type"], ai_level=ai_level)
     try:
         return submit_orders(state, seat["player_id"], orders)
     except RulesError:
@@ -225,7 +225,7 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
                 if not pending_ai:
                     break  # waiting on humans (or the engine already advanced)
                 for seat in pending_ai:
-                    state = _submit_ai_orders(state, seat)
+                    state = _submit_ai_orders(state, seat, match.get("ai_level") or "pirate_king")
                 continue
             state = resolve_next_step(state)
     return state
@@ -274,6 +274,7 @@ def _record_completion(store: V2Store, match: dict, state: GameState) -> None:
         return
     winner_ids = set(state.result.winner_ids)
     is_tie = state.result.is_tie
+    category = leaderboard_category_for_match(match)
     for seat in human_seats(match):
         if seat["user_id"] is None or seat.get("stats_exempt"):
             continue
@@ -283,7 +284,14 @@ def _record_completion(store: V2Store, match: dict, state: GameState) -> None:
             outcome = "win"
         else:
             outcome = "loss"
-        store.record_result(seat["user_id"], outcome)
+        store.record_result(seat["user_id"], outcome, category=category)
+
+
+def leaderboard_category_for_match(match: dict) -> str:
+    ai = ai_seats(match)
+    if not ai:
+        return "humans"
+    return match.get("ai_level") or "deck_hand"
 
 
 def match_turn_info(store: V2Store, match: dict, player_id: str | None) -> dict | None:
@@ -418,6 +426,7 @@ def _ai_match_definition(host_user_id: int, ai_types: list[str], name: str) -> d
         "status": "open",
         "host_user_id": host_user_id,
         "seats": len(ai_types),
+        "ai_level": "pirate_king",
         "game_id": None,
         "seat_list": seats,
     }
@@ -634,6 +643,7 @@ def run_ai_battle_batch(
 
 
 def build_match_meta(match: dict, state: GameState | None) -> dict:
+    title_by_user = {entry["user_id"]: entry["title"] for entry in state_title_holders()}
     seats = []
     for seat in match["seat_list"]:
         seats.append(
@@ -644,6 +654,7 @@ def build_match_meta(match: dict, state: GameState | None) -> dict:
                 "is_ai": bool(seat["ai_type"]),
                 "ai_type": seat["ai_type"],
                 "ai_label": AI_TYPES.get(seat["ai_type"] or "", None),
+                "title": title_by_user.get(seat["user_id"]) if seat["user_id"] is not None else None,
             }
         )
     return {
@@ -653,6 +664,7 @@ def build_match_meta(match: dict, state: GameState | None) -> dict:
         "seats": match["seats"],
         "game_id": match["game_id"],
         "host_user_id": match["host_user_id"],
+        "ai_level": match.get("ai_level") or "deck_hand",
         "seat_list": seats,
     }
 
@@ -672,3 +684,9 @@ def ai_display_name(ai_type: str, ordinal: int) -> str:
     # More than three of the same profile can't happen today (max 3 AI seats),
     # but stay unique if that ever changes.
     return name if ordinal <= len(pool) else f"{name} {ordinal}"
+
+
+def state_title_holders() -> list[dict]:
+    from starshot.v2.store import get_v2_store
+
+    return get_v2_store().title_holders()

@@ -94,6 +94,26 @@ class V2AiPlannerTests(unittest.TestCase):
         )
         self.assertEqual(desperate_stack.seal_mode, SealMode.OVERDRIVE)
 
+    def test_deck_hand_level_strips_overdrive_without_changing_type(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        red = state.players["red"]
+        blue = state.players["blue"]
+        red.ship.q, red.ship.r, red.ship.facing = -3, 0, 0
+        blue.ship.q, blue.ship.r, blue.ship.facing = -2, 0, 3
+        blue.ship.shields = 0
+        self._set_hand(state, "red", "targeted_attack_aim_2_a")
+        config = RulesConfig()
+
+        with (
+            patch("starshot.v2.ai.active_catalog", return_value=self._catalog(state, config)),
+            patch("starshot.rules.engine.active_catalog", return_value=self._catalog(state, config)),
+        ):
+            king_orders = build_ai_orders(state, "red", "blaster", ai_level="pirate_king")
+            deck_hand_orders = build_ai_orders(state, "red", "blaster", ai_level="deck_hand")
+
+        self.assertTrue(any(stack.seal_mode == SealMode.OVERDRIVE for stack in king_orders.stacks))
+        self.assertTrue(all(stack.seal_mode == SealMode.SEALED for stack in deck_hand_orders.stacks))
+
 
 if __name__ == "__main__":
     unittest.main()

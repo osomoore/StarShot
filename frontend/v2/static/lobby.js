@@ -6,9 +6,21 @@
     blaster: { face: "💥", name: "Gunner Redbeard", blurb: "shoots what's near" },
   };
 
+  Object.keys(AI_META).forEach((key) => delete AI_META[key]);
+  Object.assign(AI_META, {
+    bauble_runner: { face: "SR", name: "Salvage Captain", blurb: "chases the loot" },
+    hunter_killer: { face: "CS", name: "Corsair", blurb: "marks one prey" },
+    blaster: { face: "GN", name: "Gunner", blurb: "shoots what's near" },
+  });
+
   let pollTimer = null;
+  let leaderboardTimer = null;
+  let leaderboardCycle = null;
+  let leaderboardIndex = 0;
+  let leaderboardRendered = false;
   let queued = false;
   let crew = [];        // selected ai types
+  let aiLevel = "deck_hand";
   const autoEntered = new Set();  // pairings/challenges already jumped into
   const esc = (value) => Cards.escapeHtml(value);
   const feedbackBadge = (count) => Number(count || 0) > 0
@@ -17,16 +29,22 @@
 
   async function enter() {
     App.showScreen("lobby");
+    leaderboardRendered = false;
     renderAiPickers();
     await refresh();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, 3000);
+    if (leaderboardTimer) clearInterval(leaderboardTimer);
+    leaderboardTimer = setInterval(advanceLeaderboard, 10000);
     Tutorial.offerIfNew();
   }
 
   function leave() {
     if (pollTimer) clearInterval(pollTimer);
+    if (leaderboardTimer) clearInterval(leaderboardTimer);
     pollTimer = null;
+    leaderboardTimer = null;
+    leaderboardRendered = false;
   }
 
   async function refresh() {
@@ -69,7 +87,7 @@
     try {
       const [me, board] = await Promise.all([API.me(), API.leaderboard()]);
       renderProfile(me.user);
-      renderLeaderboard(board.leaderboard);
+      renderLeaderboardBundle(board);
       document.getElementById("lobby-user").textContent = "☠ " + me.user.username;
       document.getElementById("lobby-admin-link").classList.toggle("hidden", !me.is_admin);
     } catch (err) { /* transient */ }
@@ -78,6 +96,7 @@
   function renderAiPickers() {
     const container = document.getElementById("ai-pickers");
     container.innerHTML = "";
+    ensureAiLevelPicker();
     for (const type of Object.keys(AI_META)) {
       const meta = AI_META[type];
       const node = document.createElement("div");
@@ -97,6 +116,24 @@
       container.appendChild(node);
     }
     updateCrewUI();
+  }
+
+  function ensureAiLevelPicker() {
+    if (document.getElementById("ai-level")) return;
+    const pickers = document.getElementById("ai-pickers");
+    const label = document.createElement("label");
+    label.className = "open-seats-label ai-level-label";
+    label.innerHTML = `AI smartness:
+      <select id="ai-level">
+        <option value="deck_hand">Deck Hand</option>
+        <option value="buccaneer">Buccaneer</option>
+        <option value="pirate_king">Pirate King</option>
+      </select>`;
+    pickers.after(label);
+    label.querySelector("select").value = aiLevel;
+    label.querySelector("select").addEventListener("change", (event) => {
+      aiLevel = event.target.value || "deck_hand";
+    });
   }
 
   function updateCrewUI() {
@@ -329,6 +366,72 @@
       Sailing since: <b>${formatDate(user.created_at)}</b>`;
   }
 
+  function ensureTitleList() {
+    let node = document.getElementById("title-holders");
+    if (node) return node;
+    const heading = [...document.querySelectorAll(".lobby-side .panel-title")]
+      .find((title) => title.textContent.includes("Most Feared"));
+    node = document.createElement("div");
+    node.id = "title-holders";
+    node.className = "title-holders";
+    if (heading) heading.before(node);
+    return node;
+  }
+
+  function renderTitleList(titles) {
+    const node = ensureTitleList();
+    const rows = titles || [];
+    if (!rows.length) {
+      node.innerHTML = `<div class="title-row empty-note">No crowned captains yet.</div>`;
+      return;
+    }
+    node.innerHTML = rows.map((entry) => `
+      <div class="title-row">
+        <span class="title-name">${esc(entry.title)}</span>
+        <span>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</span>
+        <b>${entry.points}</b>
+      </div>`).join("");
+  }
+
+  function renderLeaderboardBundle(payload) {
+    leaderboardCycle = payload && payload.boards ? payload.boards : null;
+    renderTitleList(payload && payload.titles);
+    if (!leaderboardCycle || !leaderboardCycle.length) {
+      renderLeaderboard(payload && payload.leaderboard);
+      paintLeaderboardExtras("Most Feared Captains");
+      return;
+    }
+    if (leaderboardIndex >= leaderboardCycle.length) leaderboardIndex = 0;
+    renderLeaderboardPage(!leaderboardRendered);
+    leaderboardRendered = true;
+  }
+
+  function advanceLeaderboard() {
+    if (!leaderboardCycle || leaderboardCycle.length < 2) return;
+    leaderboardIndex = (leaderboardIndex + 1) % leaderboardCycle.length;
+    renderLeaderboardPage(true);
+  }
+
+  function renderLeaderboardPage(resetTimer) {
+    const board = leaderboardCycle[leaderboardIndex];
+    renderLeaderboard(board.entries || []);
+    paintLeaderboardExtras(`${board.label} Leaderboard`, resetTimer);
+  }
+
+  function paintLeaderboardExtras(title, resetTimer = false) {
+    const heading = [...document.querySelectorAll(".lobby-side .panel-title")]
+      .find((node) => node.textContent.includes("Most Feared") || node.textContent.includes("Leaderboard"));
+    if (heading) heading.textContent = title;
+    let bar = document.getElementById("leaderboard-timer");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "leaderboard-timer";
+      bar.className = "leaderboard-timer";
+      document.getElementById("leaderboard").after(bar);
+    }
+    if (resetTimer || !bar.firstChild) bar.innerHTML = `<span></span>`;
+  }
+
   function renderLeaderboard(entries) {
     const table = document.getElementById("leaderboard");
     table.innerHTML = "<tr><th>#</th><th>Captain</th><th>W</th><th>L</th><th>Battles</th></tr>" +
@@ -428,7 +531,7 @@
     document.getElementById("btn-create-match").addEventListener("click", async () => {
       const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
       try {
-        const result = await API.createMatch({ ai_types: crew, open_seats: openSeats });
+        const result = await API.createMatch({ ai_types: crew, ai_level: aiLevel, open_seats: openSeats });
         crew = [];
         updateCrewUI();
         if (result.game_id) { leave(); Game.enter(result.game_id); }

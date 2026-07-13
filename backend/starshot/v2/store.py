@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS matches (
     status TEXT NOT NULL,               -- open | active | complete | cancelled
     host_user_id INTEGER NOT NULL REFERENCES users(id),
     seats INTEGER NOT NULL,
+    ai_level TEXT NOT NULL DEFAULT 'deck_hand',
     game_id TEXT,
     stats_recorded INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -107,12 +108,22 @@ CREATE TABLE IF NOT EXISTS feedback (
     game_id TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS leaderboard_results (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    category TEXT NOT NULL,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    draws INTEGER NOT NULL DEFAULT 0,
+    games_played INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, category)
+);
 """
 
 # Columns added after the first production deploy; applied idempotently.
 _MIGRATIONS = (
     "ALTER TABLE match_seats ADD COLUMN abandoned INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE match_seats ADD COLUMN stats_exempt INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE matches ADD COLUMN ai_level TEXT NOT NULL DEFAULT 'deck_hand'",
 )
 
 
@@ -196,12 +207,21 @@ class V2Store:
         with self._connect() as conn:
             conn.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user_id))
 
-    def record_result(self, user_id: int, outcome: str) -> None:
+    def record_result(self, user_id: int, outcome: str, category: str = "humans") -> None:
         column = {"win": "wins", "loss": "losses", "draw": "draws"}[outcome]
         with self._connect() as conn:
             conn.execute(
                 f"UPDATE users SET {column} = {column} + 1, games_played = games_played + 1 WHERE id = ?",
                 (user_id,),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO leaderboard_results (user_id, category) VALUES (?, ?)",
+                (user_id, category),
+            )
+            conn.execute(
+                f"UPDATE leaderboard_results SET {column} = {column} + 1, "
+                "games_played = games_played + 1 WHERE user_id = ? AND category = ?",
+                (user_id, category),
             )
 
     def leaderboard(self, limit: int = 20) -> list[dict]:
@@ -216,6 +236,94 @@ class V2Store:
                 (limit,),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def category_leaderboard(self, category: str, limit: int = 20, legacy_humans: bool = False) -> list[dict]:
+        if category == "humans" and legacy_humans:
+            return self.leaderboard(limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT u.id AS user_id, u.username,
+                          COALESCE(r.wins, 0) AS wins,
+                          COALESCE(r.losses, 0) AS losses,
+                          COALESCE(r.draws, 0) AS draws,
+                          COALESCE(r.games_played, 0) AS games_played,
+                          COUNT(f.id) AS feedback_count
+                   FROM users u
+                   LEFT JOIN leaderboard_results r ON r.user_id = u.id AND r.category = ?
+                   LEFT JOIN feedback f ON f.user_id = u.id
+                   WHERE COALESCE(r.games_played, 0) > 0
+                   GROUP BY u.id
+                   ORDER BY wins DESC, losses ASC, username ASC LIMIT ?""",
+                (category, limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def leaderboard_bundle(self, limit: int = 20) -> dict:
+        categories = [
+            ("humans", "Players Only", 3),
+            ("deck_hand", "Deck Hand", 1),
+            ("buccaneer", "Buccaneer", 2),
+            ("pirate_king", "Pirate King", 3),
+        ]
+        boards = [
+            {
+                "key": key,
+                "label": label,
+                "weight": weight,
+                "entries": self.category_leaderboard(key, limit),
+            }
+            for key, label, weight in categories
+        ]
+        return {"boards": boards, "titles": self.title_holders()}
+
+    def title_holders(self) -> list[dict]:
+        weights = {"deck_hand": 1, "buccaneer": 2, "pirate_king": 3, "humans": 3}
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT u.id AS user_id, u.username, r.category, r.wins
+                   FROM leaderboard_results r
+                   JOIN users u ON u.id = r.user_id
+                   WHERE r.wins > 0"""
+            ).fetchall()
+            feedback_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS feedback_count FROM feedback GROUP BY user_id"
+            ).fetchall()
+            feedback = {int(row["user_id"]): int(row["feedback_count"]) for row in feedback_rows}
+            users = conn.execute(
+                "SELECT id AS user_id, username, wins FROM users WHERE wins > 0"
+            ).fetchall()
+        scores: dict[int, dict] = {}
+        for row in rows:
+            user_id = int(row["user_id"])
+            entry = scores.setdefault(
+                user_id,
+                {"user_id": user_id, "username": row["username"], "points": 0, "wins": 0},
+            )
+            wins = int(row["wins"] or 0)
+            entry["points"] += wins * weights.get(row["category"], 0)
+            entry["wins"] += wins
+        # Legacy aggregate wins predate category tracking. Treat them as players-only
+        # only when the category table has no scored rows for that user.
+        for row in users:
+            user_id = int(row["user_id"])
+            if user_id in scores:
+                continue
+            wins = int(row["wins"] or 0)
+            scores[user_id] = {
+                "user_id": user_id,
+                "username": row["username"],
+                "points": wins * weights["humans"],
+                "wins": wins,
+            }
+        ranked = sorted(
+            scores.values(),
+            key=lambda entry: (-entry["points"], -entry["wins"], entry["username"].lower()),
+        )[:2]
+        titles = ["Pirate King", "First Mate"]
+        for index, entry in enumerate(ranked):
+            entry["title"] = titles[index]
+            entry["feedback_count"] = feedback.get(entry["user_id"], 0)
+        return ranked
 
     # -- playtest feedback --------------------------------------------------
 
@@ -488,13 +596,13 @@ class V2Store:
 
     # -- matches -----------------------------------------------------------
 
-    def create_match(self, name: str, host_user_id: int, seats: int, status: str) -> str:
+    def create_match(self, name: str, host_user_id: int, seats: int, status: str, ai_level: str = "deck_hand") -> str:
         match_id = uuid.uuid4().hex[:12]
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO matches (id, name, status, host_user_id, seats, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (match_id, name, status, host_user_id, seats, _now(), _now()),
+                """INSERT INTO matches (id, name, status, host_user_id, seats, ai_level, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (match_id, name, status, host_user_id, seats, ai_level, _now(), _now()),
             )
         return match_id
 

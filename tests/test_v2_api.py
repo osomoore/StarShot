@@ -145,16 +145,45 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
 
+class LeaderboardTests(unittest.TestCase):
+    def test_leaderboard_bundle_has_categories_and_weighted_titles(self) -> None:
+        alpha = make_client()
+        beta = make_client()
+        register(alpha, "leader_alpha")
+        register(beta, "leader_beta")
+        store = get_v2_store()
+        alpha_user = store.get_user_by_name("leader_alpha")
+        beta_user = store.get_user_by_name("leader_beta")
+
+        store.record_result(alpha_user["id"], "win", category="deck_hand")
+        store.record_result(alpha_user["id"], "win", category="buccaneer")
+        store.record_result(beta_user["id"], "win", category="pirate_king")
+        store.record_result(beta_user["id"], "win", category="pirate_king")
+
+        payload = alpha.get("/api/v2/leaderboard").json()
+        self.assertEqual(
+            {board["key"] for board in payload["boards"]},
+            {"humans", "deck_hand", "buccaneer", "pirate_king"},
+        )
+        pirate_board = next(board for board in payload["boards"] if board["key"] == "pirate_king")
+        self.assertEqual(pirate_board["entries"][0]["username"], "leader_beta")
+        self.assertEqual(
+            [(entry["title"], entry["username"], entry["points"]) for entry in payload["titles"]],
+            [("Pirate King", "leader_beta", 6), ("First Mate", "leader_alpha", 3)],
+        )
+
+
 class AiMatchTests(unittest.TestCase):
     def test_vs_ai_game_runs_and_hides_secrets(self) -> None:
         client = make_client()
         register(client, "ai_tester")
         created = client.post(
-            "/api/v2/matches", json={"ai_types": ["hunter_killer"], "open_seats": 0}
+            "/api/v2/matches", json={"ai_types": ["hunter_killer"], "ai_level": "buccaneer", "open_seats": 0}
         )
         self.assertEqual(created.status_code, 200, created.text)
         game_id = created.json()["game_id"]
         self.assertIsNotNone(game_id)
+        self.assertEqual(created.json()["match"]["ai_level"], "buccaneer")
 
         view = client.get(f"/api/v2/games/{game_id}/view").json()
         state = view["state"]
