@@ -22,6 +22,8 @@ from starshot.v2.service import (
     start_match_game,
     submit_player_orders,
 )
+from starshot.rules.engine import choose_captain
+from starshot.rules.serialization import state_from_dict, state_to_dict
 from starshot.v2.store import get_v2_store
 from starshot.v2.views import game_view
 
@@ -81,6 +83,15 @@ def _public_profile(user: dict) -> dict:
         "created_at": user["created_at"],
         "feedback_count": user.get("feedback_count", store.feedback_count(user["id"])),
     }
+
+
+def _validated_expansions(active_expansions: list[str]) -> list[str]:
+    allowed_expansions = {"star_command"}
+    result = [expansion for expansion in dict.fromkeys(active_expansions) if expansion]
+    unknown = [expansion for expansion in result if expansion not in allowed_expansions]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown expansion: {unknown[0]}")
+    return result
 
 
 class Credentials(BaseModel):
@@ -229,6 +240,7 @@ def lobby(request: Request) -> dict:
 
 class ChallengeRequest(BaseModel):
     username: str = Field(min_length=3, max_length=20)
+    active_expansions: list[str] = Field(default_factory=list, max_length=4)
 
 
 @router.post("/lobby/challenge")
@@ -241,7 +253,11 @@ def send_challenge(body: ChallengeRequest, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="No such captain.")
     if target["id"] == user["id"]:
         raise HTTPException(status_code=400, detail="Duelling yerself is a court-martial offense.")
-    challenge_id = store.create_challenge(user["id"], target["id"])
+    challenge_id = store.create_challenge(
+        user["id"],
+        target["id"],
+        active_expansions=_validated_expansions(body.active_expansions),
+    )
     return {"challenge_id": challenge_id}
 
 
@@ -270,6 +286,7 @@ def respond_challenge(challenge_id: str, body: ChallengeResponse, request: Reque
         host_user_id=challenger["id"],
         seats=2,
         status="open",
+        active_expansions=challenge.get("active_expansions") or [],
     )
     store.add_seat(match_id, 0, challenger["username"], challenger["username"], user_id=challenger["id"])
     store.add_seat(match_id, 1, user["username"], user["username"], user_id=user["id"])
@@ -324,6 +341,7 @@ class CreateMatchRequest(BaseModel):
     ai_types: list[str] = Field(default_factory=list, max_length=3)
     ai_level: str = Field(default="deck_hand")
     open_seats: int = Field(default=0, ge=0, le=3)
+    active_expansions: list[str] = Field(default_factory=list, max_length=4)
 
 
 @router.post("/matches")
@@ -338,10 +356,18 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     total = 1 + len(body.ai_types) + body.open_seats
     if total < 2 or total > 4:
         raise HTTPException(status_code=400, detail="Matches need 2 to 4 combatants.")
+    active_expansions = _validated_expansions(body.active_expansions)
     store = get_v2_store()
     store.leave_queue(user["id"])  # starting your own battle cancels quick-match
     name = body.name.strip() or f"{user['username']}'s raid"
-    match_id = store.create_match(name, user["id"], seats=total, status="open", ai_level=body.ai_level)
+    match_id = store.create_match(
+        name,
+        user["id"],
+        seats=total,
+        status="open",
+        ai_level=body.ai_level,
+        active_expansions=active_expansions,
+    )
     store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"])
     counts: dict[str, int] = {}
     for index, ai_type in enumerate(body.ai_types):
@@ -500,6 +526,41 @@ def view_game(game_id: str, request: Request, since: int = -1) -> dict:
 
 class OrdersRequest(BaseModel):
     orders: dict
+
+
+class CaptainChoiceRequest(BaseModel):
+    captain_id: str = Field(max_length=80)
+
+
+@router.post("/games/{game_id}/captain")
+def choose_captain_endpoint(game_id: str, body: CaptainChoiceRequest, request: Request) -> dict:
+    _, match, seat = _match_and_seat(request, game_id)
+    if seat is None:
+        raise HTTPException(status_code=403, detail="Spectators don't choose captains.")
+    _check_maintenance(_)
+    store = get_v2_store()
+    try:
+        raw = store.load_game(game_id)
+        from starshot.v2.service import deck_path_for_game
+        from starshot.rules.deck_data import deck_set_override
+
+        deck_path = deck_path_for_game(raw)
+        with deck_set_override(deck_path):
+            state = choose_captain(state_from_dict(raw), seat["player_id"], body.captain_id)
+            state = advance_game(state, match, deck_path)
+            store.save_game(game_id, state_to_dict(state, reveal_orders=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Game not found.")
+    except (RulesError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    state_dict = serialized_state(store, game_id)
+    view = game_view(state_dict, seat["player_id"])
+    return {
+        "version": view["version"],
+        "match": build_match_meta(store.get_match(match["id"]), state),
+        "you": seat["player_id"],
+        "state": view,
+    }
 
 
 @router.post("/games/{game_id}/orders")

@@ -69,6 +69,7 @@ from starshot.rules.models import (
     ShipState,
 )
 from starshot.rules.ship_layout import detached_component_ids, first_intact_component_for_lane, is_ship_destroyed
+from starshot.rules.star_command import CAPTAINS, EXPANSION_ID as STAR_COMMAND_ID, STARFALLS, STARFALLS_BY_ID
 
 # Lateral direction offsets for Side Slip (perpendicular to facing).
 # slip_right = facing - 1 (mod 6); slip_left = facing + 1 (mod 6).
@@ -130,6 +131,7 @@ def create_initial_state(config: GameConfig) -> GameState:
         desperation_deck=desperation_deck,
         starting_player_id=starting_player_id,
         rng_seed=rng_seed,
+        active_expansions=tuple(config.active_expansions),
     )
     state.event_log.append(
         {
@@ -155,11 +157,15 @@ def create_initial_state(config: GameConfig) -> GameState:
                     "discard_count": len(player.discard),
                 }
             )
+    if _star_command_enabled(state):
+        _initialize_star_command(state)
     return state
 
 
 def legal_actions(state: GameState, player_id: str) -> list[str]:
     _player(state, player_id)
+    if _captain_choice_pending(state, player_id):
+        return ["choose_captain"]
     if state.phase == GamePhase.GIVE_ORDERS:
         return ["submit_orders"]
     if state.phase == GamePhase.COMPLETE:
@@ -171,6 +177,8 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
     _validate_active_deck_set(state)
     if state.phase != GamePhase.GIVE_ORDERS:
         raise RulesError("Orders may only be submitted during give_orders.")
+    if _captain_choice_pending(state, player_id):
+        raise RulesError("Choose a StarCommand captain before giving orders.")
 
     next_state = deepcopy(state)
     player = _player(next_state, player_id)
@@ -212,15 +220,42 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
 
 
 def apply_action(state: GameState, player_id: str, action: dict) -> GameState:
+    if action.get("type") == "choose_captain":
+        return choose_captain(state, player_id, action["captain_id"])
     if action.get("type") != "submit_orders":
         raise RulesError(f"Unsupported action type: {action.get('type')}")
     return submit_orders(state, player_id, action["orders"])
+
+
+def choose_captain(state: GameState, player_id: str, captain_id: str) -> GameState:
+    _validate_active_deck_set(state)
+    if not _star_command_enabled(state):
+        raise RulesError("StarCommand is not active for this game.")
+    next_state = deepcopy(state)
+    player = _player(next_state, player_id)
+    if player.captain_id:
+        raise RulesError("Captain already chosen.")
+    if captain_id not in player.captain_options:
+        raise RulesError("That captain is not one of this player's options.")
+    player.captain_id = captain_id
+    _apply_captain_setup(player)
+    next_state.event_log.append(
+        {
+            "type": "captain_chosen",
+            "round": next_state.round_number,
+            "player_id": player_id,
+            "captain_id": captain_id,
+        }
+    )
+    return next_state
 
 
 def resolve_next_step(state: GameState) -> GameState:
     _validate_active_deck_set(state)
     if state.phase == GamePhase.GIVE_ORDERS:
         raise RulesError("Cannot resolve until all players submit orders.")
+    if _any_captain_choice_pending(state):
+        raise RulesError("Cannot resolve until all StarCommand captains are chosen.")
     if state.phase == GamePhase.COMPLETE:
         raise RulesError("Cannot resolve a completed game.")
 
@@ -427,7 +462,7 @@ def _resolve_stack_movement(
                 continue
 
             move_effect = effect.move
-            defense_bonus = move_effect.defense_bonus
+            defense_bonus = 0 if player.captain_id == "riley_rounder" else move_effect.defense_bonus
             if defense_bonus:
                 player.ship.defense_bonus_this_action += defense_bonus
 
@@ -437,6 +472,11 @@ def _resolve_stack_movement(
                 raise RulesError(f"Move choice {move_choice} is not valid for card {card.id}.")
 
             distance = move_effect.distance
+            if not move_effect.warp_destination and not move_effect.movement_disabled:
+                if player.captain_id == "riley_rounder":
+                    distance += 1
+                if _active_starfall(state, "gusty_winds"):
+                    distance += 1
             before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
             attempted_q = player.ship.q
             attempted_r = player.ship.r
@@ -699,6 +739,8 @@ def _resolve_attack_volley(
         base_damage = 1
     damage = base_damage + sum(effect.damage_bonus for effect in attack_effects)
     aim_bonus = sum(effect.aim_bonus for effect in attack_effects)
+    if attacker.captain_id == "malcolm_manderly":
+        aim_bonus += 2
     always_hits = any(effect.always_hits for effect in attack_effects)
     lead_the_target = any(effect.lead_the_target for effect in attack_effects)
     u_turn_atk = any(effect.u_turn_attack for effect in attack_effects)
@@ -717,7 +759,7 @@ def _resolve_attack_volley(
         if fixed_defense_threshold is not None
         else distance + target_movement + target.ship.defense_bonus_this_action
     )
-    roll = _roll_2d6(state)
+    roll = _roll_attack(state)
     roll_total = roll + aim_bonus
     in_range = max_range is None or distance <= max_range
     hit = in_range and (always_hits or roll_total >= defense_threshold)
@@ -754,17 +796,24 @@ def _resolve_attack_volley(
     if hit and target.ship.shields > 0:
         target.ship.shields -= 1
         shielded_target_ids.add(target_id)
-        attacker.victory_points += 1
+        bonus_vp = _starfall_hit_bonus_vp(state, attacker.id, action_number)
+        attacker.victory_points += 1 + bonus_vp
         event["shielded"] = True
-        event["vp_awarded"] = 1
+        event["vp_awarded"] = 1 + bonus_vp
+        event["starfall_bonus_vp"] = bonus_vp
+        _apply_starfall_hit_desperation(state, attacker)
     elif hit:
         damage_result = _apply_unshielded_damage(state, target, damage, action_number=action_number)
         destroyed_by_volley = not damage_result["was_destroyed"] and target.ship.destroyed
         vp_awarded = 3 if destroyed_by_volley else 1 if damage_result["damage_applied"] > 0 else 0
         vp_awarded += damage_result["knockoff_vp_awarded"]
+        bonus_vp = _starfall_hit_bonus_vp(state, attacker.id, action_number) if damage_result["damage_applied"] > 0 else 0
+        vp_awarded += bonus_vp
         attacker.victory_points += vp_awarded
         event.update(damage_result)
         event["vp_awarded"] = vp_awarded
+        event["starfall_bonus_vp"] = bonus_vp
+        _apply_starfall_hit_desperation(state, attacker)
 
     state.event_log.append(event)
 
@@ -789,6 +838,8 @@ def _apply_unshielded_damage(
     damage: int,
     *,
     action_number: int | None = None,
+    apply_desperation: bool = True,
+    fixed_lane_roll: int | None = None,
 ) -> dict:
     shots: list[dict] = []
     was_destroyed = target.ship.destroyed
@@ -796,7 +847,7 @@ def _apply_unshielded_damage(
     knockoff_vp_awarded = 0
 
     for shot_number in range(1, damage + 1):
-        lane_roll = _roll_d12(state)
+        lane_roll = fixed_lane_roll if fixed_lane_roll is not None else _roll_d12(state)
         component = first_intact_component_for_lane(lane_roll, target.ship.destroyed_components)
         shot = {
             "shot_number": shot_number,
@@ -808,7 +859,24 @@ def _apply_unshielded_damage(
             "detached_component_ids": [],
         }
         if component is not None:
+            if (
+                target.captain_id == "knute_knuckles"
+                and component.component_type in {"bridge", "life_support"}
+                and target.ship.component_hit_counts.get(component.id, 0) == 0
+            ):
+                target.ship.component_hit_counts[component.id] = 1
+                shot.update(
+                    {
+                        "component_id": component.id,
+                        "component_type": component.component_type,
+                        "reinforced": True,
+                        "destroyed": False,
+                    }
+                )
+                shots.append(shot)
+                continue
             target.ship.destroyed_components.add(component.id)
+            target.ship.component_hit_counts[component.id] = target.ship.component_hit_counts.get(component.id, 0) + 1
             target.ship.damage_taken += 1
             detached_ids = sorted(detached_component_ids(target.ship.destroyed_components))
             if detached_ids:
@@ -829,9 +897,10 @@ def _apply_unshielded_damage(
                 target.ship.knocked_out_action_number = action_number
                 target.ship.knocked_out_phase = state.phase
             # The first component destroyed by this volley triggers a desperation consequence.
-            if not desperation_consequence_applied:
+            if apply_desperation and not desperation_consequence_applied:
                 _apply_desperation_consequence(state, target)
                 desperation_consequence_applied = True
+            _apply_component_destroyed_captain_effects(state, target, component.component_type)
         shots.append(shot)
 
     return {
@@ -904,6 +973,15 @@ def _roll_2d6(state: GameState) -> int:
     return first + second
 
 
+def _roll_attack(state: GameState) -> int:
+    if not _active_starfall(state, "clear_skies"):
+        return _roll_2d6(state)
+    rng = _make_rng(state)
+    values = [rng.randint(1, 6) for _ in range(3)]
+    state.rng_step += 3
+    return sum(values)
+
+
 def _roll_d12(state: GameState) -> int:
     rng = _make_rng(state)
     value = rng.randint(1, 12)
@@ -915,7 +993,7 @@ def _resolve_award_baubles(state: GameState) -> None:
     awarded_any = False
     rng = _make_rng(state)
     for bauble in state.baubles:
-        if not bauble.is_fang and bauble.number != state.round_number:
+        if not _bauble_open_this_round(state, bauble):
             continue
         awards: list[dict] = []
         for player in state.players.values():
@@ -935,6 +1013,11 @@ def _resolve_award_baubles(state: GameState) -> None:
                 drawn = draw_desperation_card(state.desperation_deck, rng)
                 player.deck.insert(0, drawn)
                 drawn_card_id = drawn.id
+                if player.captain_id == "beto_briego":
+                    extra = draw_desperation_card(state.desperation_deck, rng)
+                    player.deck.insert(0, extra)
+                    vp_awarded += 1
+                    player.victory_points += 1
 
             award = {
                 "player_id": player.id,
@@ -942,6 +1025,7 @@ def _resolve_award_baubles(state: GameState) -> None:
                 "vp_awarded": vp_awarded,
                 "desperation_card_drawn": not bauble.is_fang,
                 "desperation_card_id": drawn_card_id,
+                "captain_bonus": player.captain_id == "beto_briego" and not bauble.is_fang,
             }
             if bauble.is_fang:
                 award.update(_apply_fang_damage(state, player))
@@ -991,6 +1075,7 @@ def _apply_fang_damage(state: GameState, player: PlayerState) -> dict:
 
 
 def _resolve_cleanup(state: GameState) -> None:
+    _resolve_cleanup_start_star_command(state)
     result = _round_completion_result(state)
     if result is not None:
         state.result = result
@@ -1044,6 +1129,7 @@ def _resolve_cleanup(state: GameState) -> None:
             "starting_player_id": state.starting_player_id,
         }
     )
+    _reveal_starfall_for_round(state)
     _change_phase(state, GamePhase.GIVE_ORDERS)
 
 
@@ -1187,6 +1273,306 @@ def _validate_stack(
         raise RulesError("A stack cannot mix move and attack cards.")
     if len(target_player_ids) > 1:
         raise RulesError("All targeted attacks in a stack must target the same player.")
+
+
+def _star_command_enabled(state: GameState) -> bool:
+    return STAR_COMMAND_ID in state.active_expansions
+
+
+def _initialize_star_command(state: GameState) -> None:
+    captain_ids = [captain.id for captain in CAPTAINS]
+    starfall_ids = [starfall.id for starfall in STARFALLS]
+    _shuffle_values(state, captain_ids)
+    _shuffle_values(state, starfall_ids)
+    state.starfall_deck = starfall_ids
+    for index, player in enumerate(state.players.values()):
+        start = (index * 3) % len(captain_ids)
+        options = [captain_ids[(start + offset) % len(captain_ids)] for offset in range(3)]
+        player.captain_options = tuple(options)
+    state.event_log.append(
+        {
+            "type": "expansion_enabled",
+            "round": state.round_number,
+            "expansion_id": STAR_COMMAND_ID,
+        }
+    )
+    _reveal_starfall_for_round(state)
+
+
+def _shuffle_values(state: GameState, values: list[str]) -> None:
+    rng = _make_rng(state)
+    rng.shuffle(values)
+    state.rng_step += len(values)
+
+
+def _captain_choice_pending(state: GameState, player_id: str) -> bool:
+    if not _star_command_enabled(state):
+        return False
+    player = _player(state, player_id)
+    return bool(player.captain_options) and not player.captain_id
+
+
+def _any_captain_choice_pending(state: GameState) -> bool:
+    return _star_command_enabled(state) and any(
+        bool(player.captain_options) and not player.captain_id
+        for player in state.players.values()
+        if not player.eliminated
+    )
+
+
+def _apply_captain_setup(player: PlayerState) -> None:
+    if player.captain_id == "anya_andrews":
+        player.ship.shields = 0
+
+
+def _reveal_starfall_for_round(state: GameState) -> None:
+    if not _star_command_enabled(state) or state.active_starfall_round == state.round_number:
+        return
+    if not state.starfall_deck:
+        state.starfall_deck = [starfall.id for starfall in STARFALLS]
+        _shuffle_values(state, state.starfall_deck)
+    starfall_id = state.starfall_deck.pop(0)
+    state.active_starfall_id = starfall_id
+    state.active_starfall_round = state.round_number
+    state.starfall_bauble_number = None
+    event = {
+        "type": "starfall_revealed",
+        "round": state.round_number,
+        "starfall_id": starfall_id,
+        "starfall": STARFALLS_BY_ID[starfall_id].name,
+        "text": STARFALLS_BY_ID[starfall_id].text,
+        "animation": STARFALLS_BY_ID[starfall_id].animation,
+    }
+    if starfall_id == "solar_storm":
+        lane_roll = _roll_d12(state)
+        event["damage_roll"] = lane_roll
+        event["targets"] = _deal_environmental_damage(state, 1, penetrates_shields=True, fixed_lane_roll=lane_roll)
+    elif starfall_id == "gravity_burst":
+        event["movement"] = _pull_all_ships_toward_fang(state, 2)
+    elif starfall_id == "stars_align":
+        state.starfall_bauble_number = _roll_d6_no_six(state)
+        event["bauble_number"] = state.starfall_bauble_number
+    elif starfall_id == "safe_harbor":
+        restored = []
+        for player in state.players.values():
+            if player.eliminated or player.ship.destroyed:
+                continue
+            before = player.ship.shields
+            player.ship.shields = min(2, player.ship.shields + 1)
+            restored.append({"player_id": player.id, "before": before, "after": player.ship.shields})
+        event["shields"] = restored
+    state.event_log.append(event)
+
+
+def _active_starfall(state: GameState, starfall_id: str) -> bool:
+    return state.active_starfall_id == starfall_id and state.active_starfall_round == state.round_number
+
+
+def _roll_d6_no_six(state: GameState) -> int:
+    value = 6
+    while value == 6:
+        rng = _make_rng(state)
+        value = rng.randint(1, 6)
+        state.rng_step += 1
+    return value
+
+
+def _fang(state: GameState):
+    return next((bauble for bauble in state.baubles if bauble.is_fang), None)
+
+
+def _pull_all_ships_toward_fang(state: GameState, distance: int) -> list[dict]:
+    fang = _fang(state)
+    if fang is None:
+        return []
+    movements = []
+    for player in state.players.values():
+        if player.eliminated or player.ship.destroyed:
+            continue
+        before = {"q": player.ship.q, "r": player.ship.r}
+        for _ in range(distance):
+            candidates = []
+            for direction in range(6):
+                q, r = move_forward(player.ship.q, player.ship.r, direction, 1)
+                if is_within_board(q, r):
+                    candidates.append((hex_distance(q, r, fang.q, fang.r), q, r))
+            if not candidates:
+                break
+            _dist, q, r = min(candidates)
+            player.ship.q, player.ship.r = q, r
+        movements.append({"player_id": player.id, "before": before, "after": {"q": player.ship.q, "r": player.ship.r}})
+    return movements
+
+
+def _deal_environmental_damage(
+    state: GameState,
+    damage: int,
+    *,
+    penetrates_shields: bool = False,
+    fixed_lane_roll: int | None = None,
+) -> list[dict]:
+    results = []
+    for player in state.players.values():
+        if player.eliminated or player.ship.destroyed:
+            continue
+        results.append(
+            _apply_environmental_damage_to_player(
+                state,
+                player,
+                damage,
+                penetrates_shields=penetrates_shields,
+                fixed_lane_roll=fixed_lane_roll,
+            )
+        )
+    return results
+
+
+def _apply_environmental_damage_to_player(
+    state: GameState,
+    player: PlayerState,
+    damage: int,
+    *,
+    penetrates_shields: bool = False,
+    fixed_lane_roll: int | None = None,
+) -> dict:
+    shields_before = player.ship.shields
+    shield_hits = 0
+    remaining_damage = damage
+    if not penetrates_shields and remaining_damage > 0 and player.ship.shields > 0:
+        shield_hits = min(player.ship.shields, remaining_damage)
+        player.ship.shields -= shield_hits
+        remaining_damage -= shield_hits
+
+    result = {
+        "player_id": player.id,
+        "shielded": shield_hits > 0,
+        "shield_hits": shield_hits,
+        "shields_before": shields_before,
+        "shields_after": player.ship.shields,
+        "damage_applied": 0,
+        "damage_shots": [],
+        "target_destroyed": player.ship.destroyed,
+    }
+    if remaining_damage <= 0:
+        return result
+
+    damage_result = _apply_unshielded_damage(
+        state,
+        player,
+        remaining_damage,
+        apply_desperation=False,
+        fixed_lane_roll=fixed_lane_roll,
+    )
+    result.update(damage_result)
+    return result
+
+
+def _resolve_cleanup_start_star_command(state: GameState) -> None:
+    if not _star_command_enabled(state):
+        return
+    drifts = []
+    for player in state.players.values():
+        if player.captain_id == "danny_davos" and not player.eliminated and not player.ship.destroyed:
+            before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
+            q, r = move_forward(player.ship.q, player.ship.r, player.ship.facing, 2)
+            player.ship.q, player.ship.r = clamp_to_board(q, r)
+            drifts.append({"player_id": player.id, "before": before, "after": {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}})
+    if drifts:
+        state.event_log.append({"type": "captain_cleanup_movement", "round": state.round_number, "movements": drifts})
+    if _active_starfall(state, "take_cover"):
+        targets = []
+        for player in state.players.values():
+            if player.eliminated or player.ship.destroyed:
+                continue
+            if any(ship_inside_bauble(player.ship, bauble) for bauble in state.baubles):
+                continue
+            targets.append(player)
+        results = []
+        for player in targets:
+            results.append(_apply_environmental_damage_to_player(state, player, 2))
+        state.event_log.append({"type": "starfall_take_cover_damage", "round": state.round_number, "targets": results})
+
+
+def _bauble_open_this_round(state: GameState, bauble) -> bool:
+    if bauble.is_fang:
+        return True
+    if bauble.number == state.round_number:
+        return True
+    if _active_starfall(state, "most_dangerous_game") and 1 <= bauble.number <= 5:
+        return True
+    if _active_starfall(state, "stars_align") and bauble.number == state.starfall_bauble_number:
+        return True
+    return False
+
+
+def _starfall_hit_bonus_vp(state: GameState, attacker_id: str, action_number: int) -> int:
+    if not _active_starfall(state, "golden_bounty"):
+        return 0
+    for event in state.event_log:
+        if (
+            event.get("type") == "volley_resolved"
+            and event.get("round") == state.round_number
+            and event.get("action_number") == action_number
+            and event.get("attacker_id") == attacker_id
+            and event.get("hit")
+        ):
+            return 0
+    return 1
+
+
+def _apply_starfall_hit_desperation(state: GameState, attacker: PlayerState) -> None:
+    if not _active_starfall(state, "jolly_roger"):
+        return
+    for event in state.event_log:
+        if (
+            event.get("type") == "starfall_jolly_roger_draw"
+            and event.get("round") == state.round_number
+            and event.get("player_id") == attacker.id
+        ):
+            return
+    rng = _make_rng(state)
+    drawn = draw_desperation_card(state.desperation_deck, rng)
+    attacker.deck.insert(0, drawn)
+    state.event_log.append(
+        {
+            "type": "starfall_jolly_roger_draw",
+            "round": state.round_number,
+            "player_id": attacker.id,
+            "desperation_card_id": drawn.id,
+        }
+    )
+
+
+def _apply_component_destroyed_captain_effects(state: GameState, target: PlayerState, component_type: str) -> None:
+    if target.captain_id == "carlos_connor":
+        target.victory_points += 1
+        state.event_log.append(
+            {
+                "type": "captain_vp_awarded",
+                "round": state.round_number,
+                "player_id": target.id,
+                "captain_id": target.captain_id,
+                "vp_awarded": 1,
+            }
+        )
+    if component_type not in {"bridge", "life_support"}:
+        return
+    rng = _make_rng(state)
+    for player in state.players.values():
+        if player.captain_id != "davey_locker" or player.eliminated:
+            continue
+        drawn = draw_desperation_card(state.desperation_deck, rng)
+        player.deck.insert(0, drawn)
+        player.victory_points += 2
+        state.event_log.append(
+            {
+                "type": "captain_davey_reward",
+                "round": state.round_number,
+                "player_id": player.id,
+                "vp_awarded": 2,
+                "desperation_card_id": drawn.id,
+            }
+        )
 
 
 def _remove_ordered_cards_from_hand(player: PlayerState, orders: OrdersSubmission) -> None:

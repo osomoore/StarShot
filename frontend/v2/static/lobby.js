@@ -21,6 +21,7 @@
   let queued = false;
   let crew = [];        // selected ai types
   let aiLevel = "deck_hand";
+  let starCommandActive = false;
   const autoEntered = new Set();  // pairings/challenges already jumped into
   const esc = (value) => Cards.escapeHtml(value);
   const feedbackBadge = (count) => Number(count || 0) > 0
@@ -31,6 +32,7 @@
     App.showScreen("lobby");
     leaderboardRendered = false;
     renderAiPickers();
+    renderExpansionToggle();
     await refresh();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, 3000);
@@ -148,6 +150,33 @@
     const button = document.getElementById("btn-create-match");
     button.disabled = total < 2 || total > 4;
     button.textContent = total < 2 ? "🏴‍☠ Pick at least one foe" : `🏴‍☠ Launch Raid (${total} ships)`;
+  }
+
+  function renderExpansionToggle() {
+    const toggle = document.getElementById("exp-star-command");
+    if (!toggle) return;
+    toggle.checked = starCommandActive;
+  }
+
+  function maybeShowStarCommandTutorial() {
+    try {
+      if (localStorage.getItem("ss_star_command_tutorial_seen") === "1") return;
+      localStorage.setItem("ss_star_command_tutorial_seen", "1");
+    } catch (err) {}
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker">
+        <h3>StarCommand</h3>
+        <div class="tutorial-steps">
+          <div><b>1.</b> Each player gets three random Sunjammer Captains and chooses one before orders.</div>
+          <div><b>2.</b> A Starfall event is revealed at the beginning of each round.</div>
+          <div><b>3.</b> The Starfall effect stays active until cleanup, changing the board for everyone.</div>
+        </div>
+        <button class="btn gold picker-cancel" id="star-command-tutorial-ok">Got it</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#star-command-tutorial-ok").addEventListener("click", () => overlay.remove());
   }
 
   function renderMatches(containerId, matches, joinable) {
@@ -286,7 +315,7 @@
       button.textContent = "⚔ Challenge";
       button.addEventListener("click", async () => {
         try {
-          await API.challenge(player.username);
+          await API.challenge(player.username, starCommandActive ? ["star_command"] : []);
           App.toast(`Gauntlet thrown at ${player.username}!`, true);
           refresh();
         } catch (error) { App.toast(error.message); }
@@ -528,10 +557,22 @@
       try { await API.queue("leave"); refresh(); } catch (error) { App.toast(error.message); }
     });
     document.getElementById("open-seats").addEventListener("change", updateCrewUI);
+    const expToggle = document.getElementById("exp-star-command");
+    if (expToggle) {
+      expToggle.addEventListener("change", (event) => {
+        starCommandActive = !!event.target.checked;
+        if (starCommandActive) maybeShowStarCommandTutorial();
+      });
+    }
     document.getElementById("btn-create-match").addEventListener("click", async () => {
       const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
       try {
-        const result = await API.createMatch({ ai_types: crew, ai_level: aiLevel, open_seats: openSeats });
+        const result = await API.createMatch({
+          ai_types: crew,
+          ai_level: aiLevel,
+          open_seats: openSeats,
+          active_expansions: starCommandActive ? ["star_command"] : [],
+        });
         crew = [];
         updateCrewUI();
         if (result.game_id) { leave(); Game.enter(result.game_id); }

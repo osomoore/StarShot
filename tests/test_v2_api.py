@@ -229,6 +229,42 @@ class AiMatchTests(unittest.TestCase):
         me = client.get("/api/v2/me").json()
         self.assertEqual(me["user"]["games_played"], 1)
 
+    def test_star_command_requires_captain_choice_and_reveals_starfall(self) -> None:
+        client = make_client()
+        register(client, "starcommand_tester")
+        created = client.post(
+            "/api/v2/matches",
+            json={
+                "ai_types": ["hunter_killer"],
+                "open_seats": 0,
+                "active_expansions": ["star_command"],
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()["match"]["active_expansions"], ["star_command"])
+        game_id = created.json()["game_id"]
+
+        view = client.get(f"/api/v2/games/{game_id}/view").json()
+        state = view["state"]
+        self.assertIn("star_command", state["active_expansions"])
+        self.assertIsNotNone(state["active_starfall"])
+        self.assertTrue(any(event["type"] == "starfall_revealed" for event in state["event_log"]))
+        mine = state["players"]["starcommand_tester"]
+        self.assertIsNone(mine["captain"])
+        self.assertEqual(len(mine["captain_options"]), 3)
+
+        blocked = client.post(f"/api/v2/games/{game_id}/orders", json={"orders": EMPTY_ORDERS})
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("captain", blocked.json()["detail"].lower())
+
+        chosen = client.post(
+            f"/api/v2/games/{game_id}/captain",
+            json={"captain_id": mine["captain_options"][0]["id"]},
+        )
+        self.assertEqual(chosen.status_code, 200, chosen.text)
+        after = chosen.json()["state"]["players"]["starcommand_tester"]
+        self.assertIsNotNone(after["captain"])
+
 
 class SecurityTests(unittest.TestCase):
     def test_outsiders_cannot_view_or_act(self) -> None:

@@ -245,7 +245,8 @@
 
   function isVisualEvent(event) {
     return ["movement_resolved", "volley_resolved", "bauble_awarded", "round_advanced",
-      "desperation_consequence", "player_forfeited"].includes(event.type);
+      "desperation_consequence", "player_forfeited", "starfall_revealed",
+      "starfall_take_cover_damage", "captain_cleanup_movement"].includes(event.type);
   }
 
   function saveAnimCursor() {
@@ -276,13 +277,36 @@
   function renderAll() {
     if (!view) return;
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
-    Board.renderBaubles(view.baubles, view.round_number);
+    Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
     Board.renderShips(view.players, seatOrder(), you);
+    renderStarfallStatus();
     renderFleet();
     renderLog();
     renderOrdersPanel();
     updateReportButton();
     if (view.phase === "complete" && !endgameShown && !animating) showEndgame();
+  }
+
+  function renderStarfallStatus() {
+    let node = document.getElementById("starfall-status");
+    if (!view.active_starfall) {
+      if (node) node.remove();
+      return;
+    }
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "starfall-status";
+      node.className = "starfall-status";
+      els["board-wrap"].appendChild(node);
+    }
+    const sf = view.active_starfall;
+    node.innerHTML = `<b>${esc(sf.name)}</b><span>${esc(sf.text)}</span>`;
+  }
+
+  function extraActiveBaubleNumbers() {
+    if (activeStarfall("most_dangerous_game")) return [1, 2, 3, 4, 5];
+    if (activeStarfall("stars_align") && view.starfall_bauble_number) return [view.starfall_bauble_number];
+    return [];
   }
 
   function renderFleet() {
@@ -362,6 +386,8 @@
       case "phase_changed": return event.phase && event.phase.startsWith("action")
         ? { cls: "round", text: `⚔ ${PHASE_LABELS[event.phase] || event.phase}` } : null;
       case "orders_submitted": return { cls: "", text: `${name(event.player_id)} sealed their orders.` };
+      case "captain_chosen": return { cls: "loot", text: `${name(event.player_id)} chooses a StarCommand captain.` };
+      case "starfall_revealed": return { cls: "round", text: `Starfall: ${event.starfall} - ${event.text}` };
       case "movement_resolved": {
         const dist = (event.steps || []).reduce((total, step) => total + (step.distance || 0), 0);
         return dist ? { cls: "", text: `${name(event.player_id)} sails ${dist} hex${dist > 1 ? "es" : ""}${event.overdrive_copy ? " (overdrive)" : ""}.` } : null;
@@ -407,8 +433,9 @@
     els["discard-count"].textContent = me ? (me.discard || []).length : 0;
 
     const ordering = view.phase === "give_orders" && me && !me.has_submitted_orders && !me.eliminated && !(me.ship || {}).destroyed;
-    els["btn-submit-orders"].disabled = !ordering;
-    els["btn-clear-orders"].disabled = !ordering;
+    const needsCaptain = ordering && me.captain_options && me.captain_options.length && !me.captain;
+    els["btn-submit-orders"].disabled = !ordering || needsCaptain;
+    els["btn-clear-orders"].disabled = !ordering || needsCaptain;
 
     slotsArea.innerHTML = "";
     for (let index = 0; index < 3; index++) {
@@ -422,6 +449,27 @@
       note.textContent = "👁 Spectating — watching the AI captains slug it out.";
       handArea.appendChild(note);
       els["orders-hint"].textContent = "";
+      return;
+    }
+    if (needsCaptain) {
+      slotsArea.innerHTML = "";
+      handArea.innerHTML = "";
+      const picker = document.createElement("div");
+      picker.className = "captain-choice";
+      picker.innerHTML = `<h3>Choose Your StarCommand Captain</h3>`;
+      const row = document.createElement("div");
+      row.className = "captain-options";
+      for (const captain of me.captain_options || []) {
+        const card = document.createElement("button");
+        card.className = "captain-card";
+        card.type = "button";
+        card.innerHTML = `<b>${esc(captain.callsign || captain.name)}</b><span>${esc(captain.name)}</span><small>${esc(captain.text)}</small>`;
+        card.addEventListener("click", () => chooseCaptain(captain.id));
+        row.appendChild(card);
+      }
+      picker.appendChild(row);
+      handArea.appendChild(picker);
+      els["orders-hint"].textContent = "Pick a captain before sealing your first orders.";
       return;
     }
     if (!ordering) {
@@ -455,6 +503,15 @@
         : "Click or drag a card onto an action — or click an action slot first, then pick cards for it.")
       : "All hands assigned. Seal yer orders!";
     computePreview();
+  }
+
+  async function chooseCaptain(captainId) {
+    try {
+      const payload = await API.chooseCaptain(gameId, captainId);
+      applyPayload(payload, false);
+    } catch (error) {
+      App.toast(error.message);
+    }
   }
 
   function slotEl(index, ordering) {
@@ -772,12 +829,38 @@
   }
 
   // ── order preview (movement paths + shot arrows with hit odds) ────────
-  function p2d6AtLeast(needed) {
-    if (needed <= 2) return 1;
-    if (needed > 12) return 0;
+  function pDiceAtLeast(dice, needed) {
+    if (needed <= dice) return 1;
+    if (needed > dice * 6) return 0;
     let count = 0;
-    for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) if (a + b >= needed) count++;
-    return count / 36;
+    let total = 0;
+    const roll = (remaining, sum) => {
+      if (!remaining) {
+        total++;
+        if (sum >= needed) count++;
+        return;
+      }
+      for (let value = 1; value <= 6; value++) roll(remaining - 1, sum + value);
+    };
+    roll(dice, 0);
+    return count / total;
+  }
+
+  function activeStarfall(id) {
+    return view && view.active_starfall_id === id && view.active_starfall_round === view.round_number;
+  }
+
+  function captainId(player) {
+    return player && (player.captain_id || (player.captain && player.captain.id));
+  }
+
+  function modifiedMoveValue(face, player) {
+    let value = face.value || 0;
+    if (!face.warp_destination && !face.movement_disabled) {
+      if (captainId(player) === "riley_rounder") value += 1;
+      if (activeStarfall("gusty_winds")) value += 1;
+    }
+    return value;
   }
 
   function expectedTargetMove(targetId) {
@@ -809,9 +892,10 @@
   /* Mirror of the engine's per-card movement (see rules/engine.py). */
   function simMove(pos, selection) {
     const card = selection.card;
+    const me = myPlayer();
     const desperate = selection.face === "desperate";
     const face = desperate ? card.desperate_face : card.effect;
-    const value = face.value || 0;
+    const value = modifiedMoveValue(face, me);
     let { q, r, facing } = pos;
     const choice = selection.orientation === "up" ? "forward" : selection.orientation;
     const step = (heading, distance) => {
@@ -888,6 +972,7 @@
             if (match_) aim += parseInt(match_[1], 10);
           }
         }
+        if (captainId(me) === "malcolm_manderly") aim += 2;
         // Untargeted volley: it will hit whatever sits dead ahead after we move.
         let ahead = false;
         if (!target) {
@@ -899,7 +984,8 @@
           const distance = Board.hexDistance(pos.q, pos.r, enemy.ship.q, enemy.ship.r);
           const predictedMove = lead ? 0 : Math.round(expectedTargetMove(target));
           const needed = distance + predictedMove - aim;
-          const pct = Math.round((always ? 1 : p2d6AtLeast(needed)) * 100);
+          const attackDice = activeStarfall("clear_skies") ? 3 : 2;
+          const pct = Math.round((always ? 1 : pDiceAtLeast(attackDice, needed)) * 100);
           items.push({
             kind: "shot", from: { q: pos.q, r: pos.r }, to: { q: enemy.ship.q, r: enemy.ship.r },
             label: `A${numerals[index]}${ahead ? " ⇢ ahead" : ""} · ${pct}% to hit${overdriven ? " ×2" : ""}`,
@@ -1037,6 +1123,32 @@
     await wait(120);
   }
 
+  function playStarfallFx(event) {
+    const center = Board.hexToScreen(0, 0);
+    const animation = event.animation || "";
+    if (animation === "storm") {
+      FX.explosion(center);
+      for (const target of event.targets || []) {
+        const player = view.players[target.player_id];
+        if (player) FX.impact(Board.hexToScreen(player.ship.q, player.ship.r), true);
+      }
+    } else if (animation === "gravity") {
+      FX.warp(center);
+      FX.floatText(center, "GRAVITY BURST", "#9ee7ff", 18);
+    } else if (animation === "harbor") {
+      FX.shield(center);
+      FX.floatText(center, "SAFE HARBOR", "#7ed8ff", 18);
+    } else if (animation === "gold") {
+      FX.loot(center);
+    } else if (animation === "wind") {
+      FX.floatText(center, "GUSTY WINDS", "#cfe8ff", 18);
+      FX.warp(center);
+    } else {
+      FX.floatText(center, String(event.starfall || "STARFALL").toUpperCase(), "#ffd76a", 18);
+      FX.warp(center);
+    }
+  }
+
   async function playEvent(event) {
     switch (event.type) {
       case "phase_changed":
@@ -1057,6 +1169,30 @@
         return;
       case "movement_resolved": {
         await playMovementEvents([event]);
+        return;
+      }
+      case "captain_cleanup_movement": {
+        await playMovementEvents((event.movements || []).map((movement) => ({
+          player_id: movement.player_id,
+          steps: [{ before: movement.before, after: movement.after, distance: 2 }],
+        })));
+        return;
+      }
+      case "starfall_revealed": {
+        callout(`Starfall: ${event.starfall}`, true);
+        playStarfallFx(event);
+        await wait(1200);
+        return;
+      }
+      case "starfall_take_cover_damage": {
+        callout("Take Cover!", true);
+        for (const target of event.targets || []) {
+          const player = view.players[target.player_id];
+          if (!player) continue;
+          const at = Board.hexToScreen(player.ship.q, player.ship.r);
+          FX.impact(at, true);
+        }
+        await wait(700);
         return;
       }
       case "volley_resolved": {

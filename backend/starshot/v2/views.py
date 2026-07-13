@@ -18,6 +18,8 @@ _OWNER_ONLY_FIELDS = {
     "orders_submitted": ("stacks",),
     "desperation_consequence": ("desperation_card_id", "moved_to_overheat_card_id"),
     "debug_desperation_drawn": ("card_id",),
+    "starfall_jolly_roger_draw": ("desperation_card_id",),
+    "captain_davey_reward": ("desperation_card_id",),
 }
 _ALWAYS_STRIP = {
     "deck_refreshed": ("card_ids",),
@@ -55,6 +57,8 @@ def redact_player(player_dict: dict, is_viewer: bool) -> dict:
     if not is_viewer:
         result.pop("hand", None)
         result["prepared_orders"] = None
+        if not result.get("captain"):
+            result.pop("captain_options", None)
     return result
 
 

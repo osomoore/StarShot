@@ -71,11 +71,12 @@
     applyViewBox();
   }
 
-  function renderBaubles(baubles, roundNumber) {
+  function renderBaubles(baubles, roundNumber, options = {}) {
     baubleLayer.innerHTML = "";
+    const activeNumbers = new Set(options.activeNumbers || []);
     for (const bauble of baubles || []) {
       const [x, y] = axialToXY(bauble.q, bauble.r);
-      const active = bauble.is_fang || bauble.number === roundNumber;
+      const active = bauble.is_fang || bauble.number === roundNumber || activeNumbers.has(bauble.number);
       const group = el("g", { opacity: active ? 1 : 0.55 }, baubleLayer);
       // Scoring zone: the full 7-hex cluster (within 1 hex of the bauble).
       const zoneColor = bauble.is_fang ? "195,62,62" : "212,167,72";

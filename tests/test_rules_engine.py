@@ -889,6 +889,29 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(len(red.hand), 3)
         self.assertEqual(len(red.overheat), 4)
 
+    def test_take_cover_spends_two_shields_before_hull_damage(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        state.phase = GamePhase.CLEANUP
+        state.active_expansions = ("star_command",)
+        state.active_starfall_id = "take_cover"
+        state.active_starfall_round = state.round_number
+        state.baubles = [BaubleState(id="safe", number=1, q=0, r=0, victory_points=2)]
+        state.players["red"].ship.q = 4
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.shields = 2
+        state.players["blue"].ship.q = 0
+        state.players["blue"].ship.r = 0
+
+        state = resolve_next_step(state)
+
+        red = state.players["red"]
+        self.assertEqual(red.ship.shields, 0)
+        self.assertEqual(red.ship.damage_taken, 0)
+        event = [entry for entry in state.event_log if entry["type"] == "starfall_take_cover_damage"][0]
+        red_result = [target for target in event["targets"] if target["player_id"] == "red"][0]
+        self.assertEqual(red_result["shield_hits"], 2)
+        self.assertEqual(red_result["damage_applied"], 0)
+
     def _state_with_submitted_orders(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "blue", "targeted_attack_aim_1_a", "targeted_attack_aim_1_b", "targeted_attack_aim_2_a")

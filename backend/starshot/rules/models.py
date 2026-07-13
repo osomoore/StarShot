@@ -68,6 +68,7 @@ class GameConfig:
     seed: int | None = None
     deck_set_id: str | None = None
     debug_start_with_attack_desperation_card: bool = False
+    active_expansions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +124,7 @@ class ShipState:
     shields: int = 2
     damage_taken: int = 0
     destroyed_components: set[str] = field(default_factory=set)
+    component_hit_counts: dict[str, int] = field(default_factory=dict)
     destroyed: bool = False
     knocked_out_round: int | None = None
     knocked_out_action_number: int | None = None
@@ -143,6 +145,8 @@ class PlayerState:
     ship: ShipState = field(default_factory=ShipState)
     eliminated: bool = False
     overdrive_seals_pending: int = 0
+    captain_id: str | None = None
+    captain_options: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -188,6 +192,11 @@ class GameState:
     rng_step: int = 0
     event_log: list[dict] = field(default_factory=list)
     result: GameResult | None = None
+    active_expansions: tuple[str, ...] = ()
+    starfall_deck: list[str] = field(default_factory=list)
+    active_starfall_id: str | None = None
+    active_starfall_round: int | None = None
+    starfall_bauble_number: int | None = None
 
     @property
     def active_player_ids(self) -> tuple[str, ...]:

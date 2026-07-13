@@ -33,10 +33,11 @@
     leaveMatch: (id) => post(`/matches/${id}/leave`),
     startMatch: (id) => post(`/matches/${id}/start`),
     abandonMatch: (id) => post(`/matches/${id}/abandon`),
-    challenge: (username) => post("/lobby/challenge", { username }),
+    challenge: (username, activeExpansions = []) => post("/lobby/challenge", { username, active_expansions: activeExpansions }),
     respondChallenge: (id, accept) => post(`/lobby/challenge/${id}/respond`, { accept }),
     cancelChallenge: (id) => post(`/lobby/challenge/${id}/cancel`),
     gameView: (gameId, since) => get(`/games/${gameId}/view` + (since >= 0 ? `?since=${since}` : "")),
+    chooseCaptain: (gameId, captainId) => post(`/games/${gameId}/captain`, { captain_id: captainId }),
     submitOrders: (gameId, orders) => post(`/games/${gameId}/orders`, { orders }),
   };
 })();

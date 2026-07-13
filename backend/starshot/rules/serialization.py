@@ -20,6 +20,7 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
+from starshot.rules.star_command import CAPTAINS_BY_ID, STARFALLS_BY_ID, captain_to_dict, starfall_to_dict
 from starshot.rules.deck_data import active_catalog
 from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
 
@@ -43,6 +44,16 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         },
         "event_log": state.event_log,
         "result": result_to_dict(state.result) if state.result else None,
+        "active_expansions": list(state.active_expansions),
+        "starfall_deck": list(state.starfall_deck),
+        "active_starfall_id": state.active_starfall_id,
+        "active_starfall": (
+            starfall_to_dict(STARFALLS_BY_ID[state.active_starfall_id])
+            if state.active_starfall_id in STARFALLS_BY_ID
+            else None
+        ),
+        "active_starfall_round": state.active_starfall_round,
+        "starfall_bauble_number": state.starfall_bauble_number,
     }
 
 
@@ -59,6 +70,11 @@ def state_from_dict(data: dict) -> GameState:
         rng_step=data.get("rng_step", 0),
         event_log=list(data.get("event_log", [])),
         result=result_from_dict(data["result"]) if data.get("result") else None,
+        active_expansions=tuple(data.get("active_expansions", ())),
+        starfall_deck=list(data.get("starfall_deck", [])),
+        active_starfall_id=data.get("active_starfall_id"),
+        active_starfall_round=data.get("active_starfall_round"),
+        starfall_bauble_number=data.get("starfall_bauble_number"),
     )
 
 
@@ -115,6 +131,13 @@ def player_to_dict(player: PlayerState, *, reveal_orders: bool) -> dict:
         "victory_points": player.victory_points,
         "ship": ship_to_dict(player.ship),
         "eliminated": player.eliminated,
+        "captain_id": player.captain_id,
+        "captain": captain_to_dict(CAPTAINS_BY_ID[player.captain_id]) if player.captain_id in CAPTAINS_BY_ID else None,
+        "captain_options": [
+            captain_to_dict(CAPTAINS_BY_ID[captain_id])
+            for captain_id in player.captain_options
+            if captain_id in CAPTAINS_BY_ID
+        ],
     }
 
 
@@ -131,6 +154,11 @@ def player_from_dict(data: dict) -> PlayerState:
         victory_points=data.get("victory_points", 0),
         ship=ship_from_dict(data.get("ship", {})),
         eliminated=data.get("eliminated", False),
+        captain_id=data.get("captain_id"),
+        captain_options=tuple(
+            option["id"] if isinstance(option, dict) else option
+            for option in data.get("captain_options", ())
+        ),
     )
 
 
@@ -225,6 +253,7 @@ def ship_to_dict(ship: ShipState) -> dict:
         "shields": ship.shields,
         "damage_taken": ship.damage_taken,
         "destroyed_components": sorted(ship.destroyed_components),
+        "component_hit_counts": dict(ship.component_hit_counts),
         "layout_id": BASE_SHIP_LAYOUT_ID,
         "component_layout": components_to_dict(),
         "damage_lanes": damage_lanes_to_dict(),
@@ -245,6 +274,7 @@ def ship_from_dict(data: dict) -> ShipState:
         shields=data.get("shields", 2),
         damage_taken=data.get("damage_taken", 0),
         destroyed_components=set(data.get("destroyed_components", [])),
+        component_hit_counts=dict(data.get("component_hit_counts", {})),
         destroyed=data.get("destroyed", False),
         knocked_out_round=data.get("knocked_out_round"),
         knocked_out_action_number=data.get("knocked_out_action_number"),

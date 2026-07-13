@@ -16,6 +16,8 @@ from starshot.rules.engine import is_game_over
 from starshot.rules.deck_data import deck_set_override
 from starshot.rules.models import GameConfig, GamePhase, GameState
 from starshot.rules.serialization import orders_from_dict, state_from_dict, state_to_dict
+from starshot.rules.engine import choose_captain
+from starshot.rules.star_command import CAPTAINS
 
 from starshot.v2.ai import AI_DISPLAY_NAMES, AI_TYPES, build_ai_orders, fallback_orders
 from starshot.v2.store import V2Store
@@ -174,6 +176,17 @@ def _submit_ai_orders(state: GameState, seat: dict, ai_level: str = "pirate_king
         return submit_orders(state, seat["player_id"], fallback_orders())
 
 
+def _choose_ai_captain(state: GameState, seat: dict) -> GameState:
+    player = state.players.get(seat["player_id"])
+    if player is None or player.captain_id or not player.captain_options:
+        return state
+    rng = state.rng_seed or 0
+    captain_ids = tuple(captain.id for captain in CAPTAINS)
+    index = (state.rng_step + len(seat["player_id"]) + rng) % len(captain_ids)
+    player.captain_options = captain_ids
+    return choose_captain(state, player.id, captain_ids[index])
+
+
 def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -> GameState:
     """Push the game forward as far as it can go without human input:
     AI players submit orders, and any fully-ordered phase chain resolves."""
@@ -182,6 +195,23 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
             if state.phase == GamePhase.COMPLETE:
                 break
             if state.phase == GamePhase.GIVE_ORDERS:
+                pending_captain_ai = [
+                    seat
+                    for seat in ai_seats(match)
+                    if (player := state.players.get(seat["player_id"])) is not None
+                    and not player.eliminated
+                    and player.captain_options
+                    and not player.captain_id
+                ]
+                if pending_captain_ai:
+                    for seat in pending_captain_ai:
+                        state = _choose_ai_captain(state, seat)
+                    continue
+                if any(
+                    player.captain_options and not player.captain_id and not player.eliminated
+                    for player in state.players.values()
+                ):
+                    break
                 # One (or zero) captains left while everyone else waits for
                 # orders? The battle is decided right now — don't make the
                 # survivor play out an empty round. (Mid-round eliminations
@@ -234,8 +264,11 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
 def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None, seed: int | None = None) -> str:
     player_ids = tuple(seat["player_id"] for seat in match["seat_list"])
     deck_path = deck_path or core_deck_path()
+    active_expansions = tuple(match.get("active_expansions") or ())
     with deck_set_override(deck_path):
-        state = create_initial_state(GameConfig(player_ids=player_ids, seed=seed))
+        state = create_initial_state(
+            GameConfig(player_ids=player_ids, seed=seed, active_expansions=active_expansions)
+        )
     state = advance_game(state, match, deck_path)
     with deck_set_override(deck_path):
         game_id = store.create_game(state_to_dict(state, reveal_orders=True))
@@ -427,6 +460,7 @@ def _ai_match_definition(host_user_id: int, ai_types: list[str], name: str) -> d
         "host_user_id": host_user_id,
         "seats": len(ai_types),
         "ai_level": "pirate_king",
+        "active_expansions": [],
         "game_id": None,
         "seat_list": seats,
     }
@@ -665,6 +699,7 @@ def build_match_meta(match: dict, state: GameState | None) -> dict:
         "game_id": match["game_id"],
         "host_user_id": match["host_user_id"],
         "ai_level": match.get("ai_level") or "deck_hand",
+        "active_expansions": list(match.get("active_expansions") or []),
         "seat_list": seats,
     }
 

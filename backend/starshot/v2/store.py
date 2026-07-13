@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS matches (
     host_user_id INTEGER NOT NULL REFERENCES users(id),
     seats INTEGER NOT NULL,
     ai_level TEXT NOT NULL DEFAULT 'deck_hand',
+    active_expansions_json TEXT NOT NULL DEFAULT '[]',
     game_id TEXT,
     stats_recorded INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS challenges (
     from_user_id INTEGER NOT NULL REFERENCES users(id),
     to_user_id INTEGER NOT NULL REFERENCES users(id),
     status TEXT NOT NULL,               -- pending | accepted | declined | cancelled
+    active_expansions_json TEXT NOT NULL DEFAULT '[]',
     game_id TEXT,
     created_at TEXT NOT NULL
 );
@@ -124,6 +126,8 @@ _MIGRATIONS = (
     "ALTER TABLE match_seats ADD COLUMN abandoned INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE match_seats ADD COLUMN stats_exempt INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE matches ADD COLUMN ai_level TEXT NOT NULL DEFAULT 'deck_hand'",
+    "ALTER TABLE matches ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE challenges ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
 )
 
 
@@ -510,7 +514,7 @@ class V2Store:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def create_challenge(self, from_user_id: int, to_user_id: int) -> str:
+    def create_challenge(self, from_user_id: int, to_user_id: int, active_expansions: list[str] | None = None) -> str:
         challenge_id = uuid.uuid4().hex[:12]
         with self._connect(immediate=True) as conn:
             # One live outgoing challenge at a time; new one replaces the old.
@@ -519,15 +523,21 @@ class V2Store:
                 (from_user_id,),
             )
             conn.execute(
-                "INSERT INTO challenges (id, from_user_id, to_user_id, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
-                (challenge_id, from_user_id, to_user_id, _now()),
+                """INSERT INTO challenges
+                   (id, from_user_id, to_user_id, status, active_expansions_json, created_at)
+                   VALUES (?, ?, ?, 'pending', ?, ?)""",
+                (challenge_id, from_user_id, to_user_id, json.dumps(active_expansions or []), _now()),
             )
         return challenge_id
 
     def get_challenge(self, challenge_id: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM challenges WHERE id = ?", (challenge_id,)).fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            result = dict(row)
+            result["active_expansions"] = json.loads(result.pop("active_expansions_json") or "[]")
+            return result
 
     def set_challenge_status(self, challenge_id: str, status: str, game_id: str | None = None) -> None:
         with self._connect() as conn:
@@ -596,13 +606,32 @@ class V2Store:
 
     # -- matches -----------------------------------------------------------
 
-    def create_match(self, name: str, host_user_id: int, seats: int, status: str, ai_level: str = "deck_hand") -> str:
+    def create_match(
+        self,
+        name: str,
+        host_user_id: int,
+        seats: int,
+        status: str,
+        ai_level: str = "deck_hand",
+        active_expansions: list[str] | None = None,
+    ) -> str:
         match_id = uuid.uuid4().hex[:12]
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO matches (id, name, status, host_user_id, seats, ai_level, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (match_id, name, status, host_user_id, seats, ai_level, _now(), _now()),
+                """INSERT INTO matches
+                   (id, name, status, host_user_id, seats, ai_level, active_expansions_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    match_id,
+                    name,
+                    status,
+                    host_user_id,
+                    seats,
+                    ai_level,
+                    json.dumps(active_expansions or []),
+                    _now(),
+                    _now(),
+                ),
             )
         return match_id
 
@@ -673,6 +702,7 @@ class V2Store:
                 "SELECT * FROM match_seats WHERE match_id = ? ORDER BY seat_index", (match_id,)
             ).fetchall()
             result = dict(match)
+            result["active_expansions"] = json.loads(result.pop("active_expansions_json") or "[]")
             result["seat_list"] = [dict(seat) for seat in seats]
             return result
 
