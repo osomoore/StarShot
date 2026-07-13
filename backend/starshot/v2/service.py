@@ -231,11 +231,11 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
     return state
 
 
-def start_match_game(store: V2Store, match: dict) -> str:
+def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None, seed: int | None = None) -> str:
     player_ids = tuple(seat["player_id"] for seat in match["seat_list"])
-    deck_path = core_deck_path()
+    deck_path = deck_path or core_deck_path()
     with deck_set_override(deck_path):
-        state = create_initial_state(GameConfig(player_ids=player_ids))
+        state = create_initial_state(GameConfig(player_ids=player_ids, seed=seed))
     state = advance_game(state, match, deck_path)
     with deck_set_override(deck_path):
         game_id = store.create_game(state_to_dict(state, reveal_orders=True))
@@ -382,6 +382,255 @@ def run_ai_battle(store: V2Store, host_user: dict, ai_types: list[str]) -> dict:
         ],
     }
     return summary
+
+
+def _deck_set_for_id(deck_set_id: str | None) -> dict:
+    active = core_deck_path()
+    for deck_set in scan_deck_sets():
+        if deck_set_id is None and Path(deck_set["path"]) == active:
+            return deck_set
+        if deck_set["id"] == deck_set_id:
+            return deck_set
+    if deck_set_id is None:
+        fallback_id = _manifest_id(active) or "active"
+        return {"id": fallback_id, "name": fallback_id, "path": str(active), "custom": False, "rules_version": ""}
+    raise ValueError(f"No deck set with id {deck_set_id!r}.")
+
+
+def _ai_match_definition(host_user_id: int, ai_types: list[str], name: str) -> dict:
+    counts: dict[str, int] = {}
+    seats = []
+    for index, ai_type in enumerate(ai_types):
+        counts[ai_type] = counts.get(ai_type, 0) + 1
+        seats.append({
+            "match_id": "",
+            "seat_index": index,
+            "player_id": f"ai:{ai_type}:{counts[ai_type]}",
+            "user_id": None,
+            "ai_type": ai_type,
+            "display_name": ai_display_name(ai_type, counts[ai_type]),
+            "abandoned": 0,
+            "stats_exempt": 0,
+        })
+    return {
+        "id": "",
+        "name": name,
+        "status": "open",
+        "host_user_id": host_user_id,
+        "seats": len(ai_types),
+        "game_id": None,
+        "seat_list": seats,
+    }
+
+
+def _analysis_for_state(state: GameState, match: dict) -> dict:
+    by_player = {
+        seat["player_id"]: {
+            "player_id": seat["player_id"],
+            "display_name": seat["display_name"],
+            "ai_type": seat["ai_type"],
+            "ai_label": AI_TYPES.get(seat["ai_type"], seat["ai_type"]),
+            "victory_points": state.players[seat["player_id"]].victory_points,
+            "destroyed": state.players[seat["player_id"]].ship.destroyed,
+            "damage_dealt": 0,
+            "ships_killed": 0,
+            "baubles_collected": 0,
+            "bauble_vp": 0,
+            "volleys": 0,
+            "hits": 0,
+            "shielded_hits": 0,
+        }
+        for seat in match["seat_list"]
+    }
+    environmental_damage = 0
+    for event in state.event_log:
+        if event.get("type") == "volley_resolved":
+            stats = by_player.get(event.get("attacker_id"))
+            if not stats:
+                continue
+            stats["volleys"] += 1
+            if event.get("hit"):
+                stats["hits"] += 1
+            if event.get("shielded"):
+                stats["shielded_hits"] += 1
+            stats["damage_dealt"] += int(event.get("damage_applied") or 0)
+            if event.get("target_destroyed"):
+                stats["ships_killed"] += 1
+        elif event.get("type") == "bauble_awarded":
+            for award in event.get("awards") or []:
+                stats = by_player.get(award.get("player_id"))
+                if not stats:
+                    continue
+                stats["baubles_collected"] += 1
+                stats["bauble_vp"] += int(award.get("vp_awarded") or 0)
+                environmental_damage += int(award.get("damage_applied") or 0)
+    players = sorted(by_player.values(), key=lambda player: (-player["victory_points"], player["display_name"]))
+    total_volleys = sum(player["volleys"] for player in players)
+    total_hits = sum(player["hits"] for player in players)
+    return {
+        "complete": state.phase == GamePhase.COMPLETE,
+        "rounds_played": state.round_number,
+        "winners": list(state.result.winner_ids) if state.result else [],
+        "winner_names": [
+            by_player[player_id]["display_name"]
+            for player_id in (state.result.winner_ids if state.result else ())
+            if player_id in by_player
+        ],
+        "reason": state.result.reason if state.result else None,
+        "is_tie": state.result.is_tie if state.result else False,
+        "players": players,
+        "total_damage_dealt": sum(player["damage_dealt"] for player in players),
+        "environmental_damage": environmental_damage,
+        "ships_killed": sum(player["ships_killed"] for player in players),
+        "baubles_collected": sum(player["baubles_collected"] for player in players),
+        "total_vp": sum(player["victory_points"] for player in players),
+        "volley_count": total_volleys,
+        "hit_rate": (total_hits / total_volleys) if total_volleys else 0,
+        "event_count": len(state.event_log),
+    }
+
+
+def run_ai_battle(store: V2Store, host_user: dict, ai_types: list[str], deck_set_id: str | None = None) -> dict:
+    """Create and fully resolve a replayable AI-only game in one call."""
+    deck_set = _deck_set_for_id(deck_set_id)
+    deck_path = Path(deck_set["path"])
+    name = "AI Battle: " + " vs ".join(AI_TYPES.get(t, t) for t in ai_types)
+    match_id = store.create_match(name=name, host_user_id=host_user["id"], seats=len(ai_types), status="open")
+    definition = _ai_match_definition(host_user["id"], ai_types, name)
+    for seat in definition["seat_list"]:
+        store.add_seat(match_id, seat["seat_index"], seat["player_id"], seat["display_name"], ai_type=seat["ai_type"])
+    match = store.get_match(match_id)
+    game_id = start_match_game(store, match, deck_path=deck_path)
+    state, _deck_path = _load_state(store, game_id)
+    match = store.get_match(match_id)
+    summary = _analysis_for_state(state, match)
+    summary.update({"match_id": match_id, "game_id": game_id, "deck_set_id": deck_set["id"], "deck_set_name": deck_set["name"]})
+    entry = store.create_ai_battle_run(
+        kind="single",
+        name=name,
+        deck_set_id=deck_set["id"],
+        deck_set_name=deck_set["name"],
+        ai_types=ai_types,
+        run_count=1,
+        game_id=game_id,
+        summary=summary,
+        detail={"match_id": match_id, "game_id": game_id, "summary": summary},
+    )
+    return {**summary, "history_entry": entry}
+
+
+def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dict]:
+    run_count = len(analyses)
+    totals = {key: 0 for key in ("rounds_played", "total_damage_dealt", "environmental_damage", "ships_killed", "baubles_collected", "total_vp", "volley_count")}
+    weighted_hits = 0.0
+    reason_counts: dict[str, int] = {}
+    rankings: dict[str, dict] = {}
+    for analysis in analyses:
+        for key in totals:
+            totals[key] += analysis[key]
+        weighted_hits += analysis["hit_rate"] * analysis["volley_count"]
+        reason = analysis.get("reason") or "unknown"
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        winners = set(analysis.get("winners") or [])
+        for player in analysis["players"]:
+            bucket = rankings.setdefault(
+                player["ai_type"],
+                {
+                    "ai_type": player["ai_type"],
+                    "ai_label": player["ai_label"],
+                    "appearances": 0,
+                    "wins": 0,
+                    "survivals": 0,
+                    "vp_total": 0,
+                    "damage_total": 0,
+                    "kills_total": 0,
+                    "baubles_total": 0,
+                },
+            )
+            bucket["appearances"] += 1
+            bucket["wins"] += 1 if player["player_id"] in winners else 0
+            bucket["survivals"] += 0 if player["destroyed"] else 1
+            bucket["vp_total"] += player["victory_points"]
+            bucket["damage_total"] += player["damage_dealt"]
+            bucket["kills_total"] += player["ships_killed"]
+            bucket["baubles_total"] += player["baubles_collected"]
+    ai_rankings = []
+    for bucket in rankings.values():
+        appearances = bucket["appearances"] or 1
+        ai_rankings.append({
+            **bucket,
+            "average_vp": bucket["vp_total"] / appearances,
+            "average_damage": bucket["damage_total"] / appearances,
+            "average_kills": bucket["kills_total"] / appearances,
+            "average_baubles": bucket["baubles_total"] / appearances,
+            "win_rate": bucket["wins"] / appearances,
+            "survival_rate": bucket["survivals"] / appearances,
+        })
+    ai_rankings.sort(key=lambda item: (-item["wins"], -item["average_vp"], item["ai_label"]))
+    avg = lambda key: totals[key] / run_count if run_count else 0
+    summary = {
+        "complete": all(analysis["complete"] for analysis in analyses),
+        "run_count": run_count,
+        "ai_types": list(ai_types),
+        "average_rounds": avg("rounds_played"),
+        "average_damage_dealt": avg("total_damage_dealt"),
+        "average_environmental_damage": avg("environmental_damage"),
+        "average_ships_killed": avg("ships_killed"),
+        "average_baubles_collected": avg("baubles_collected"),
+        "average_total_vp": avg("total_vp"),
+        "average_volleys": avg("volley_count"),
+        "hit_rate": (weighted_hits / totals["volley_count"]) if totals["volley_count"] else 0,
+        "reason_counts": reason_counts,
+        "ai_rankings": ai_rankings,
+    }
+    detail = {
+        "summary": summary,
+        "runs": analyses,
+        "notes": [
+            "Damage is volley damage dealt by ships; Fang/bauble damage is tracked separately as environmental damage.",
+            "AI rankings aggregate by AI style, so duplicate copies of the same style share one bucket.",
+        ],
+    }
+    return summary, detail
+
+
+def run_ai_battle_batch(
+    store: V2Store,
+    host_user: dict,
+    ai_types: list[str],
+    run_count: int,
+    deck_set_id: str | None = None,
+    progress_callback=None,
+) -> dict:
+    deck_set = _deck_set_for_id(deck_set_id)
+    deck_path = Path(deck_set["path"])
+    name = f"Batch: {' vs '.join(AI_TYPES.get(t, t) for t in ai_types)} x{run_count}"
+    definition = _ai_match_definition(host_user["id"], ai_types, name)
+    analyses: list[dict] = []
+    for index in range(run_count):
+        seed = (index + 1) * 7919 + len(ai_types) * 101
+        with deck_set_override(deck_path):
+            state = create_initial_state(
+                GameConfig(player_ids=tuple(seat["player_id"] for seat in definition["seat_list"]), seed=seed)
+            )
+        state = advance_game(state, definition, deck_path)
+        analyses.append(_analysis_for_state(state, definition))
+        if progress_callback:
+            progress_callback(index + 1, run_count)
+    summary, detail = _batch_summary(analyses, ai_types)
+    summary.update({"deck_set_id": deck_set["id"], "deck_set_name": deck_set["name"]})
+    entry = store.create_ai_battle_run(
+        kind="batch",
+        name=name,
+        deck_set_id=deck_set["id"],
+        deck_set_name=deck_set["name"],
+        ai_types=ai_types,
+        run_count=run_count,
+        game_id=None,
+        summary=summary,
+        detail=detail,
+    )
+    return {**summary, "history_entry": entry}
 
 
 def build_match_meta(match: dict, state: GameState | None) -> dict:

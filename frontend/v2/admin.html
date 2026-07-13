@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=6">
-<link rel="stylesheet" href="/v2/static/admin.css?v=7">
+<link rel="stylesheet" href="/v2/static/admin.css?v=8">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -109,8 +109,16 @@
       <div id="tab-battle" class="admin-tabpage hidden">
         <h2 class="panel-title">AI Battle Arena</h2>
         <p class="admin-note">Pit the AI captains against each other with no human at the wheel.
-          One click runs the <b>entire game</b> to completion on the server; watch the replay afterwards
-          or just read the score. Handy for balance-testing deck and keyword changes.</p>
+          Single battles are replayable; batch runs create aggregate analysis entries for deck lethality,
+          complexity, and AI-style balance.</p>
+        <div class="battle-controls">
+          <label>Deck set:
+            <select id="battle-deck-set"></select>
+          </label>
+          <label>Batch runs:
+            <input id="battle-run-count" type="number" min="1" max="500" value="100">
+          </label>
+        </div>
         <div class="battle-crew">
           <label>Combatants:</label>
           <select id="battle-ai-1"></select>
@@ -118,9 +126,35 @@
           <select id="battle-ai-3"><option value="">— none —</option></select>
           <select id="battle-ai-4"><option value="">— none —</option></select>
         </div>
-        <button class="btn crimson big" id="run-battle">⚔ Run Full Battle</button>
+        <button class="btn crimson big" id="run-battle">⚔ Run Replayable Battle</button>
         <span id="battle-running" class="hidden"><span class="spinner"></span> Cannons firing…</span>
-        <div id="battle-results"></div>
+        <button class="btn gold big" id="run-battle-batch">Run Batch</button>
+        <div id="battle-status" class="admin-status"></div>
+        <div class="battle-history-head">
+          <h3 class="panel-sub">Battle History</h3>
+          <input id="battle-filter" placeholder="Filter by AI, deck, winner, kind">
+        </div>
+        <div class="battle-table-wrap">
+          <table class="leaderboard battle-history" id="battle-history-table">
+            <thead>
+              <tr>
+                <th data-sort="created_at">When</th>
+                <th data-sort="kind">Kind</th>
+                <th data-sort="deck_set_name">Deck</th>
+                <th data-sort="ai">AI level</th>
+                <th data-sort="damage">Damage</th>
+                <th data-sort="kills">Kills</th>
+                <th data-sort="baubles">Baubles</th>
+                <th data-sort="winner">Winner</th>
+                <th data-sort="vp">Total VP</th>
+                <th data-sort="rounds">Rounds</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="battle-history-body"></tbody>
+          </table>
+        </div>
+        <div id="battle-detail-overlay" class="battle-detail-overlay hidden"></div>
       </div>
 
       <!-- account / project -->
@@ -176,6 +210,6 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=7"></script>
+<script src="/v2/static/admin.js?v=12"></script>
 </body>
 </html>

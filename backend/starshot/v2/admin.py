@@ -12,11 +12,13 @@ import io
 import os
 import shutil
 import tempfile
+import threading
+import uuid
 import zipfile
 from pathlib import Path
 
 import tomllib
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from starshot.rules.custom_keywords import (
@@ -38,6 +40,8 @@ DEFAULT_ADMINS = "davidmoore"
 SEED_ADMIN_PASSWORD = "rangers"
 
 DECK_FILES = {"base": "base_deck.toml", "desperation": "desperation_deck.toml"}
+_AI_BATCH_JOBS: dict[str, dict] = {}
+_AI_BATCH_JOBS_LOCK = threading.Lock()
 
 
 def admin_usernames() -> set[str]:
@@ -438,6 +442,7 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
 
 class AiBattleRequest(BaseModel):
     ai_types: list[str] = Field(min_length=2, max_length=4)
+    deck_set_id: str | None = Field(default=None, max_length=80)
 
 
 @admin_router.post("/ai-battle")
@@ -449,7 +454,117 @@ def ai_battle(body: AiBattleRequest, request: Request) -> dict:
     for ai_type in body.ai_types:
         if ai_type not in AI_TYPES:
             raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
-    return run_ai_battle(get_v2_store(), user, body.ai_types)
+    try:
+        return run_ai_battle(get_v2_store(), user, body.ai_types, deck_set_id=body.deck_set_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class AiBattleBatchRequest(AiBattleRequest):
+    run_count: int = Field(default=100, ge=1, le=500)
+
+
+@admin_router.post("/ai-battle-batch")
+def ai_battle_batch(body: AiBattleBatchRequest, request: Request) -> dict:
+    from starshot.v2.ai import AI_TYPES
+    from starshot.v2.service import run_ai_battle_batch
+
+    user = _admin_user(request)
+    for ai_type in body.ai_types:
+        if ai_type not in AI_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
+    try:
+        return run_ai_battle_batch(
+            get_v2_store(),
+            user,
+            body.ai_types,
+            run_count=body.run_count,
+            deck_set_id=body.deck_set_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _set_ai_batch_job(job_id: str, **changes) -> None:
+    with _AI_BATCH_JOBS_LOCK:
+        job = _AI_BATCH_JOBS.get(job_id)
+        if job is not None:
+            job.update(changes)
+
+
+def _run_ai_batch_job(job_id: str, user: dict, body: AiBattleBatchRequest) -> None:
+    from starshot.v2.service import run_ai_battle_batch
+
+    def progress(completed: int, total: int) -> None:
+        _set_ai_batch_job(job_id, completed=completed, remaining=max(0, total - completed), total=total)
+
+    try:
+        result = run_ai_battle_batch(
+            get_v2_store(),
+            user,
+            body.ai_types,
+            run_count=body.run_count,
+            deck_set_id=body.deck_set_id,
+            progress_callback=progress,
+        )
+        _set_ai_batch_job(
+            job_id,
+            status="complete",
+            completed=body.run_count,
+            remaining=0,
+            result=result,
+            history_entry_id=result.get("history_entry", {}).get("id"),
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced to the admin progress UI
+        _set_ai_batch_job(job_id, status="error", error=str(exc))
+
+
+@admin_router.post("/ai-battle-batch/jobs")
+def ai_battle_batch_job(body: AiBattleBatchRequest, request: Request, background_tasks: BackgroundTasks) -> dict:
+    from starshot.v2.ai import AI_TYPES
+
+    user = _admin_user(request)
+    for ai_type in body.ai_types:
+        if ai_type not in AI_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
+    job_id = uuid.uuid4().hex[:12]
+    with _AI_BATCH_JOBS_LOCK:
+        _AI_BATCH_JOBS[job_id] = {
+            "id": job_id,
+            "status": "running",
+            "total": body.run_count,
+            "completed": 0,
+            "remaining": body.run_count,
+            "result": None,
+            "error": None,
+        }
+    background_tasks.add_task(_run_ai_batch_job, job_id, user, body)
+    return dict(_AI_BATCH_JOBS[job_id])
+
+
+@admin_router.get("/ai-battle-batch/jobs/{job_id}")
+def ai_battle_batch_job_status(job_id: str, request: Request) -> dict:
+    _admin_user(request)
+    with _AI_BATCH_JOBS_LOCK:
+        job = _AI_BATCH_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="AI batch job not found.")
+        return dict(job)
+
+
+@admin_router.get("/ai-battles")
+def ai_battle_history(request: Request) -> dict:
+    _admin_user(request)
+    return {"entries": get_v2_store().list_ai_battle_runs()}
+
+
+@admin_router.get("/ai-battles/{entry_id}")
+def ai_battle_detail(entry_id: str, request: Request) -> dict:
+    _admin_user(request)
+    entry = get_v2_store().get_ai_battle_run(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="AI battle entry not found.")
+    return {"entry": entry}
 
 
 # ── project download ───────────────────────────────────────────────────────

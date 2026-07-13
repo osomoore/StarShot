@@ -321,11 +321,15 @@ class TurnAndAbandonTests(unittest.TestCase):
 
 
 class AiBattleTests(unittest.TestCase):
-    def test_admin_runs_full_ai_battle_and_spectates(self) -> None:
+    def admin_client(self) -> TestClient:
         admin = make_client()
         admin.get("/api/v2/admin/deck")  # trigger seeding
         login = admin.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"})
         assert login.status_code == 200, login.text
+        return admin
+
+    def test_admin_runs_full_ai_battle_and_spectates(self) -> None:
+        admin = self.admin_client()
         result = admin.post(
             "/api/v2/admin/ai-battle",
             json={"ai_types": ["bauble_runner", "hunter_killer", "blaster"]},
@@ -352,6 +356,46 @@ class AiBattleTests(unittest.TestCase):
             outsider.post("/api/v2/admin/ai-battle", json={"ai_types": ["blaster", "blaster"]}).status_code,
             403,
         )
+
+    def test_admin_batch_ai_battle_history_summary(self) -> None:
+        admin = self.admin_client()
+        deck_sets = admin.get("/api/v2/admin/deck").json()["sets"]
+        deck_set_id = deck_sets[0]["id"]
+
+        batch = admin.post(
+            "/api/v2/admin/ai-battle-batch",
+            json={"ai_types": ["bauble_runner", "hunter_killer"], "run_count": 3, "deck_set_id": deck_set_id},
+        ).json()
+
+        self.assertEqual(batch["run_count"], 3)
+        self.assertIsNone(batch["history_entry"]["game_id"])
+        self.assertGreaterEqual(batch["average_total_vp"], 0)
+        self.assertEqual({entry["ai_type"] for entry in batch["ai_rankings"]}, {"bauble_runner", "hunter_killer"})
+
+        history = admin.get("/api/v2/admin/ai-battles").json()["entries"]
+        entry = next(entry for entry in history if entry["id"] == batch["history_entry"]["id"])
+        self.assertEqual(entry["kind"], "batch")
+        self.assertEqual(entry["deck_set_id"], deck_set_id)
+
+        detail = admin.get(f"/api/v2/admin/ai-battles/{entry['id']}").json()["entry"]["detail"]
+        self.assertEqual(len(detail["runs"]), 3)
+        self.assertTrue(detail["notes"])
+
+    def test_admin_batch_ai_battle_job_reports_progress(self) -> None:
+        admin = self.admin_client()
+        created = admin.post(
+            "/api/v2/admin/ai-battle-batch/jobs",
+            json={"ai_types": ["bauble_runner", "hunter_killer"], "run_count": 1},
+        ).json()
+
+        self.assertEqual(created["total"], 1)
+        self.assertIn(created["status"], {"running", "complete"})
+
+        current = admin.get(f"/api/v2/admin/ai-battle-batch/jobs/{created['id']}").json()
+        self.assertEqual(current["status"], "complete")
+        self.assertEqual(current["remaining"], 0)
+        self.assertEqual(current["completed"], 1)
+        self.assertEqual(current["result"]["run_count"], 1)
 
 
 class SiteSettingsTests(unittest.TestCase):

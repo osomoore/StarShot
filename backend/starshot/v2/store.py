@@ -83,6 +83,19 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_battle_runs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,                 -- single | batch
+    name TEXT NOT NULL,
+    deck_set_id TEXT NOT NULL,
+    deck_set_name TEXT NOT NULL,
+    ai_types_json TEXT NOT NULL,
+    run_count INTEGER NOT NULL,
+    game_id TEXT,
+    summary_json TEXT NOT NULL,
+    detail_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 # Columns added after the first production deploy; applied idempotently.
@@ -203,6 +216,70 @@ class V2Store:
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (key, value),
             )
+
+    # -- AI battle analysis -------------------------------------------------
+
+    def create_ai_battle_run(
+        self,
+        *,
+        kind: str,
+        name: str,
+        deck_set_id: str,
+        deck_set_name: str,
+        ai_types: list[str],
+        run_count: int,
+        game_id: str | None,
+        summary: dict,
+        detail: dict,
+    ) -> dict:
+        run_id = uuid.uuid4().hex[:12]
+        created_at = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO ai_battle_runs
+                   (id, kind, name, deck_set_id, deck_set_name, ai_types_json, run_count,
+                    game_id, summary_json, detail_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_id,
+                    kind,
+                    name,
+                    deck_set_id,
+                    deck_set_name,
+                    json.dumps(ai_types),
+                    run_count,
+                    game_id,
+                    json.dumps(summary),
+                    json.dumps(detail),
+                    created_at,
+                ),
+            )
+        return self.get_ai_battle_run(run_id)
+
+    def list_ai_battle_runs(self, limit: int = 200) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT id, kind, name, deck_set_id, deck_set_name, ai_types_json, run_count,
+                          game_id, summary_json, created_at
+                   FROM ai_battle_runs ORDER BY created_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [self._ai_battle_row_to_dict(row, include_detail=False) for row in rows]
+
+    def get_ai_battle_run(self, run_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM ai_battle_runs WHERE id = ?", (run_id,)).fetchone()
+        return self._ai_battle_row_to_dict(row, include_detail=True) if row else None
+
+    def _ai_battle_row_to_dict(self, row: sqlite3.Row, include_detail: bool) -> dict:
+        result = dict(row)
+        result["ai_types"] = json.loads(result.pop("ai_types_json"))
+        result["summary"] = json.loads(result.pop("summary_json"))
+        if include_detail:
+            result["detail"] = json.loads(result.pop("detail_json"))
+        else:
+            result.pop("detail_json", None)
+        return result
 
     # -- presence & challenges ----------------------------------------------
 
