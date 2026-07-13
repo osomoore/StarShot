@@ -39,6 +39,10 @@ from starshot.v2.settings import site_auth_enabled
 device_logger = logging.getLogger("starshot.device")
 
 
+def site_htpasswd_path() -> Path:
+    return Path(os.environ.get("STARSHOT_SITE_HTPASSWD", SITE_HTPASSWD_PATH))
+
+
 @app.middleware("http")
 async def site_basic_auth(request: Request, call_next):
     if not site_auth_enabled():
@@ -50,7 +54,7 @@ async def site_basic_auth(request: Request, call_next):
             username, _, password = decoded.partition(":")
         except Exception:
             username, password = "", ""
-        users = v2_security.load_htpasswd(SITE_HTPASSWD_PATH)
+        users = v2_security.load_htpasswd(site_htpasswd_path())
         stored = users.get(username)
         if stored and v2_security.verify_htpasswd_password(password, stored):
             return await call_next(request)

@@ -10,6 +10,7 @@ from starshot.rules import (
     GamePhase,
     OrderCardSelection,
     OrdersSubmission,
+    RulesError,
     SealMode,
     create_initial_state,
     resolve_next_step,
@@ -503,29 +504,16 @@ class DesperationIntegrationTests(unittest.TestCase):
     def test_overdrive_does_not_copy_desperate_movement(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "desp_crazy_ivan_a")
-        state.players["red"].ship.q = 0
-        state.players["red"].ship.r = 0
-        state.players["red"].ship.facing = 0
-
-        state = submit_orders(state, "red", OrdersSubmission(stacks=(
-            ActionStack(
-                1,
-                SealMode.OVERDRIVE,
-                (OrderCardSelection("desp_crazy_ivan_a", face="desperate", orientation="u_turn_move"),),
-            ),
-            ActionStack(2, SealMode.SEALED),
-            ActionStack(3, SealMode.SEALED),
-        )))
-        state = submit_orders(state, "blue", self._empty_orders())
-        state = resolve_next_step(state)
-
-        self.assertEqual(state.players["red"].ship.facing, 3)
-        self.assertEqual(state.players["red"].ship.q, -3)
-        self.assertEqual(state.players["red"].ship.r, 0)
-        self.assertEqual(state.players["red"].ship.movement_this_action, 3)
-        movements = [event for event in state.event_log if event["type"] == "movement_resolved"]
-        self.assertEqual(len(movements), 1)
-        self.assertFalse(movements[0]["overdrive_copy"])
+        with self.assertRaisesRegex(RulesError, "Desperation cards cannot be overdriven"):
+            submit_orders(state, "red", OrdersSubmission(stacks=(
+                ActionStack(
+                    1,
+                    SealMode.OVERDRIVE,
+                    (OrderCardSelection("desp_crazy_ivan_a", face="desperate", orientation="u_turn_move"),),
+                ),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )))
 
     # ------------------------------------------------------------------
     # Crazy Ivan desperate face — attack variant
@@ -560,59 +548,33 @@ class DesperationIntegrationTests(unittest.TestCase):
     def test_overdrive_does_not_copy_desperate_attack(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "desp_crack_shot_a")
-        state.players["red"].ship.q = 0
-        state.players["red"].ship.r = 0
-        state.players["blue"].ship.q = 1
-        state.players["blue"].ship.r = 0
-
-        state = submit_orders(state, "red", OrdersSubmission(stacks=(
-            ActionStack(
-                1,
-                SealMode.OVERDRIVE,
-                (OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),),
-            ),
-            ActionStack(2, SealMode.SEALED),
-            ActionStack(3, SealMode.SEALED),
-        )))
-        state = submit_orders(state, "blue", self._empty_orders())
-        state = resolve_next_step(state)
-
-        volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
-        self.assertEqual(len(volleys), 1)
-        self.assertFalse(volleys[0]["overdrive_copy"])
-        self.assertEqual(volleys[0]["damage"], 2)
+        with self.assertRaisesRegex(RulesError, "Desperation cards cannot be overdriven"):
+            submit_orders(state, "red", OrdersSubmission(stacks=(
+                ActionStack(
+                    1,
+                    SealMode.OVERDRIVE,
+                    (OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),),
+                ),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )))
 
     def test_overdrive_copy_excludes_desperate_attack_from_mixed_volley(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "targeted_attack_aim_2_a", "desp_crack_shot_a")
-        state.players["red"].ship.q = 0
-        state.players["red"].ship.r = 0
-        state.players["blue"].ship.q = 1
-        state.players["blue"].ship.r = 0
-
-        state = submit_orders(state, "red", OrdersSubmission(stacks=(
-            ActionStack(
-                1,
-                SealMode.OVERDRIVE,
-                (
-                    OrderCardSelection("targeted_attack_aim_2_a", target_player_id="blue"),
-                    OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),
+        with self.assertRaisesRegex(RulesError, "Desperation cards cannot be overdriven"):
+            submit_orders(state, "red", OrdersSubmission(stacks=(
+                ActionStack(
+                    1,
+                    SealMode.OVERDRIVE,
+                    (
+                        OrderCardSelection("targeted_attack_aim_2_a", target_player_id="blue"),
+                        OrderCardSelection("desp_crack_shot_a", face="desperate", target_player_id="blue"),
+                    ),
                 ),
-            ),
-            ActionStack(2, SealMode.SEALED),
-            ActionStack(3, SealMode.SEALED),
-        )))
-        state = submit_orders(state, "blue", self._empty_orders())
-        state = resolve_next_step(state)
-
-        volleys = [event for event in state.event_log if event["type"] == "volley_resolved"]
-        self.assertEqual(len(volleys), 2)
-        self.assertFalse(volleys[0]["overdrive_copy"])
-        self.assertTrue(volleys[1]["overdrive_copy"])
-        self.assertEqual(volleys[0]["card_ids"], ["targeted_attack_aim_2_a", "desp_crack_shot_a"])
-        self.assertEqual(volleys[1]["card_ids"], ["targeted_attack_aim_2_a"])
-        self.assertEqual(volleys[0]["damage"], 2)
-        self.assertEqual(volleys[1]["damage"], 1)
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )))
 
     # ------------------------------------------------------------------
     # Active Cooling desperate face
@@ -674,20 +636,105 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertEqual(volley["defense_threshold"], volley["distance"] + volley["target_defense_bonus"])
 
     # ------------------------------------------------------------------
-    # Deferred desperate face raises RulesError
+    # Engineering and special attack desperate faces
     # ------------------------------------------------------------------
 
-    def test_deferred_desperate_face_raises_rules_error(self):
-        from starshot.rules.engine import RulesError
+    def test_hull_repair_restores_selected_component(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_hull_repair_a")
+        state.players["red"].ship.destroyed_components.add("forward_ion_cannon")
+        state.players["red"].ship.damage_taken = 1
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(1, SealMode.SEALED, (
+                OrderCardSelection("desp_hull_repair_a", face="desperate", repair_component_ids=("forward_ion_cannon",)),
+            )),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        self.assertNotIn("forward_ion_cannon", state.players["red"].ship.destroyed_components)
+        self.assertEqual(state.players["red"].ship.damage_taken, 0)
+        self.assertTrue(any(e["type"] == "engineering_resolved" for e in state.event_log))
+
+    def test_reconfigure_moves_two_damage_markers(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
         self._set_hand(state, "red", "desp_reconfigure_a")
+        state.players["red"].ship.destroyed_components.update({"port_shields", "bone_room"})
+        state.players["red"].ship.damage_taken = 2
 
-        with self.assertRaises(RulesError):
-            submit_orders(state, "red", OrdersSubmission(stacks=(
-                ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_reconfigure_a", face="desperate"),)),
-                ActionStack(2, SealMode.SEALED),
-                ActionStack(3, SealMode.SEALED),
-            )))
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(1, SealMode.SEALED, (
+                OrderCardSelection(
+                    "desp_reconfigure_a",
+                    face="desperate",
+                    reconfigure_from_component_ids=("port_shields", "bone_room"),
+                    reconfigure_to_component_ids=("forward_ion_cannon", "aft_engines"),
+                ),
+            )),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        destroyed = state.players["red"].ship.destroyed_components
+        self.assertNotIn("port_shields", destroyed)
+        self.assertNotIn("bone_room", destroyed)
+        self.assertIn("forward_ion_cannon", destroyed)
+        self.assertIn("aft_engines", destroyed)
+
+    def test_holdo_maneuver_rams_without_shields(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_holdo_maneuver")
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        state.players["blue"].ship.q = 2
+        state.players["blue"].ship.r = 0
+        state.players["blue"].ship.shields = 2
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_holdo_maneuver", face="desperate"),)),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        state = submit_orders(state, "blue", self._empty_orders())
+        state = resolve_next_step(state)
+
+        event = [e for e in state.event_log if e["type"] == "ramming_resolved"][0]
+        self.assertEqual(event["target_id"], "blue")
+        self.assertEqual(state.players["red"].ship.q, 2)
+        self.assertEqual(state.players["blue"].ship.shields, 2)
+        self.assertGreaterEqual(event["target_damage"]["damage_applied"], 1)
+        self.assertGreaterEqual(event["attacker_damage"]["damage_applied"], 1)
+
+    def test_scattershot_targets_only_ships_in_facing_cone(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "yellow"), seed=1))
+        self._set_hand(state, "red", "desp_scattershot")
+        state.players["red"].ship.q = 0
+        state.players["red"].ship.r = 0
+        state.players["red"].ship.facing = 0
+        state.players["blue"].ship.q = 2
+        state.players["blue"].ship.r = 0
+        state.players["green"].ship.q = 1
+        state.players["green"].ship.r = -1
+        state.players["yellow"].ship.q = -1
+        state.players["yellow"].ship.r = 0
+
+        state = submit_orders(state, "red", OrdersSubmission(stacks=(
+            ActionStack(1, SealMode.SEALED, (OrderCardSelection("desp_scattershot", face="desperate"),)),
+            ActionStack(2, SealMode.SEALED),
+            ActionStack(3, SealMode.SEALED),
+        )))
+        for player_id in ("blue", "green", "yellow"):
+            state = submit_orders(state, player_id, self._empty_orders())
+        state = resolve_next_step(state)
+
+        target_ids = {event["target_id"] for event in state.event_log if event["type"] == "volley_resolved"}
+        self.assertEqual(target_ids, {"blue", "green"})
 
     # ------------------------------------------------------------------
     # debug_start_with_attack_desperation_card

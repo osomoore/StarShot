@@ -38,7 +38,8 @@ _COPY_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 _SUPPORTED_CARD_TEXT_HINT = (
     "Supported examples include: Move 2; Turn Left; Turn Right; Move 2 Right; Move 2 Left; "
     "Attack; Targeted Attack; Attack Aim +2; Targeted Attack Aim +2; Damage +1; Defense +1; Range 3; Always Hits; "
-    "Attack All; Warp Behind VP Leader; Move Overheat To Discard; Lead The Target; "
+    "Attack All; Target all in 120 deg Cone; Move 3, Collide 3 damage all; "
+    "Restore 1 Component; Reconfigure 2; Warp Behind VP Leader; Move Overheat To Discard; Lead The Target; "
     "choices Forward, Turn Left, Turn Right."
 )
 
@@ -81,6 +82,11 @@ class FaceSpec:
     u_turn_attack: bool = False
     active_cooling: bool = False
     lead_the_target: bool = False
+    ramming_distance: int = 0
+    ramming_damage: int = 0
+    attacks_cone_120: bool = False
+    repair_components: int = 0
+    reconfigure_components: int = 0
 
 
 _CATALOG_CACHE: dict[Path, DeckCatalog] = {}
@@ -419,6 +425,11 @@ def _desperate_face_from_spec(spec: FaceSpec | None) -> DesperateFace | None:
         u_turn_attack=spec.u_turn_attack,
         active_cooling=spec.active_cooling,
         lead_the_target=spec.lead_the_target,
+        ramming_distance=spec.ramming_distance,
+        ramming_damage=spec.ramming_damage,
+        attacks_cone_120=spec.attacks_cone_120,
+        repair_components=spec.repair_components,
+        reconfigure_components=spec.reconfigure_components,
     )
 
 
@@ -566,6 +577,15 @@ def _phrase_spec(part: str, field: str) -> FaceSpec | None:
         return FaceSpec(family=CardFamily.ATTACK, requires_target=False, aim_bonus=999, always_hits=True)
     if part == "attack all":
         return FaceSpec(family=CardFamily.ATTACK, requires_target=False, attacks_all=True)
+    if part == "target all in 120 deg cone":
+        return FaceSpec(family=CardFamily.ATTACK, requires_target=False, attacks_cone_120=True)
+    if match := re.fullmatch(r"collide (\d+) damage all", part):
+        damage = int(match.group(1))
+        return FaceSpec(family=CardFamily.ATTACK, requires_target=False, ramming_damage=damage)
+    if match := re.fullmatch(r"restore (\d+) components?", part):
+        return FaceSpec(family=CardFamily.MOVE, requires_target=False, movement_disabled=True, repair_components=int(match.group(1)))
+    if match := re.fullmatch(r"reconfigure (\d+)", part):
+        return FaceSpec(family=CardFamily.MOVE, requires_target=False, movement_disabled=True, reconfigure_components=int(match.group(1)))
     if part == "warp behind vp leader":
         return FaceSpec(family=CardFamily.MOVE, requires_target=False, warp_destination="leader")
     if part == "move overheat to discard":
@@ -630,6 +650,11 @@ def _combine_mixed_alternatives(alternatives: list[FaceSpec], field: str) -> Fac
         u_turn_attack=attack.u_turn_attack,
         active_cooling=move.active_cooling,
         lead_the_target=attack.lead_the_target,
+        ramming_distance=attack.ramming_distance,
+        ramming_damage=attack.ramming_damage,
+        attacks_cone_120=attack.attacks_cone_120,
+        repair_components=move.repair_components,
+        reconfigure_components=move.reconfigure_components,
     )
 
 
@@ -644,6 +669,11 @@ def _merge_specs(left: FaceSpec, right: FaceSpec) -> FaceSpec:
     family = right.family if left.family == CardFamily.MOVE and left.value == 0 else left.family
     if left.family != right.family and left.value != 0:
         family = CardFamily.HYBRID
+    ramming_distance = right.ramming_distance or left.ramming_distance
+    ramming_damage = right.ramming_damage or left.ramming_damage
+    if ramming_damage and left.family == CardFamily.MOVE and right.family == CardFamily.ATTACK:
+        family = CardFamily.ATTACK
+        ramming_distance = left.value
     return _replace_spec(
         left,
         family=family,
@@ -670,6 +700,11 @@ def _merge_specs(left: FaceSpec, right: FaceSpec) -> FaceSpec:
         u_turn_attack=left.u_turn_attack or right.u_turn_attack,
         active_cooling=left.active_cooling or right.active_cooling,
         lead_the_target=left.lead_the_target or right.lead_the_target,
+        ramming_distance=ramming_distance,
+        ramming_damage=ramming_damage,
+        attacks_cone_120=left.attacks_cone_120 or right.attacks_cone_120,
+        repair_components=right.repair_components or left.repair_components,
+        reconfigure_components=right.reconfigure_components or left.reconfigure_components,
     )
 
 
@@ -697,6 +732,11 @@ def _replace_spec(spec: FaceSpec, **changes: Any) -> FaceSpec:
         "u_turn_attack": spec.u_turn_attack,
         "active_cooling": spec.active_cooling,
         "lead_the_target": spec.lead_the_target,
+        "ramming_distance": spec.ramming_distance,
+        "ramming_damage": spec.ramming_damage,
+        "attacks_cone_120": spec.attacks_cone_120,
+        "repair_components": spec.repair_components,
+        "reconfigure_components": spec.reconfigure_components,
     }
     values.update(changes)
     return FaceSpec(**values)
@@ -711,6 +751,8 @@ def _move_signature(spec: FaceSpec) -> tuple[Any, ...]:
         spec.double_turn_right,
         spec.double_turn_after_move,
         spec.active_cooling,
+        spec.repair_components,
+        spec.reconfigure_components,
     )
 
 
@@ -824,6 +866,11 @@ def _desperate_face(data: Any, source: str) -> DesperateFace | None:
         u_turn_attack=_bool(data.get("u_turn_attack", False), f"{source}.desperate_face.u_turn_attack"),
         active_cooling=_bool(data.get("active_cooling", False), f"{source}.desperate_face.active_cooling"),
         lead_the_target=_bool(data.get("lead_the_target", False), f"{source}.desperate_face.lead_the_target"),
+        ramming_distance=_int(data.get("ramming_distance", 0), f"{source}.desperate_face.ramming_distance"),
+        ramming_damage=_int(data.get("ramming_damage", 0), f"{source}.desperate_face.ramming_damage"),
+        attacks_cone_120=_bool(data.get("attacks_cone_120", False), f"{source}.desperate_face.attacks_cone_120"),
+        repair_components=_int(data.get("repair_components", 0), f"{source}.desperate_face.repair_components"),
+        reconfigure_components=_int(data.get("reconfigure_components", 0), f"{source}.desperate_face.reconfigure_components"),
     )
 
 

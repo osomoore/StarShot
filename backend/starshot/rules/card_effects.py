@@ -17,6 +17,8 @@ class MoveDirective:
     double_turn_after_move: bool = False
     u_turn_move: bool = False
     active_cooling: bool = False
+    repair_components: int = 0
+    reconfigure_components: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +33,9 @@ class AttackContribution:
     attacks_all: bool = False
     u_turn_attack: bool = False
     lead_the_target: bool = False
+    ramming_distance: int = 0
+    ramming_damage: int = 0
+    attacks_cone_120: bool = False
 
     @property
     def damage(self) -> int:
@@ -46,6 +51,8 @@ class CardEffect:
     orientation_options: tuple[str, ...]
     move: MoveDirective | None = None
     attack: AttackContribution | None = None
+    repair_components: int = 0
+    reconfigure_components: int = 0
 
 
 def is_desperate_face(selection: OrderCardSelection) -> bool:
@@ -63,6 +70,12 @@ def desperate_face_for(card: Card, selection: OrderCardSelection) -> DesperateFa
 def selected_card_family(card: Card, selection: OrderCardSelection) -> CardFamily:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
+        if desperate_face.repair_components or desperate_face.reconfigure_components:
+            if selection.mode == "attack":
+                return CardFamily.ATTACK
+            if selection.mode in {None, "move"}:
+                return CardFamily.MOVE
+            raise ValueError(f"Engineering desperate face for card {card.id} requires a valid mode selection.")
         if desperate_face.family == CardFamily.HYBRID:
             if selection.mode == "attack" or selection.orientation.endswith("attack"):
                 return CardFamily.ATTACK
@@ -91,7 +104,9 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
 
     move = None
     attack = None
-    if family == CardFamily.MOVE:
+    repair_components = card_repair_components(card, selection)
+    reconfigure_components = card_reconfigure_components(card, selection)
+    if family == CardFamily.MOVE and not (repair_components or reconfigure_components):
         move = MoveDirective(
             distance=value,
             orientation_options=orientation_options,
@@ -103,8 +118,10 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
             double_turn_after_move=card_double_turn_after_move(card, selection),
             u_turn_move=card_u_turn_move(card, selection),
             active_cooling=card_active_cooling(card, selection),
+            repair_components=card_repair_components(card, selection),
+            reconfigure_components=card_reconfigure_components(card, selection),
         )
-    elif family == CardFamily.ATTACK:
+    elif family == CardFamily.ATTACK and not (repair_components or reconfigure_components):
         attack = AttackContribution(
             base_damage=card_attack_base_damage(card, selection, seal_mode),
             damage_bonus=card_damage_bonus(card, selection),
@@ -116,6 +133,9 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
             attacks_all=card_attacks_all(card, selection),
             u_turn_attack=card_u_turn_attack(card, selection),
             lead_the_target=card_lead_the_target(card, selection),
+            ramming_distance=card_ramming_distance(card, selection),
+            ramming_damage=card_ramming_damage(card, selection),
+            attacks_cone_120=card_attacks_cone_120(card, selection),
         )
 
     return CardEffect(
@@ -126,6 +146,8 @@ def interpret_card(card: Card, selection: OrderCardSelection, seal_mode: SealMod
         orientation_options=orientation_options,
         move=move,
         attack=attack,
+        repair_components=repair_components,
+        reconfigure_components=reconfigure_components,
     )
 
 
@@ -244,6 +266,31 @@ def card_active_cooling(card: Card, selection: OrderCardSelection) -> bool:
 def card_lead_the_target(card: Card, selection: OrderCardSelection) -> bool:
     desperate_face = desperate_face_for(card, selection)
     return bool(desperate_face is not None and desperate_face.lead_the_target)
+
+
+def card_ramming_distance(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.ramming_distance if desperate_face is not None else 0
+
+
+def card_ramming_damage(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.ramming_damage if desperate_face is not None else 0
+
+
+def card_attacks_cone_120(card: Card, selection: OrderCardSelection) -> bool:
+    desperate_face = desperate_face_for(card, selection)
+    return bool(desperate_face is not None and desperate_face.attacks_cone_120)
+
+
+def card_repair_components(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.repair_components if desperate_face is not None else 0
+
+
+def card_reconfigure_components(card: Card, selection: OrderCardSelection) -> int:
+    desperate_face = desperate_face_for(card, selection)
+    return desperate_face.reconfigure_components if desperate_face is not None else 0
 
 
 def static_card_effect_summary(card: Card) -> dict:

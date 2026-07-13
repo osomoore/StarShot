@@ -161,6 +161,10 @@ def _card_uses(card: Card) -> tuple[list[MoveUse], list[AttackUse]]:
                 return
             moves.append(MoveUse(selection, effect, is_desperate))
         elif effect.family == CardFamily.ATTACK and effect.attack is not None:
+            # These special attacks need tactical/geometric judgment beyond the
+            # simple volley scorer.
+            if effect.attack.ramming_damage or effect.attack.attacks_cone_120:
+                return
             attacks.append(AttackUse(selection, effect, is_desperate))
 
     def add_all_orientations(face: str, mode: str | None, is_desperate: bool) -> None:

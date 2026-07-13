@@ -21,6 +21,8 @@ copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
 side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Reconfigure 2"
 
 [[cards]]
 name = "Hull Repair"
@@ -28,6 +30,8 @@ copies = 3
 side_a_type = "Basic"
 side_a_1 = "Move 2"
 side_a_2 = "Attack Aim +2"
+side_b_type = "Desperate"
+side_b_1 = "Restore 1 Component"
 
 [[cards]]
 name = "Steady Shot"
@@ -109,6 +113,8 @@ copies = 1
 side_a_type = "Basic"
 side_a_1 = "Move 5"
 side_a_2 = "Attack Aim +5"
+side_b_type = "Desperate"
+side_b_1 = "Move 3, Collide 3 damage all"
 
 [[cards]]
 name = "StarShot"
@@ -125,6 +131,8 @@ copies = 1
 side_a_type = "Basic"
 side_a_1 = "Move 7"
 side_a_2 = "Attack Aim +7"
+side_b_type = "Desperate"
+side_b_1 = "Attack Damage +1, Target all in 120 deg Cone"
 
 [[cards]]
 name = "Lead the Target"

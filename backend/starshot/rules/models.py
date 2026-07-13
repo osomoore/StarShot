@@ -60,6 +60,14 @@ class DesperateFace:
     active_cooling: bool = False
     # Lead the Target: ignore target's movement_this_action in defense calc
     lead_the_target: bool = False
+    # Holdo Maneuver: move forward during combat and deal unblockable collision damage.
+    ramming_distance: int = 0
+    ramming_damage: int = 0
+    # ScatterShot: attack every enemy in a facing-based 120 degree cone.
+    attacks_cone_120: bool = False
+    # Engineering faces that directly move/clear component damage.
+    repair_components: int = 0
+    reconfigure_components: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +110,9 @@ class OrderCardSelection:
     orientation: str = "up"
     target_player_id: str | None = None
     mode: str | None = None
+    repair_component_ids: tuple[str, ...] = ()
+    reconfigure_from_component_ids: tuple[str, ...] = ()
+    reconfigure_to_component_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,6 +18,9 @@ shutil.copytree(_REPO_DECKS, _TEST_DECKS)
 os.environ["STARSHOT_V2_DECK_SET"] = str(_TEST_DECKS)
 os.environ["STARSHOT_KEYWORDS_FILE"] = str(Path(TMP.name) / "custom_keywords.json")
 os.environ["STARSHOT_CUSTOM_DECKS"] = str(Path(TMP.name) / "custom_decks")
+_TEST_HTPASSWD = Path(TMP.name) / ".htpasswd"
+_TEST_HTPASSWD.write_text("david:rangers\n", encoding="utf-8")
+os.environ["STARSHOT_SITE_HTPASSWD"] = str(_TEST_HTPASSWD)
 
 from fastapi.testclient import TestClient  # noqa: E402
 

@@ -99,9 +99,18 @@ class DesperationCardSemanticsTests(unittest.TestCase):
         self.assertTrue(card.desperate_face.lead_the_target)
         self.assertEqual(card.desperate_face.damage_bonus, 1)
 
-    def test_deferred_desperate_faces_are_none(self):
-        for card_id in ("desp_reconfigure_a", "desp_hull_repair_a",
-                        "desp_holdo_maneuver", "desp_scattershot", "desp_overdrive_2x"):
+    def test_newly_implemented_desperate_face_flags(self):
+        self.assertEqual(desperation_card_by_id("desp_reconfigure_a").desperate_face.reconfigure_components, 2)
+        self.assertEqual(desperation_card_by_id("desp_hull_repair_a").desperate_face.repair_components, 1)
+        holdo = desperation_card_by_id("desp_holdo_maneuver").desperate_face
+        self.assertEqual(holdo.ramming_distance, 3)
+        self.assertEqual(holdo.ramming_damage, 3)
+        scatter = desperation_card_by_id("desp_scattershot").desperate_face
+        self.assertTrue(scatter.attacks_cone_120)
+        self.assertEqual(scatter.damage_bonus, 1)
+
+    def test_remaining_deferred_desperate_faces_are_none(self):
+        for card_id in ("desp_overdrive_2x",):
             card = desperation_card_by_id(card_id)
             self.assertIsNone(card.desperate_face, f"{card_id} should have no desperate face yet")
 

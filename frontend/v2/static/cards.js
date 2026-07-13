@@ -37,11 +37,15 @@
     else if (face.double_turn_after_move) bits.push(`Move ${face.value}, then swing twice`);
     else if (face.family === "move") bits.push(`Move ${face.value}`);
     if (face.family === "attack" || face.u_turn_attack) {
+      if (face.ramming_damage) bits.push(`ram ${face.value || face.ramming_distance || 3}, ${face.ramming_damage} hull damage`);
+      if (face.attacks_cone_120) bits.push("120 degree cone");
       if (face.always_hits || face.aim_bonus >= 99) bits.push("NEVER misses");
       else if (face.aim_bonus) bits.push(`aim +${face.aim_bonus}`);
       if (face.damage_bonus && !face.u_turn_move) bits.push(`+${face.damage_bonus} damage`);
       if (face.lead_the_target) bits.push("lead the target");
     }
+    if (face.repair_components) bits.push(`restore ${face.repair_components} component`);
+    if (face.reconfigure_components) bits.push(`move ${face.reconfigure_components} damage`);
     if (face.defense_bonus) bits.push(`defense +${face.defense_bonus}`);
     return bits.join(" · ") || "Desperate gambit";
   }

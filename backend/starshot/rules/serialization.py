@@ -216,6 +216,11 @@ def desperate_face_to_dict(face: DesperateFace) -> dict:
         "u_turn_attack": face.u_turn_attack,
         "active_cooling": face.active_cooling,
         "lead_the_target": face.lead_the_target,
+        "ramming_distance": face.ramming_distance,
+        "ramming_damage": face.ramming_damage,
+        "attacks_cone_120": face.attacks_cone_120,
+        "repair_components": face.repair_components,
+        "reconfigure_components": face.reconfigure_components,
     }
 
 
@@ -242,6 +247,11 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
         u_turn_attack=data.get("u_turn_attack", False),
         active_cooling=data.get("active_cooling", False),
         lead_the_target=data.get("lead_the_target", False),
+        ramming_distance=data.get("ramming_distance", 0),
+        ramming_damage=data.get("ramming_damage", 0),
+        attacks_cone_120=data.get("attacks_cone_120", False),
+        repair_components=data.get("repair_components", 0),
+        reconfigure_components=data.get("reconfigure_components", 0),
     )
 
 
@@ -356,6 +366,9 @@ def selection_to_dict(selection: OrderCardSelection) -> dict:
         "orientation": selection.orientation,
         "target_player_id": selection.target_player_id,
         "mode": selection.mode,
+        "repair_component_ids": list(selection.repair_component_ids),
+        "reconfigure_from_component_ids": list(selection.reconfigure_from_component_ids),
+        "reconfigure_to_component_ids": list(selection.reconfigure_to_component_ids),
     }
 
 
@@ -366,6 +379,9 @@ def selection_from_dict(data: dict) -> OrderCardSelection:
         orientation=data.get("orientation", "up"),
         target_player_id=data.get("target_player_id"),
         mode=data.get("mode"),
+        repair_component_ids=tuple(data.get("repair_component_ids", ())),
+        reconfigure_from_component_ids=tuple(data.get("reconfigure_from_component_ids", ())),
+        reconfigure_to_component_ids=tuple(data.get("reconfigure_to_component_ids", ())),
     )
 
 

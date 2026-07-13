@@ -666,8 +666,71 @@
     els["picker-overlay"].innerHTML = "";
   }
 
+  function myShipComponents() {
+    return ((myPlayer() || {}).ship || {}).component_layout || [];
+  }
+
+  function destroyedComponentIds() {
+    return (((myPlayer() || {}).ship || {}).destroyed_components || []);
+  }
+
+  function damagedComponents() {
+    const destroyed = new Set(destroyedComponentIds());
+    return myShipComponents().filter((component) => destroyed.has(component.id));
+  }
+
+  function intactComponents() {
+    const destroyed = new Set(destroyedComponentIds());
+    return myShipComponents().filter((component) => !destroyed.has(component.id));
+  }
+
+  function componentDistance(a, b) {
+    const as = -a.q - a.r;
+    const bs = -b.q - b.r;
+    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(as - bs));
+  }
+
+  function isAdjacentToIntact(component, destroyedSet) {
+    return myShipComponents().some((other) => other.id !== component.id
+      && !destroyedSet.has(other.id)
+      && componentDistance(component, other) === 1);
+  }
+
+  async function pickComponents(title, components, count) {
+    const picked = [];
+    for (let index = 0; index < count; index++) {
+      const options = components
+        .filter((component) => !picked.includes(component.id))
+        .map((component) => ({
+          icon: picked.length + 1,
+          label: component.name,
+          sub: component.type,
+          value: component.id,
+        }));
+      if (!options.length) {
+        App.toast("No valid hull tiles for that repair.");
+        return null;
+      }
+      const choice = await showPicker(`${title} (${index + 1}/${count})`, options);
+      if (!choice) return null;
+      picked.push(choice);
+    }
+    return picked;
+  }
+
   async function beginPlacement(card, presetSlot = null) {
-    const selection = { card_id: card.id, face: "front", orientation: "up", mode: null, target_player_id: null, card, family: null };
+    const selection = {
+      card_id: card.id,
+      face: "front",
+      orientation: "up",
+      mode: null,
+      target_player_id: null,
+      repair_component_ids: [],
+      reconfigure_from_component_ids: [],
+      reconfigure_to_component_ids: [],
+      card,
+      family: null,
+    };
 
     // 1. face
     if (card.no_basic_face) selection.face = "desperate";
@@ -707,6 +770,15 @@
         selection.mode = mode;
         selection.family = mode;
         orientationOptions = opts;
+      } else if (face.repair_components || face.reconfigure_components) {
+        const mode = await showPicker("Patch it during...", [
+          { icon: "M", label: "Move stack", value: "move" },
+          { icon: "A", label: "Attack stack", value: "attack" },
+        ]);
+        if (!mode) return;
+        selection.mode = mode;
+        selection.family = mode;
+        orientationOptions = opts;
       } else if (opts.includes("u_turn_move") || opts.includes("u_turn_attack")) {
         const pick = await showPicker("Crazy Ivan!", opts.map((option) => ({
           icon: option === "u_turn_attack" ? "☄" : "➤",
@@ -735,6 +807,29 @@
         selection.orientation = orientation;
       } else {
         selection.orientation = orientationOptions[0] || "forward";
+      }
+    }
+
+    if (selection.face === "desperate" && card.desperate_face) {
+      if (card.desperate_face.repair_components) {
+        const picked = await pickComponents("Restore which hull tile?", damagedComponents(), card.desperate_face.repair_components);
+        if (!picked) return;
+        selection.repair_component_ids = picked;
+      }
+      if (card.desperate_face.reconfigure_components) {
+        const count = card.desperate_face.reconfigure_components;
+        const from = await pickComponents("Move damage from...", damagedComponents(), count);
+        if (!from) return;
+        const interimDestroyed = new Set(destroyedComponentIds());
+        from.forEach((id) => interimDestroyed.delete(id));
+        const to = await pickComponents(
+          "Move damage to...",
+          intactComponents().filter((component) => !from.includes(component.id) && isAdjacentToIntact(component, interimDestroyed)),
+          count
+        );
+        if (!to) return;
+        selection.reconfigure_from_component_ids = from;
+        selection.reconfigure_to_component_ids = to;
       }
     }
 
@@ -811,6 +906,9 @@
           orientation: selection.orientation,
           mode: selection.mode,
           target_player_id: selection.target_player_id,
+          repair_component_ids: selection.repair_component_ids || [],
+          reconfigure_from_component_ids: selection.reconfigure_from_component_ids || [],
+          reconfigure_to_component_ids: selection.reconfigure_to_component_ids || [],
         })),
       })),
     };

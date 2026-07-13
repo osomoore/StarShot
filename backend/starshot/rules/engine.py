@@ -68,7 +68,13 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
-from starshot.rules.ship_layout import detached_component_ids, first_intact_component_for_lane, is_ship_destroyed
+from starshot.rules.ship_layout import (
+    BASE_SHIP_COMPONENTS,
+    BASE_SHIP_COMPONENT_BY_ID,
+    detached_component_ids,
+    first_intact_component_for_lane,
+    is_ship_destroyed,
+)
 from starshot.rules.star_command import CAPTAINS, EXPANSION_ID as STAR_COMMAND_ID, STARFALLS, STARFALLS_BY_ID
 
 # Lateral direction offsets for Side Slip (perpendicular to facing).
@@ -203,6 +209,9 @@ def submit_orders(state: GameState, player_id: str, orders: OrdersSubmission) ->
                             "orientation": selection.orientation,
                             "target_player_id": selection.target_player_id,
                             "mode": selection.mode,
+                            "repair_component_ids": list(selection.repair_component_ids),
+                            "reconfigure_from_component_ids": list(selection.reconfigure_from_component_ids),
+                            "reconfigure_to_component_ids": list(selection.reconfigure_to_component_ids),
                         }
                         for selection in stack.cards
                     ],
@@ -312,6 +321,9 @@ def _resolve_action_phase(state: GameState) -> None:
                         "orientation": selection.orientation,
                         "target_player_id": selection.target_player_id,
                         "mode": selection.mode,
+                        "repair_component_ids": list(selection.repair_component_ids),
+                        "reconfigure_from_component_ids": list(selection.reconfigure_from_component_ids),
+                        "reconfigure_to_component_ids": list(selection.reconfigure_to_component_ids),
                     }
                     for selection in stack.cards
                 ],
@@ -320,6 +332,7 @@ def _resolve_action_phase(state: GameState) -> None:
         _resolve_stack_movement(state, player, action_number, stack)
         if _overdrive_copies_action(stack):
             _resolve_stack_movement(state, player, action_number, stack, overdrive_copy=True)
+        _resolve_stack_engineering(state, player, action_number, stack)
 
     _resolve_combat(state, action_number, revealed_stacks)
 
@@ -565,6 +578,138 @@ def _resolve_stack_movement(
         )
 
 
+def _resolve_stack_engineering(
+    state: GameState,
+    player: PlayerState,
+    action_number: int,
+    stack: ActionStack,
+) -> None:
+    repairs: list[dict] = []
+    reconfigures: list[dict] = []
+    for selection in stack.cards:
+        card = card_by_id(selection.card_id)
+        effect = _card_effect(card, selection, stack.seal_mode)
+        if effect.repair_components:
+            before = sorted(player.ship.destroyed_components)
+            restored = _repair_components(player, selection.repair_component_ids, effect.repair_components)
+            if restored:
+                repairs.append(
+                    {
+                        "card_id": card.id,
+                        "restored_component_ids": restored,
+                        "before_destroyed_components": before,
+                        "after_destroyed_components": sorted(player.ship.destroyed_components),
+                    }
+                )
+        if effect.reconfigure_components:
+            before = sorted(player.ship.destroyed_components)
+            moved = _reconfigure_components(
+                player,
+                selection.reconfigure_from_component_ids,
+                selection.reconfigure_to_component_ids,
+                effect.reconfigure_components,
+            )
+            if moved:
+                reconfigures.append(
+                    {
+                        "card_id": card.id,
+                        "from_component_ids": moved["from"],
+                        "to_component_ids": moved["to"],
+                        "before_destroyed_components": before,
+                        "after_destroyed_components": sorted(player.ship.destroyed_components),
+                    }
+                )
+    if repairs or reconfigures:
+        state.event_log.append(
+            {
+                "type": "engineering_resolved",
+                "round": state.round_number,
+                "player_id": player.id,
+                "action_number": action_number,
+                "repairs": repairs,
+                "reconfigures": reconfigures,
+            }
+        )
+
+
+def _repair_components(player: PlayerState, component_ids: tuple[str, ...], count: int) -> list[str]:
+    if not component_ids:
+        return []
+    _ensure_unique_component_ids(component_ids)
+    if len(component_ids) > count:
+        raise RulesError(f"Hull Repair can restore at most {count} component(s).")
+    current = set(player.ship.destroyed_components)
+    for component_id in component_ids:
+        if component_id not in current:
+            continue
+        current.remove(component_id)
+    _ensure_intact_components_connected(current)
+    for component_id in component_ids:
+        player.ship.destroyed_components.discard(component_id)
+        player.ship.component_hit_counts.pop(component_id, None)
+    player.ship.damage_taken = max(0, player.ship.damage_taken - len(component_ids))
+    player.ship.destroyed = is_ship_destroyed(player.ship.destroyed_components)
+    return list(component_ids)
+
+
+def _reconfigure_components(
+    player: PlayerState,
+    from_component_ids: tuple[str, ...],
+    to_component_ids: tuple[str, ...],
+    count: int,
+) -> dict[str, list[str]] | None:
+    if not from_component_ids and not to_component_ids:
+        return None
+    if len(from_component_ids) != count or len(to_component_ids) != count:
+        raise RulesError(f"Reconfigure must move exactly {count} damage marker(s).")
+    _ensure_unique_component_ids(from_component_ids)
+    _ensure_unique_component_ids(to_component_ids)
+    if set(from_component_ids).intersection(to_component_ids):
+        raise RulesError("Reconfigure cannot move damage from and to the same component.")
+    current = set(player.ship.destroyed_components)
+    for component_id in from_component_ids:
+        if component_id not in current:
+            raise RulesError(f"Reconfigure source is not damaged: {component_id}")
+    interim = current - set(from_component_ids)
+    for component_id in to_component_ids:
+        if component_id in interim:
+            raise RulesError(f"Reconfigure destination is already damaged: {component_id}")
+        if not _component_adjacent_to_intact(component_id, interim):
+            raise RulesError(f"Reconfigure destination is not adjacent to an undamaged component: {component_id}")
+    final_destroyed = set(interim).union(to_component_ids)
+    _ensure_intact_components_connected(final_destroyed)
+    player.ship.destroyed_components = final_destroyed
+    for component_id in from_component_ids:
+        player.ship.component_hit_counts.pop(component_id, None)
+    for component_id in to_component_ids:
+        player.ship.component_hit_counts[component_id] = max(1, player.ship.component_hit_counts.get(component_id, 0))
+    player.ship.destroyed = is_ship_destroyed(player.ship.destroyed_components)
+    return {"from": list(from_component_ids), "to": list(to_component_ids)}
+
+
+def _ensure_unique_component_ids(component_ids: tuple[str, ...]) -> None:
+    if len(set(component_ids)) != len(component_ids):
+        raise RulesError("Component selections must not contain duplicates.")
+    unknown = [component_id for component_id in component_ids if component_id not in BASE_SHIP_COMPONENT_BY_ID]
+    if unknown:
+        raise RulesError(f"Unknown ship component: {unknown[0]}")
+
+
+def _component_adjacent_to_intact(component_id: str, destroyed_components: set[str]) -> bool:
+    component = BASE_SHIP_COMPONENT_BY_ID[component_id]
+    for other in BASE_SHIP_COMPONENTS:
+        if other.id in destroyed_components:
+            continue
+        if hex_distance(component.q, component.r, other.q, other.r) == 1:
+            return True
+    return False
+
+
+def _ensure_intact_components_connected(destroyed_components: set[str]) -> None:
+    if detached_component_ids(destroyed_components):
+        raise RulesError("Undamaged ship components must remain connected to the Command Bridge.")
+
+
 def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_number: int, stack: ActionStack) -> None:
     discarded: list[str] = []
     overheated: list[str] = []
@@ -618,6 +763,11 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
             continue
 
         attack_effects = [_card_effect(card, sel, stack.seal_mode) for card, sel in attack_cards]
+        ramming_effects = [effect.attack for effect in attack_effects if effect.attack is not None and effect.attack.ramming_damage]
+        if ramming_effects:
+            _resolve_ramming_attack(state, action_number, stack, attacker, attack_cards)
+            resolved_any = True
+            continue
         # Crazy Ivan u_turn_attack: each copied card flips facing once.
         u_turn_attack_count = sum(1 for e in attack_effects if e.attack is not None and e.attack.u_turn_attack)
         if u_turn_attack_count % 2:
@@ -682,6 +832,17 @@ def _target_player_ids_for_attack(
             player.id
             for player in state.players.values()
             if player.id != attacker.id and not player.eliminated and not player.ship.destroyed
+        ]
+    if any(effect.attack is not None and effect.attack.attacks_cone_120 for effect in attack_effects):
+        return [
+            player.id
+            for player in state.players.values()
+            if (
+                player.id != attacker.id
+                and not player.eliminated
+                and not player.ship.destroyed
+                and _ship_in_facing_cone_120(attacker.ship, player.ship)
+            )
         ]
     target_id = _target_player_id_for_attack(stack)
     if target_id:
@@ -827,9 +988,92 @@ def _attack_cards_for_stack(stack: ActionStack, *, include_desperate: bool = Tru
             effect = _card_effect(card, selection, stack.seal_mode)
             if not include_desperate and effect.is_desperate_face:
                 continue
-            if effect.family == CardFamily.ATTACK:
+            if effect.family == CardFamily.ATTACK and effect.attack is not None:
                 attack_cards.append((card, selection))
     return attack_cards
+
+
+def _ship_in_facing_cone_120(origin: ShipState, target: ShipState) -> bool:
+    dq = target.q - origin.q
+    dr = target.r - origin.r
+    if dq == 0 and dr == 0:
+        return True
+    left_dq, left_dr = move_forward(0, 0, turn_left(origin.facing), 1)
+    right_dq, right_dr = move_forward(0, 0, turn_right(origin.facing), 1)
+    max_distance = hex_distance(origin.q, origin.r, target.q, target.r)
+    for left_steps in range(max_distance + 1):
+        for right_steps in range(max_distance + 1):
+            if left_steps == 0 and right_steps == 0:
+                continue
+            if (
+                left_steps * left_dq + right_steps * right_dq == dq
+                and left_steps * left_dr + right_steps * right_dr == dr
+            ):
+                return True
+    return False
+
+
+def _resolve_ramming_attack(
+    state: GameState,
+    action_number: int,
+    stack: ActionStack,
+    attacker: PlayerState,
+    attack_cards: list[tuple[Card, OrderCardSelection]],
+) -> None:
+    attack_effects = [
+        effect.attack
+        for card, selection in attack_cards
+        if (effect := _card_effect(card, selection, stack.seal_mode)).attack is not None
+    ]
+    ram = next(effect for effect in attack_effects if effect.ramming_damage)
+    before = {"q": attacker.ship.q, "r": attacker.ship.r, "facing": attacker.ship.facing}
+    collision_target: PlayerState | None = None
+    path: list[dict] = []
+    for step in range(1, ram.ramming_distance + 1):
+        q, r = move_forward(before["q"], before["r"], attacker.ship.facing, step)
+        q, r = clamp_to_board(q, r)
+        path.append({"q": q, "r": r})
+        for player_id in _player_order_from_starting_player(state):
+            candidate = state.players[player_id]
+            if candidate.id == attacker.id or candidate.eliminated or candidate.ship.destroyed:
+                continue
+            if (candidate.ship.q, candidate.ship.r) == (q, r):
+                collision_target = candidate
+                break
+        if collision_target is not None:
+            break
+    if path:
+        attacker.ship.q = path[-1]["q"]
+        attacker.ship.r = path[-1]["r"]
+        attacker.ship.movement_this_action += len(path)
+
+    event = {
+        "type": "ramming_resolved",
+        "round": state.round_number,
+        "action_number": action_number,
+        "attacker_id": attacker.id,
+        "target_id": collision_target.id if collision_target else None,
+        "card_ids": [card.id for card, selection in attack_cards],
+        "damage": ram.ramming_damage,
+        "path": path,
+        "before": before,
+        "after": {"q": attacker.ship.q, "r": attacker.ship.r, "facing": attacker.ship.facing},
+        "hit": collision_target is not None,
+        "attacker_damage": None,
+        "target_damage": None,
+        "vp_awarded": 0,
+    }
+    if collision_target is not None:
+        target_damage = _apply_unshielded_damage(state, collision_target, ram.ramming_damage, action_number=action_number)
+        attacker_damage = _apply_unshielded_damage(state, attacker, ram.ramming_damage, action_number=action_number)
+        destroyed_by_ram = not target_damage["was_destroyed"] and collision_target.ship.destroyed
+        vp_awarded = 3 if destroyed_by_ram else 1 if target_damage["damage_applied"] > 0 else 0
+        vp_awarded += target_damage["knockoff_vp_awarded"]
+        attacker.victory_points += vp_awarded
+        event["target_damage"] = target_damage
+        event["attacker_damage"] = attacker_damage
+        event["vp_awarded"] = vp_awarded
+    state.event_log.append(event)
 
 
 def _apply_unshielded_damage(
@@ -1258,6 +1502,8 @@ def _validate_stack(
         used_card_ids.add(selection.card_id)
         effective_family = _selected_card_family(card, selection)
         families.add(effective_family)
+        effect = _card_effect(card, selection, stack.seal_mode)
+        _validate_engineering_selection(player, selection, effect)
         if effective_family == CardFamily.MOVE:
             move_choice = _normalize_move_choice(selection.orientation)
             if move_choice not in _card_orientation_options(card, selection):
@@ -1273,6 +1519,52 @@ def _validate_stack(
         raise RulesError("A stack cannot mix move and attack cards.")
     if len(target_player_ids) > 1:
         raise RulesError("All targeted attacks in a stack must target the same player.")
+
+
+def _validate_engineering_selection(player: PlayerState, selection: OrderCardSelection, effect) -> None:
+    if effect.repair_components:
+        ids = selection.repair_component_ids
+        if len(ids) != effect.repair_components:
+            raise RulesError(f"Hull Repair must select {effect.repair_components} damaged component(s).")
+        _ensure_unique_component_ids(ids)
+        destroyed = set(player.ship.destroyed_components)
+        for component_id in ids:
+            if component_id not in destroyed:
+                raise RulesError(f"Hull Repair component is not damaged: {component_id}")
+        final_destroyed = destroyed - set(ids)
+        _ensure_intact_components_connected(final_destroyed)
+    if effect.reconfigure_components:
+        _reconfigure_components_preview(
+            player,
+            selection.reconfigure_from_component_ids,
+            selection.reconfigure_to_component_ids,
+            effect.reconfigure_components,
+        )
+
+
+def _reconfigure_components_preview(
+    player: PlayerState,
+    from_component_ids: tuple[str, ...],
+    to_component_ids: tuple[str, ...],
+    count: int,
+) -> None:
+    if len(from_component_ids) != count or len(to_component_ids) != count:
+        raise RulesError(f"Reconfigure must move exactly {count} damage marker(s).")
+    _ensure_unique_component_ids(from_component_ids)
+    _ensure_unique_component_ids(to_component_ids)
+    if set(from_component_ids).intersection(to_component_ids):
+        raise RulesError("Reconfigure cannot move damage from and to the same component.")
+    current = set(player.ship.destroyed_components)
+    for component_id in from_component_ids:
+        if component_id not in current:
+            raise RulesError(f"Reconfigure source is not damaged: {component_id}")
+    interim = current - set(from_component_ids)
+    for component_id in to_component_ids:
+        if component_id in interim:
+            raise RulesError(f"Reconfigure destination is already damaged: {component_id}")
+        if not _component_adjacent_to_intact(component_id, interim):
+            raise RulesError(f"Reconfigure destination is not adjacent to an undamaged component: {component_id}")
+    _ensure_intact_components_connected(set(interim).union(to_component_ids))
 
 
 def _star_command_enabled(state: GameState) -> bool:
