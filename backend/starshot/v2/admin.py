@@ -9,12 +9,16 @@ before anyone can squat the name; change it from the console afterwards.
 from __future__ import annotations
 
 import io
+import json
 import os
+import re
 import shutil
 import tempfile
 import threading
 import uuid
 import zipfile
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import tomllib
@@ -40,6 +44,7 @@ DEFAULT_ADMINS = "davidmoore"
 SEED_ADMIN_PASSWORD = "rangers"
 
 DECK_FILES = {"base": "base_deck.toml", "desperation": "desperation_deck.toml"}
+DECK_SET_FILES = ("manifest.toml", "config.toml", "base_deck.toml", "desperation_deck.toml")
 _AI_BATCH_JOBS: dict[str, dict] = {}
 _AI_BATCH_JOBS_LOCK = threading.Lock()
 
@@ -70,6 +75,46 @@ def _admin_user(request: Request) -> dict:
 
 def _toml_escape(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _safe_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    return slug or "deck_set"
+
+
+def _serialize_toml_table(data: dict) -> str:
+    lines: list[str] = []
+    for key, value in data.items():
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, (int, float)):
+            rendered = str(value)
+        else:
+            rendered = _toml_escape(str(value))
+        lines.append(f"{key} = {rendered}")
+    return "\n".join(lines) + "\n"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _read_manifest(path: Path) -> dict:
+    return tomllib.loads((path / "manifest.toml").read_text(encoding="utf-8"))
+
+
+def _write_manifest(path: Path, manifest: dict) -> None:
+    (path / "manifest.toml").write_text(_serialize_toml_table(manifest), encoding="utf-8")
+
+
+def _touch_deck_set(path: Path, *, uploaded: bool = False) -> dict:
+    manifest = _read_manifest(path)
+    now = _now_iso()
+    if uploaded:
+        manifest["uploaded_at"] = now
+    manifest["modified_at"] = now
+    _write_manifest(path, manifest)
+    return manifest
 
 
 def _serialize_deck_toml(header: dict, cards: list[dict]) -> str:
@@ -153,6 +198,103 @@ def _deck_sets_payload() -> list[dict]:
     return sets
 
 
+def _deck_set_by_id(deck_set_id: str) -> dict | None:
+    from starshot.v2.service import scan_deck_sets
+
+    return next((deck_set for deck_set in scan_deck_sets() if deck_set["id"] == deck_set_id), None)
+
+
+@contextmanager
+def _temporary_keywords_file(path: Path | None):
+    if path is None:
+        yield
+        return
+    old = os.environ.get("STARSHOT_KEYWORDS_FILE")
+    os.environ["STARSHOT_KEYWORDS_FILE"] = str(path)
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop("STARSHOT_KEYWORDS_FILE", None)
+        else:
+            os.environ["STARSHOT_KEYWORDS_FILE"] = old
+
+
+def _bundle_member_names(archive: zipfile.ZipFile) -> dict[str, str]:
+    files = [name for name in archive.namelist() if not name.endswith("/")]
+    manifest_names = [name for name in files if Path(name).name == "manifest.toml"]
+    if not manifest_names:
+        raise ValueError("Deck set zip must contain manifest.toml.")
+    manifest = sorted(manifest_names, key=lambda name: (name.count("/"), name))[0]
+    prefix = manifest.removesuffix("manifest.toml")
+    members: dict[str, str] = {}
+    for filename in DECK_SET_FILES:
+        candidate = prefix + filename
+        if candidate not in files:
+            raise ValueError(f"Deck set zip is missing {filename}.")
+        members[filename] = candidate
+    keyword_candidate = prefix + "custom_keywords.json"
+    if keyword_candidate in files:
+        members["custom_keywords.json"] = keyword_candidate
+    return members
+
+
+def _read_zip_member(archive: zipfile.ZipFile, member: str) -> bytes:
+    info = archive.getinfo(member)
+    if info.file_size > 2_000_000:
+        raise ValueError(f"{Path(member).name} is too large for a deck set bundle.")
+    return archive.read(info)
+
+
+def _extract_deck_bundle(content: bytes, destination: Path) -> tuple[dict, list[dict] | None]:
+    if len(content) > 8_000_000:
+        raise ValueError("Deck set zip is too large.")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Upload a valid .zip deck set bundle.") from exc
+    with archive:
+        members = _bundle_member_names(archive)
+        for filename in DECK_SET_FILES:
+            (destination / filename).write_bytes(_read_zip_member(archive, members[filename]))
+        try:
+            manifest = tomllib.loads((destination / "manifest.toml").read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ValueError(f"Invalid manifest.toml: {exc}") from exc
+        keywords = None
+        keyword_member = members.get("custom_keywords.json")
+        if keyword_member:
+            try:
+                data = json.loads(_read_zip_member(archive, keyword_member).decode("utf-8"))
+                keywords = data.get("keywords", data if isinstance(data, list) else None)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"Invalid custom_keywords.json: {exc}") from exc
+            if not isinstance(keywords, list):
+                raise ValueError("custom_keywords.json must contain a keywords array.")
+            for entry in keywords:
+                if not isinstance(entry, dict):
+                    raise ValueError("Each custom keyword must be an object.")
+                compile_keyword(entry)
+            (destination / "custom_keywords.json").write_text(json.dumps({"keywords": keywords}, indent=2), encoding="utf-8")
+        return manifest, keywords
+
+
+def _installable_manifest(manifest: dict) -> tuple[dict, str]:
+    original_id = str(manifest.get("id") or "").strip()
+    name = str(manifest.get("name") or original_id or "Imported Deck Set").strip()
+    if not original_id:
+        raise ValueError("manifest.toml.id must be a non-empty string.")
+    installed_id = original_id
+    existing = _deck_set_by_id(original_id)
+    if not original_id.startswith("custom_") or (existing and not existing.get("custom")):
+        installed_id = "custom_" + _safe_slug(original_id or name)
+    installed = dict(manifest)
+    installed["id"] = installed_id
+    if installed_id != original_id and "Imported" not in name:
+        installed["name"] = f"{name} Imported"
+    return installed, installed_id
+
+
 @admin_router.get("/deck")
 def get_deck(request: Request) -> dict:
     _admin_user(request)
@@ -160,7 +302,7 @@ def get_deck(request: Request) -> dict:
 
     active_manifest = {}
     try:
-        active_manifest = tomllib.loads((CORE_0_3_PATH / "manifest.toml").read_text())
+        active_manifest = _read_manifest(Path(str(CORE_0_3_PATH)))
     except (OSError, ValueError):
         pass
     return {
@@ -193,11 +335,14 @@ def deck_save_as(body: DeckSaveAs, request: Request) -> dict:
     import tomllib
 
     source_manifest = tomllib.loads((CORE_0_3_PATH / "manifest.toml").read_text())
+    now = _now_iso()
     manifest_text = (
         f'id = "custom_{slug}"\n'
         f"name = {_toml_escape(body.name)}\n"
         f'rules_version = {_toml_escape(source_manifest.get("rules_version", "0.3"))}\n'
         f"description = {_toml_escape('Custom deck set saved from the admin console.')}\n"
+        f"uploaded_at = {_toml_escape(now)}\n"
+        f"modified_at = {_toml_escape(now)}\n"
     )
     (target / "manifest.toml").write_text(manifest_text)
     for name in ("config.toml", "base_deck.toml", "desperation_deck.toml"):
@@ -209,6 +354,33 @@ def deck_save_as(body: DeckSaveAs, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"Saved deck failed validation: {exc}")
     clear_catalog_cache()
     return {"ok": True, "id": f"custom_{slug}", "sets": _deck_sets_payload()}
+
+
+class DeckRename(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=2, max_length=80)
+
+
+@admin_router.post("/deck/rename")
+def deck_rename(body: DeckRename, request: Request) -> dict:
+    """Rename a deck set for admin display; the stable deck-set id is unchanged."""
+    _admin_user(request)
+    deck_set = _deck_set_by_id(body.id)
+    if deck_set is None:
+        raise HTTPException(status_code=404, detail="No deck set with that id.")
+    deck_path = Path(deck_set["path"])
+    try:
+        manifest = _read_manifest(deck_path)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot read that deck set manifest: {exc}") from exc
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the deck a pronounceable name.")
+    manifest["name"] = name
+    manifest["modified_at"] = _now_iso()
+    _write_manifest(deck_path, manifest)
+    clear_catalog_cache()
+    return {"ok": True, "id": body.id, "name": manifest["name"], "sets": _deck_sets_payload()}
 
 
 class DeckActivate(BaseModel):
@@ -235,6 +407,95 @@ def deck_activate(body: DeckActivate, request: Request) -> dict:
     return {"ok": True, "sets": _deck_sets_payload()}
 
 
+@admin_router.get("/deck/export/{deck_set_id}")
+def deck_export(deck_set_id: str, request: Request) -> Response:
+    """Download a complete deck set bundle for offline editing."""
+    _admin_user(request)
+    deck_set = _deck_set_by_id(deck_set_id)
+    if deck_set is None:
+        raise HTTPException(status_code=404, detail="No deck set with that id.")
+    deck_path = Path(deck_set["path"])
+    try:
+        load_deck_catalog(deck_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"That deck set fails validation: {exc}")
+
+    buffer = io.BytesIO()
+    root_name = _safe_slug(deck_set_id)
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for filename in DECK_SET_FILES:
+            archive.writestr(f"{root_name}/{filename}", (deck_path / filename).read_bytes())
+        archive.writestr(
+            f"{root_name}/custom_keywords.json",
+            json.dumps({"keywords": load_custom_keywords()}, indent=2).encode("utf-8"),
+        )
+        archive.writestr(
+            f"{root_name}/README.txt",
+            (
+                "StarShot deck set bundle.\n"
+                "Edit manifest.toml, config.toml, base_deck.toml, desperation_deck.toml, "
+                "and custom_keywords.json, then upload the zip in the admin deck editor.\n"
+            ).encode("utf-8"),
+        )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="starshot-deck-set-{_safe_slug(deck_set_id)}.zip"'},
+    )
+
+
+@admin_router.post("/deck/import")
+async def deck_import(request: Request, activate: bool = False) -> dict:
+    """Upload, validate, and install a deck set bundle under custom decks."""
+    from starshot.v2.service import CUSTOM_DECKS_ROOT
+    from starshot.v2.settings import ACTIVE_DECK_KEY, invalidate_cache
+
+    _admin_user(request)
+    with tempfile.TemporaryDirectory() as temp:
+        temp_path = Path(temp)
+        try:
+            manifest, keywords = _extract_deck_bundle(await request.body(), temp_path)
+            installed_manifest, installed_id = _installable_manifest(manifest)
+            now = _now_iso()
+            installed_manifest["uploaded_at"] = now
+            installed_manifest["modified_at"] = now
+            (temp_path / "manifest.toml").write_text(_serialize_toml_table(installed_manifest), encoding="utf-8")
+            keyword_path = temp_path / "custom_keywords.json" if keywords is not None else None
+            with _temporary_keywords_file(keyword_path):
+                load_deck_catalog(temp_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        target = Path(str(CUSTOM_DECKS_ROOT)) / _safe_slug(installed_id.removeprefix("custom_"))
+        staging = target.parent / f".{target.name}.{uuid.uuid4().hex}.tmp"
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.mkdir()
+        for filename in DECK_SET_FILES:
+            shutil.copy(temp_path / filename, staging / filename)
+        try:
+            if target.exists():
+                shutil.rmtree(target)
+            staging.replace(target)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+
+    if keywords is not None:
+        save_custom_keywords(keywords)
+    clear_catalog_cache()
+    if activate:
+        get_v2_store().set_setting(ACTIVE_DECK_KEY, str(target.resolve()))
+        invalidate_cache()
+    return {
+        "ok": True,
+        "id": installed_id,
+        "name": installed_manifest.get("name", installed_id),
+        "activated": activate,
+        "keywords_imported": keywords is not None,
+        "sets": _deck_sets_payload(),
+    }
+
+
 class DeckUpdate(BaseModel):
     which: str = Field(pattern="^(base|desperation)$")
     header: dict
@@ -250,6 +511,7 @@ def put_deck(body: DeckUpdate, request: Request) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     (CORE_0_3_PATH / DECK_FILES[body.which]).write_text(toml_text)
+    _touch_deck_set(Path(str(CORE_0_3_PATH)))
     clear_catalog_cache()
     return {"ok": True, "note": "Saved. New games use the updated deck; games already in flight that reference removed cards may fail to resolve."}
 
@@ -428,6 +690,7 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
             load_deck_catalog(Path(str(CORE_0_3_PATH)))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Rules config failed validation: {exc}") from exc
+        _touch_deck_set(Path(str(CORE_0_3_PATH)))
         clear_catalog_cache()
     invalidate_cache()
     return {

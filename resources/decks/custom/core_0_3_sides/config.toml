@@ -1,0 +1,4 @@
+overheat_pile = "no"
+allow_mixed_card_type_stacks = "yes"
+overdrive_style = "combine_cards"
+allow_overdrive_desperation = "yes"

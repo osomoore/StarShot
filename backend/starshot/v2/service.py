@@ -9,6 +9,7 @@ pace.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from starshot.rules import RulesError, create_initial_state, resolve_next_step, submit_orders
@@ -95,10 +96,23 @@ def scan_deck_sets() -> list[dict]:
             except (OSError, ValueError):
                 continue
             if data.get("id"):
+                try:
+                    latest_mtime = max(
+                        (child / name).stat().st_mtime
+                        for name in ("manifest.toml", "config.toml", "base_deck.toml", "desperation_deck.toml")
+                        if (child / name).exists()
+                    )
+                except ValueError:
+                    latest_mtime = manifest.stat().st_mtime
+                latest_file_modified_at = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+                modified_at = data.get("modified_at") or data.get("uploaded_at") or latest_file_modified_at
                 sets.append({
                     "id": data["id"],
                     "name": data.get("name", data["id"]),
                     "rules_version": data.get("rules_version", ""),
+                    "uploaded_at": data.get("uploaded_at"),
+                    "modified_at": modified_at,
+                    "last_changed_at": modified_at,
                     "path": str(child.resolve()),
                     "custom": is_custom,
                 })

@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=11">
-<link rel="stylesheet" href="/v2/static/admin.css?v=9">
+<link rel="stylesheet" href="/v2/static/admin.css?v=11">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -52,10 +52,21 @@
           <label>Deck sets:</label>
           <select id="deck-set-select"></select>
           <button class="btn gold small" id="deck-set-activate">⚓ Make Active</button>
+          <input id="deck-rename-name" placeholder="Selected set name" maxlength="80">
+          <button class="btn ghost small" id="deck-rename">Rename</button>
           <span class="deck-set-sep">|</span>
           <input id="deck-saveas-name" placeholder="New deck name…" maxlength="40">
           <button class="btn ghost small" id="deck-saveas">💾 Save current as…</button>
+          <span class="deck-set-sep">|</span>
+          <button class="btn ghost small" id="deck-export">Download set zip</button>
+          <input id="deck-import-file" type="file" accept=".zip,application/zip">
+          <label class="deck-import-active">
+            <input type="checkbox" id="deck-import-activate" checked>
+            activate upload
+          </label>
+          <button class="btn gold small" id="deck-import">Upload set zip</button>
         </div>
+        <div id="deck-set-meta" class="deck-set-meta"></div>
         <p class="admin-note" id="deck-active-note"></p>
         <p class="admin-note">Card side text uses the keyword language (e.g. <code>Move 2</code>,
           <code>Targeted Attack Damage +1</code>, <code>Turn Left, Move 3</code>). Saving validates the whole
@@ -234,6 +245,6 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=13"></script>
+<script src="/v2/static/admin.js?v=16"></script>
 </body>
 </html>

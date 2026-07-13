@@ -129,7 +129,17 @@
   background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
   color: var(--ink); padding: 7px 9px;
 }
+.deck-set-bar input[type="file"] {
+  max-width: 220px; font-size: 12px;
+}
+.deck-import-active {
+  display: flex; align-items: center; gap: 5px; color: var(--ink-dim); font-size: 12px;
+}
+.deck-import-active input { accent-color: var(--gold); }
 .deck-set-sep { color: var(--panel-edge); }
+.deck-set-meta {
+  color: var(--ink-dim); font-size: 12px; margin: -2px 0 10px;
+}
 
 .site-settings { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
 .setting-row { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; }

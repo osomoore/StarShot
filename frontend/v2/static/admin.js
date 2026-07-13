@@ -19,6 +19,43 @@
   const post = (p, b) => call(p, { method: "POST", body: JSON.stringify(b || {}) });
   const put = (p, b) => call(p, { method: "PUT", body: JSON.stringify(b || {}) });
   const del = (p) => call(p, { method: "DELETE" });
+  async function postZip(path, file) {
+    const response = await fetch("/api/v2" + path, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "application/zip" },
+      credentials: "same-origin",
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (err) { /* none */ }
+    if (!response.ok) {
+      const error = new Error((payload && payload.detail) || `Request failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
+  }
+  async function downloadZip(path, fallbackName) {
+    const response = await fetch("/api/v2" + path, { credentials: "same-origin" });
+    if (!response.ok) {
+      let payload = null;
+      try { payload = await response.json(); } catch (err) { /* none */ }
+      const error = new Error((payload && payload.detail) || `Request failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = /filename="?([^"]+)"?/i.exec(disposition);
+    const filename = match ? match[1] : fallbackName;
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
@@ -26,6 +63,11 @@
     '"': "&quot;",
     "'": "&#39;",
   }[char]));
+  const shortDateTime = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+  };
 
   let toastTimer = null;
   function toast(message, good) {
@@ -111,11 +153,39 @@
     for (const deckSet of deckSets) {
       const option = document.createElement("option");
       option.value = deckSet.id;
-      option.textContent = (deckSet.active ? "⚓ " : "") + deckSet.name + (deckSet.custom ? " (custom)" : "") + (deckSet.active ? " — active" : "");
+      const changed = shortDateTime(deckSet.last_changed_at || deckSet.modified_at);
+      option.textContent = (deckSet.active ? "⚓ " : "") + deckSet.name + (deckSet.custom ? " (custom)" : "") +
+        (changed ? " - " + changed : "") + (deckSet.active ? " — active" : "");
       if (deckSet.active) option.selected = true;
       select.appendChild(option);
     }
+    renderSelectedDeckSetMeta();
     renderBattleDeckSets();
+  }
+
+  function selectedDeckSet() {
+    const id = document.getElementById("deck-set-select").value;
+    return deckSets.find((deckSet) => deckSet.id === id) || null;
+  }
+
+  function renderSelectedDeckSetMeta() {
+    const deckSet = selectedDeckSet();
+    const meta = document.getElementById("deck-set-meta");
+    const rename = document.getElementById("deck-rename-name");
+    if (!deckSet) {
+      meta.textContent = "";
+      rename.value = "";
+      return;
+    }
+    rename.value = deckSet.name || "";
+    const uploaded = shortDateTime(deckSet.uploaded_at);
+    const modified = shortDateTime(deckSet.last_changed_at || deckSet.modified_at);
+    meta.textContent = [
+      `ID: ${deckSet.id}`,
+      deckSet.custom ? "custom" : "stock",
+      uploaded ? `uploaded ${uploaded}` : "",
+      modified ? `last changed ${modified}` : "",
+    ].filter(Boolean).join(" | ");
   }
 
   function renderCards(which) {
@@ -199,6 +269,20 @@
       await loadDeck();
     } catch (error) { toast(error.message); }
   });
+  document.getElementById("deck-set-select").addEventListener("change", renderSelectedDeckSetMeta);
+  document.getElementById("deck-rename").addEventListener("click", async () => {
+    const deckSet = selectedDeckSet();
+    const name = document.getElementById("deck-rename-name").value.trim();
+    if (!deckSet) { toast("Pick a deck set first"); return; }
+    if (!name) { toast("Name the deck first"); return; }
+    try {
+      await post("/admin/deck/rename", { id: deckSet.id, name });
+      toast("Deck set renamed", true);
+      await loadDeck();
+    } catch (error) {
+      status("deck-status", "Rename failed: " + error.message, false);
+    }
+  });
   document.getElementById("deck-saveas").addEventListener("click", async () => {
     const name = document.getElementById("deck-saveas-name").value.trim();
     if (!name) { toast("Name the deck first"); return; }
@@ -208,6 +292,41 @@
       toast(`Saved as "${name}" (${result.id})`, true);
       await loadDeck();
     } catch (error) { toast(error.message); }
+  });
+  document.getElementById("deck-export").addEventListener("click", async () => {
+    const id = document.getElementById("deck-set-select").value;
+    if (!id) { toast("Pick a deck set first"); return; }
+    status("deck-status", "Preparing deck set zip...", true);
+    try {
+      await downloadZip(
+        "/admin/deck/export/" + encodeURIComponent(id),
+        "starshot-deck-set-" + id + ".zip"
+      );
+      status("deck-status", "Deck set download started.", true);
+    } catch (error) {
+      status("deck-status", "Download failed: " + error.message + " If this says Not Found, restart the server.", false);
+    }
+  });
+  document.getElementById("deck-import").addEventListener("click", async () => {
+    const input = document.getElementById("deck-import-file");
+    const file = input.files && input.files[0];
+    if (!file) { toast("Choose a deck set zip first"); return; }
+    const activate = document.getElementById("deck-import-activate").checked ? "true" : "false";
+    status("deck-status", "Validating upload...", true);
+    try {
+      const result = await postZip("/admin/deck/import?activate=" + activate, file);
+      input.value = "";
+      status(
+        "deck-status",
+        `Imported ${result.name} (${result.id})${result.activated ? " and made it active" : ""}.` +
+          (result.keywords_imported ? " Custom keywords were updated from the bundle." : ""),
+        true
+      );
+      toast("Deck set imported", true);
+      await loadDeck();
+    } catch (error) {
+      status("deck-status", "Upload failed: " + error.message, false);
+    }
   });
   document.getElementById("add-base-card").addEventListener("click", () => {
     deckState.base.cards.push({ name: "New Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 2" });

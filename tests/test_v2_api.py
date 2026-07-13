@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 TMP = tempfile.TemporaryDirectory()
@@ -759,6 +761,69 @@ class AdminTests(unittest.TestCase):
             self.assertIn("StarShot/pyproject.toml", names)
             self.assertTrue(any(name.endswith("engine.py") for name in names))
             self.assertFalse(any(".htpasswd" in name or name.endswith(".sqlite3") for name in names))
+
+    def test_deck_set_export_import_and_validation(self) -> None:
+        client = self.admin_client()
+        exported = client.get("/api/v2/admin/deck/export/core_0_3_sides")
+        self.assertEqual(exported.status_code, 200, exported.text)
+        self.assertEqual(exported.headers["content-type"], "application/zip")
+
+        with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+            names = archive.namelist()
+            self.assertTrue(any(name.endswith("manifest.toml") for name in names))
+            self.assertTrue(any(name.endswith("base_deck.toml") for name in names))
+            self.assertTrue(any(name.endswith("desperation_deck.toml") for name in names))
+            self.assertTrue(any(name.endswith("custom_keywords.json") for name in names))
+
+            upload_buffer = io.BytesIO()
+            with zipfile.ZipFile(upload_buffer, "w", zipfile.ZIP_DEFLATED) as upload:
+                for name in names:
+                    data = archive.read(name)
+                    if name.endswith("manifest.toml"):
+                        text = data.decode("utf-8")
+                        text = text.replace('id = "core_0_3_sides"', 'id = "custom_api_bundle"')
+                        text = text.replace('name = "StarShot Core 0.3"', 'name = "API Bundle"')
+                        data = text.encode("utf-8")
+                    upload.writestr(name, data)
+
+        try:
+            imported = client.post(
+                "/api/v2/admin/deck/import?activate=true",
+                content=upload_buffer.getvalue(),
+                headers={"content-type": "application/zip"},
+            )
+            self.assertEqual(imported.status_code, 200, imported.text)
+            self.assertEqual(imported.json()["id"], "custom_api_bundle")
+            self.assertTrue(imported.json()["activated"])
+            deck = client.get("/api/v2/admin/deck").json()
+            self.assertEqual(deck["active_id"], "custom_api_bundle")
+            imported_set = next(deck_set for deck_set in deck["sets"] if deck_set["id"] == "custom_api_bundle")
+            self.assertEqual(imported_set["name"], "API Bundle")
+            self.assertTrue(imported_set["uploaded_at"])
+            self.assertTrue(imported_set["modified_at"])
+
+            renamed = client.post(
+                "/api/v2/admin/deck/rename",
+                json={"id": "custom_api_bundle", "name": "Renamed API Bundle"},
+            )
+            self.assertEqual(renamed.status_code, 200, renamed.text)
+            renamed_set = next(deck_set for deck_set in renamed.json()["sets"] if deck_set["id"] == "custom_api_bundle")
+            self.assertEqual(renamed_set["name"], "Renamed API Bundle")
+            self.assertTrue(renamed_set["modified_at"])
+        finally:
+            restored = client.post("/api/v2/admin/deck/activate", json={"id": "core_0_3_sides"})
+            self.assertEqual(restored.status_code, 200, restored.text)
+
+        bad_buffer = io.BytesIO()
+        with zipfile.ZipFile(bad_buffer, "w", zipfile.ZIP_DEFLATED) as bad:
+            bad.writestr("broken/manifest.toml", 'id = "custom_broken"\nname = "Broken"\nrules_version = "0.3"\n')
+        rejected = client.post(
+            "/api/v2/admin/deck/import",
+            content=bad_buffer.getvalue(),
+            headers={"content-type": "application/zip"},
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("missing config.toml", rejected.json()["detail"])
 
     def test_change_password(self) -> None:
         client = make_client()
