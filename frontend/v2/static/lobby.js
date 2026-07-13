@@ -113,11 +113,14 @@
   function renderMatches(containerId, matches, joinable) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
-    if (!matches || !matches.length) {
+    const visibleMatches = joinable
+      ? (matches || []).filter((match) => (match.seat_list || []).length < match.seats)
+      : (matches || []);
+    if (!visibleMatches.length) {
       container.innerHTML = `<div class="empty-note">${joinable ? "No open raids — start yer own." : "No battles yet."}</div>`;
       return;
     }
-    for (const match of matches) {
+    for (const match of visibleMatches) {
       const row = document.createElement("div");
       const yourTurn = match.turn && match.turn.your_turn;
       row.className = "match-row" + (match.status === "complete" ? " complete" : "") + (yourTurn ? " your-turn" : "");

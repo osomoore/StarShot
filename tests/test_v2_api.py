@@ -22,6 +22,7 @@ os.environ["STARSHOT_CUSTOM_DECKS"] = str(Path(TMP.name) / "custom_decks")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from starshot.api.app import app  # noqa: E402
+from starshot.v2.store import get_v2_store  # noqa: E402
 
 EMPTY_ORDERS = {
     "stacks": [
@@ -201,6 +202,21 @@ class MatchmakingTests(unittest.TestCase):
         self.assertTrue(any(match["id"] == match_id for match in lobby["open_matches"]))
         joined = joiner.post(f"/api/v2/matches/{match_id}/join").json()
         self.assertIsNotNone(joined["game_id"])
+
+    def test_lobby_hides_full_open_matches(self) -> None:
+        host = make_client()
+        register(host, "full_open_host")
+        store = get_v2_store()
+        host_user = store.get_user_by_name("full_open_host")
+        match_id = store.create_match("Full AI table", host_user["id"], seats=2, status="open")
+        store.add_seat(match_id, 0, "ai:blaster:1", "Gunner Redbeard", ai_type="blaster")
+        store.add_seat(match_id, 1, "ai:bauble_runner:1", "Salvage Capt. Morrigan", ai_type="bauble_runner")
+
+        joiner = make_client()
+        register(joiner, "full_open_joiner")
+        lobby = joiner.get("/api/v2/lobby").json()
+
+        self.assertFalse(any(match["id"] == match_id for match in lobby["open_matches"]))
 
 
 class PresenceAndChallengeTests(unittest.TestCase):

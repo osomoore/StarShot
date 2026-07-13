@@ -425,7 +425,11 @@ class V2Store:
             rows = conn.execute(
                 "SELECT id FROM matches WHERE status = 'open' ORDER BY created_at DESC LIMIT 25"
             ).fetchall()
-        return [match for row in rows if (match := self.get_match(row["id"]))]
+        return [
+            match
+            for row in rows
+            if (match := self.get_match(row["id"])) and len(match["seat_list"]) < match["seats"]
+        ]
 
     def matches_for_user(self, user_id: int) -> list[dict]:
         with self._connect() as conn:

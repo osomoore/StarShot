@@ -978,14 +978,52 @@
         const start = positions[playerId];
         Board.placeShip(playerId, start.q, start.r, start.facing);
       }
-      for (const event of events) {
-        await playEvent(event);
+      for (let index = 0; index < events.length; index++) {
+        const event = events[index];
+        if (event.type === "movement_resolved") {
+          const movementEvents = [event];
+          while (
+            index + 1 < events.length
+            && events[index + 1].type === "movement_resolved"
+            && events[index + 1].action_number === event.action_number
+          ) {
+            movementEvents.push(events[index + 1]);
+            index += 1;
+          }
+          await playMovementEvents(movementEvents);
+        } else {
+          await playEvent(event);
+        }
       }
     } finally {
       animating = false;
       skipReplay = false;
       replayControls(false);
     }
+  }
+
+  async function playMovementEvents(events) {
+    const pathsByPlayer = new Map();
+    for (const event of events) {
+      if (!pathsByPlayer.has(event.player_id)) pathsByPlayer.set(event.player_id, []);
+      pathsByPlayer.get(event.player_id).push(...(event.steps || []));
+    }
+
+    await Promise.all(Array.from(pathsByPlayer.entries()).map(async ([playerId, steps]) => {
+      for (const step of steps) {
+        const from = step.before, to = step.after;
+        const frames = 9;
+        for (let frame = 1; frame <= frames; frame++) {
+          const q = from.q + (to.q - from.q) * (frame / frames);
+          const r = from.r + (to.r - from.r) * (frame / frames);
+          Board.placeShip(playerId, q, r, to.facing);
+          FX.trail(Board.hexToScreen(q, r), Board.colorOf(playerId));
+          await wait(26);
+        }
+        if (step.warp_destination) FX.warp(Board.hexToScreen(to.q, to.r));
+      }
+    }));
+    await wait(120);
   }
 
   async function playEvent(event) {
@@ -1007,19 +1045,7 @@
         }
         return;
       case "movement_resolved": {
-        for (const step of event.steps || []) {
-          const from = step.before, to = step.after;
-          const frames = 9;
-          for (let frame = 1; frame <= frames; frame++) {
-            const q = from.q + (to.q - from.q) * (frame / frames);
-            const r = from.r + (to.r - from.r) * (frame / frames);
-            Board.placeShip(event.player_id, q, r, to.facing);
-            FX.trail(Board.hexToScreen(q, r), Board.colorOf(event.player_id));
-            await wait(26);
-          }
-          if (step.warp_destination) FX.warp(Board.hexToScreen(to.q, to.r));
-        }
-        await wait(120);
+        await playMovementEvents([event]);
         return;
       }
       case "volley_resolved": {

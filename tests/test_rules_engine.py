@@ -16,7 +16,7 @@ from starshot.rules import (
     resolve_next_step,
     submit_orders,
 )
-from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, bauble_hexes
+from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, BAUBLE_MAX_RANDOM_DISTANCE, bauble_hexes
 from starshot.rules.decks import card_by_id
 from starshot.rules.hex import BOARD_RADIUS, hex_distance
 
@@ -490,7 +490,7 @@ class RulesEngineTests(unittest.TestCase):
         for number in range(1, 6):
             numbered = [bauble for bauble in state.baubles if bauble.number == number]
             self.assertEqual(len(numbered), 2)
-            max_distance = BAUBLE_MAX_CENTER_DISTANCE[number]
+            max_distance = min(BAUBLE_MAX_CENTER_DISTANCE[number], BAUBLE_MAX_RANDOM_DISTANCE)
             self.assertTrue(all(hex_distance(0, 0, bauble.q, bauble.r) <= max_distance for bauble in numbered))
 
         for index, bauble in enumerate(state.baubles):

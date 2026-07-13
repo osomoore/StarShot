@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from random import Random
 
-from starshot.rules.hex import hex_distance, is_within_board, iter_board_hexes
+from starshot.rules.hex import BOARD_RADIUS, hex_distance, is_within_board, iter_board_hexes
 from starshot.rules.models import BaubleState, PlayerState, ShipState
 
 BAUBLE_VP_BY_NUMBER = {number: 2 for number in range(1, 6)}
@@ -10,6 +10,8 @@ FANG_VP = 1
 FANG_FINAL_ROUND_VP = 6
 FINAL_ROUND_NUMBER = 6
 BAUBLE_MAX_CENTER_DISTANCE = {1: 14, 2: 12, 3: 10, 4: 8, 5: 6}
+BAUBLE_PERIMETER_INSET = 6
+BAUBLE_MAX_RANDOM_DISTANCE = BOARD_RADIUS - BAUBLE_PERIMETER_INSET
 BAUBLE_RADIUS = 1
 BAUBLE_SPACING_BUFFER_RADIUS = 2
 EARLY_BAUBLE_PLAYER_BUFFER = 3
@@ -104,7 +106,7 @@ def _choose_bauble_hex(
     occupied: set[tuple[int, int]],
     player_hexes: tuple[tuple[int, int], ...],
 ) -> tuple[int, int]:
-    max_center_distance = BAUBLE_MAX_CENTER_DISTANCE[number]
+    max_center_distance = min(BAUBLE_MAX_CENTER_DISTANCE[number], BAUBLE_MAX_RANDOM_DISTANCE)
     candidates = [
         (q, r)
         for q, r in iter_board_hexes()
