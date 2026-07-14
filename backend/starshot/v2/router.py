@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from starshot.rules import RulesError
+from starshot.rules.expansion_modules import installed_expansion_ids
 from starshot.v2 import security
 from starshot.v2.ai import AI_LEVELS, AI_TYPES
 from starshot.v2.service import (
@@ -87,7 +88,7 @@ def _public_profile(user: dict) -> dict:
 
 
 def _validated_expansions(active_expansions: list[str]) -> list[str]:
-    allowed_expansions = {"star_command", "star_breach"}
+    allowed_expansions = installed_expansion_ids()
     result = [expansion for expansion in dict.fromkeys(active_expansions) if expansion]
     unknown = [expansion for expansion in result if expansion not in allowed_expansions]
     if unknown:

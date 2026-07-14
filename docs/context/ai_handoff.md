@@ -75,10 +75,13 @@ Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_i
 Implemented expansions:
 
 - StarCommand (`star_command`): captains + Starfall events.
+  Backend behavior module: `backend/starshot/rules/star_command_engine.py`;
+  content data: `backend/starshot/rules/star_command.py`.
 - StarBreach (`star_breach`): cooperative Bauble Breacher boss scenario.
   Rules source: `docs/rules/StarBreach_Expansion.txt` + `docs/rules/starbreach_boss_scenario_01.jpg`.
-  Backend: `backend/starshot/rules/star_breach.py` (boss layout/lanes/roles data)
-  plus a StarBreach section at the bottom of `engine.py`; state in
+  Backend behavior module: `backend/starshot/rules/star_breach_engine.py`;
+  content data: `backend/starshot/rules/star_breach.py` (boss layout/lanes/roles data);
+  registry: `backend/starshot/rules/expansion_modules.py`; state in
   `GameState.star_breach` (`StarBreachState` in models.py); tests in
   `tests/test_star_breach.py`. Player attack targets in co-op are strings:
   `boss:<area>`, `craft:<id>`, or an ally player id (Engineer repairs only).
@@ -116,6 +119,11 @@ Not implemented yet:
 
 - Prefer small working increments that can be tried in the browser.
 - When changing rules, update or add tests first or alongside the change.
+- Keep expansion-specific rules in expansion modules and register them through
+  `backend/starshot/rules/expansion_modules.py`. The base `engine.py` should
+  call installed active expansion hooks rather than embedding expansion logic.
+  This is intentional so partial work on an inactive expansion does not break
+  base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 193 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 194 tests passing as of last session (2 API test modules require `fastapi` installed).
