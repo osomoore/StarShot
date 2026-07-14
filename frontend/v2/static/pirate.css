@@ -422,6 +422,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   transition: border-color .15s, box-shadow .15s;
   cursor: pointer;
+  position: relative;
 }
 .order-slot.receiving { border-color: var(--gold-bright); box-shadow: 0 0 14px rgba(212,167,72,.35); }
 .order-slot.armed {
@@ -446,6 +447,66 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 @keyframes flamePulse { 50% { box-shadow: inset 0 -3px 6px rgba(0,0,0,.4), 0 0 26px rgba(232,106,74,.95); } }
 .seal-note { font-size: 9px; text-align: center; color: var(--ink-dim); margin-top: 2px; }
+
+.slot-shot-preview {
+  background: rgba(6, 10, 20, 0.96);
+  border: 1px solid rgba(212, 167, 72, 0.54);
+  border-radius: 8px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.55);
+  color: var(--ink);
+  display: grid;
+  font-size: 11px;
+  gap: 5px;
+  left: 8px;
+  line-height: 1.3;
+  opacity: 0;
+  padding: 8px 9px;
+  pointer-events: none;
+  position: absolute;
+  right: 8px;
+  top: 42px;
+  transform: translateY(-4px);
+  transition:
+    opacity 140ms ease 520ms,
+    transform 140ms ease 520ms,
+    visibility 0s linear 660ms;
+  visibility: hidden;
+  z-index: 45;
+}
+
+.order-slot:hover .slot-shot-preview,
+.order-slot:focus-within .slot-shot-preview {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 520ms;
+  visibility: visible;
+}
+
+.shot-preview-kicker {
+  color: var(--gold-bright);
+  font-family: "Pirata One", serif;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.shot-preview-row {
+  display: grid;
+  gap: 2px;
+}
+
+.shot-preview-row b {
+  color: #fff4cf;
+  font-size: 11px;
+}
+
+.shot-preview-row span,
+.shot-preview-note {
+  color: var(--ink-dim);
+}
+
+.shot-preview-note {
+  font-size: 10px;
+}
 
 /* physical cards */
 .card {
@@ -798,6 +859,27 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .order-slot {
     min-height: 146px;
     padding: 8px 5px;
+  }
+
+  :root[data-device="phone"] .slot-shot-preview {
+    box-shadow: none;
+    font-size: 10px;
+    left: auto;
+    opacity: 1;
+    order: 3;
+    padding: 6px;
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: none;
+    transition: none;
+    visibility: visible;
+    width: 100%;
+    z-index: 1;
+  }
+
+  :root[data-device="phone"] .shot-preview-kicker {
+    font-size: 13px;
   }
 
   :root[data-device="phone"] .order-slot .slot-label {

@@ -461,6 +461,7 @@ select {
   display: grid;
   gap: 10px;
   padding: 12px;
+  position: relative;
 }
 
 .order-stack.readonly {
@@ -515,6 +516,66 @@ select {
 
 .seal-toggle:hover .seal-hover {
   display: inline;
+}
+
+.stack-attack-preview {
+  background: #121819;
+  border: 1px solid color-mix(in srgb, var(--action-accent) 52%, #405052);
+  border-radius: 6px;
+  box-shadow: 0 14px 32px rgb(0 0 0 / 0.28);
+  color: #d8ebe6;
+  display: grid;
+  font-size: 11px;
+  gap: 6px;
+  left: 10px;
+  line-height: 1.32;
+  opacity: 0;
+  padding: 9px 10px;
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+  top: 50px;
+  transform: translateY(-4px);
+  transition:
+    opacity 140ms ease 520ms,
+    transform 140ms ease 520ms,
+    visibility 0s linear 660ms;
+  visibility: hidden;
+  z-index: 18;
+}
+
+.order-stack:hover .stack-attack-preview,
+.order-stack:focus-within .stack-attack-preview {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 520ms;
+  visibility: visible;
+}
+
+.stack-attack-preview-kicker {
+  color: #9fcac4;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.stack-attack-preview-target {
+  display: grid;
+  gap: 2px;
+}
+
+.stack-attack-preview-target strong {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.stack-attack-preview-target span,
+.stack-attack-preview p {
+  color: #bfd5d0;
+}
+
+.stack-attack-preview p {
+  margin: 0;
 }
 
 .stack-clear-button,
@@ -1038,7 +1099,8 @@ select {
   pointer-events: none;
 }
 
-.volley-preview line {
+.volley-preview path {
+  fill: none;
   opacity: 0.78;
   stroke-linecap: round;
   stroke-width: 3;
@@ -2286,6 +2348,20 @@ pre {
 
   :root[data-device="phone"] .order-stack {
     padding: 10px;
+  }
+
+  :root[data-device="phone"] .stack-attack-preview {
+    box-shadow: none;
+    left: auto;
+    opacity: 1;
+    order: 2;
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: none;
+    transition: none;
+    visibility: visible;
+    z-index: 1;
   }
 
   :root[data-device="phone"] .order-stack-header {

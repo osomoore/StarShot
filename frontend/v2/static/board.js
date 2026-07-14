@@ -284,6 +284,7 @@
   function renderPreview(items) {
     if (!previewLayer) return;
     previewLayer.innerHTML = "";
+    const shotCounts = new Map();
     for (const item of items || []) {
       if (item.kind === "path" && item.points.length > 1) {
         const pts = item.points.map((p) => axialToXY(p.q, p.r).join(",")).join(" ");
@@ -306,20 +307,45 @@
         const angle = Math.atan2(y2 - y1, x2 - x1);
         const trimX = x2 - Math.cos(angle) * 14;
         const trimY = y2 - Math.sin(angle) * 14;
-        el("line", {
-          x1, y1, x2: trimX, y2: trimY, stroke: item.color || "#ff6a4a",
+        const curve = shotCurve(x1, y1, trimX, trimY, shotCounts);
+        el("path", {
+          d: `M ${x1} ${y1} Q ${curve.cx} ${curve.cy} ${trimX} ${trimY}`,
+          fill: "none", stroke: item.color || "#ff6a4a",
           "stroke-width": 1.6, "stroke-dasharray": "2 3", opacity: 0.9,
         }, previewLayer);
-        const headA = angle + 2.6, headB = angle - 2.6;
+        const headAngle = Math.atan2(trimY - curve.cy, trimX - curve.cx);
+        const headA = headAngle + 2.6, headB = headAngle - 2.6;
         el("polygon", {
           points: `${trimX},${trimY} ${trimX + Math.cos(headA) * 6},${trimY + Math.sin(headA) * 6} ${trimX + Math.cos(headB) * 6},${trimY + Math.sin(headB) * 6}`,
           fill: item.color || "#ff6a4a", opacity: 0.9,
         }, previewLayer);
-        const midX = (x1 + trimX) / 2, midY = (y1 + trimY) / 2;
-        const label = el("text", { x: midX, y: midY - 4, class: "ship-label", "font-size": 9.5, fill: "#ffd7a0" }, previewLayer);
+        const label = el("text", { x: curve.lx, y: curve.ly, class: "ship-label", "font-size": 9.5, fill: "#ffd7a0" }, previewLayer);
         label.textContent = item.label || "";
+        if (item.title) {
+          const title = el("title", {}, label);
+          title.textContent = item.title;
+        }
       }
     }
+  }
+
+  function shotCurve(x1, y1, x2, y2, counts) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length, ny = dx / length;
+    const key = `${Math.round(x1)},${Math.round(y1)}>${Math.round(x2)},${Math.round(y2)}`;
+    const index = counts.get(key) || 0;
+    counts.set(key, index + 1);
+    const side = index % 2 === 0 ? 1 : -1;
+    const rank = Math.floor(index / 2);
+    const offset = side * (HEX * (0.62 + rank * 0.42));
+    const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+    return {
+      cx: midX + nx * offset,
+      cy: midY + ny * offset,
+      lx: midX + nx * (offset + HEX * 0.34),
+      ly: midY + ny * (offset + HEX * 0.34) - 4,
+    };
   }
 
   window.Board = {

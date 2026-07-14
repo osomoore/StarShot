@@ -1980,6 +1980,7 @@ function renderBoard(game) {
   const viewX = -extent / state.zoomScale + state.panOffsetX;
   const viewY = -extent / state.zoomScale + state.panOffsetY;
   svg.setAttribute("viewBox", `${viewX} ${viewY} ${viewWidth} ${viewHeight}`);
+  svg._volleyPathCounts = new Map();
 
   for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q += 1) {
     const rMin = Math.max(-BOARD_RADIUS, -q - BOARD_RADIUS);
@@ -2128,55 +2129,9 @@ function renderActionPreview(svg, game) {
       .filter((selection) => selection.card && selection.family);
     const family = selections[0]?.family;
     if (family === "move") {
-      const passes = stack.seal_mode === "overdrive" ? 2 : 1;
-      for (let pass = 0; pass < passes; pass += 1) {
-        selections.forEach(({ card, cardIndex, family }) => {
-          if (family !== "move") return;
-          if (pass > 0 && previewSelectionIsDesperate(card, stack, cardIndex)) return;
-          const before = { ...preview };
-          const distance = previewSelectionMoveDistance(card, stack, cardIndex);
-          const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
-          if (warpDestination) {
-            applyPreviewWarp(game, player, preview, warpDestination);
-          } else {
-            applyPreviewMove(
-              preview,
-              distance,
-              stack.move_choices[cardIndex],
-              card,
-              stack,
-              cardIndex,
-            );
-          }
-          drawMovementPathPreview(svg, before, preview);
-          const label = `${previewMoveLabel(stackIndex, cardIndex, distance, warpDestination)}${pass ? " OD" : ""}`;
-          drawPositionPreview(svg, preview, label);
-        });
-      }
+      drawStackMovementPreview(svg, game, player, preview, stack, stackIndex, selections, "");
     } else if (family === "attack") {
-      const firstAttack = selections.find(({ card, cardIndex, family }) => (
-        family === "attack" && effectiveCardRequiresTarget(card, stack, cardIndex)
-      ));
-      const attacksAll = selections.some(({ card, cardIndex, family }) => (
-        family === "attack" && previewSelectionAttacksAll(card, stack, cardIndex)
-      ));
-      const targets = attacksAll
-        ? Object.values(game.players || {}).filter((candidate) => candidate.id !== state.builderPlayerId)
-        : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
-          ? [game.players[stack.targets[firstAttack.cardIndex]]]
-          : [];
-      targets.forEach((target) => {
-        const attackSelections = selections.filter((selection) => selection.family === "attack");
-        const damage = previewVolleyDamage(attackSelections, stack);
-        const aimBonus = selections
-          .filter((selection) => selection.family === "attack")
-          .reduce((total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex), 0);
-        const alwaysHits = selections.some(({ card, cardIndex, family }) => (
-          family === "attack" && previewSelectionAlwaysHits(card, stack, cardIndex)
-        ));
-        drawAttackPreview(svg, preview, target, `A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
-      });
-      drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, state.builderPlayerId);
+      drawStackAttackPreview(svg, game, player, preview, stack, stackIndex, selections, "");
     }
   });
 }
@@ -2221,69 +2176,153 @@ function renderStackPreview(svg, game, player, preview, stack, stackIndex, cardB
     .filter((selection) => selection.card && selection.family);
   const family = selections[0]?.family;
   if (family === "move") {
-    const passes = stack.seal_mode === "overdrive" ? 2 : 1;
-    for (let pass = 0; pass < passes; pass += 1) {
-      selections.forEach(({ card, cardIndex, family: selectionFamily }) => {
-        if (selectionFamily !== "move") return;
-        if (pass > 0 && previewSelectionIsDesperate(card, stack, cardIndex)) return;
-        const before = { ...preview };
-        const distance = previewSelectionMoveDistance(card, stack, cardIndex);
-        const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
-        if (warpDestination) {
-          applyPreviewWarp(game, player, preview, warpDestination);
-        } else {
-          applyPreviewMove(preview, distance, stack.move_choices[cardIndex], card, stack, cardIndex);
-        }
-        drawMovementPathPreview(svg, before, preview);
-        const label = `${player.id[0].toUpperCase()}${stackIndex + 1}.${cardIndex + 1}${pass ? " OD" : ""}`;
-        drawPositionPreview(svg, preview, label);
-      });
-    }
+    drawStackMovementPreview(svg, game, player, preview, stack, stackIndex, selections, player.id[0].toUpperCase());
   } else if (family === "attack") {
-    const attackSelections = selections.filter((selection) => selection.family === "attack");
-    const firstAttack = attackSelections.find(({ card, cardIndex }) => effectiveCardRequiresTarget(card, stack, cardIndex));
-    const attacksAll = attackSelections.some(({ card, cardIndex }) => previewSelectionAttacksAll(card, stack, cardIndex));
-    const targets = attacksAll
-      ? Object.values(game.players || {}).filter((candidate) => candidate.id !== player.id)
-      : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
-        ? [game.players[stack.targets[firstAttack.cardIndex]]]
-        : [];
-    targets.forEach((target) => {
-      const damage = previewVolleyDamage(attackSelections, stack);
-      const aimBonus = attackSelections.reduce(
-        (total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex),
-        0,
-      );
-      const alwaysHits = attackSelections.some(({ card, cardIndex }) => previewSelectionAlwaysHits(card, stack, cardIndex));
-      drawAttackPreview(svg, preview, target, `${player.id[0].toUpperCase()}A${stackIndex + 1}`, { damage, aimBonus, alwaysHits });
-    });
-    drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, player.id, player.id[0].toUpperCase());
+    drawStackAttackPreview(svg, game, player, preview, stack, stackIndex, selections, player.id[0].toUpperCase());
   }
 }
 
-function drawOverdriveAttackPreview(svg, game, stack, stackIndex, preview, selections, attackerId, labelPrefix = "") {
-  if (stack.seal_mode !== "overdrive") return;
-  const attackSelections = selections.filter(({ card, cardIndex, family }) => (
+function drawStackMovementPreview(svg, game, player, preview, stack, stackIndex, selections, labelPrefix = "") {
+  const passes = stack.seal_mode === "overdrive" ? 2 : 1;
+  for (let pass = 0; pass < passes; pass += 1) {
+    selections.forEach(({ card, cardIndex, family }) => {
+      if (family !== "move") return;
+      if (pass > 0 && previewSelectionIsDesperate(card, stack, cardIndex)) return;
+      const before = { ...preview };
+      const distance = previewSelectionMoveDistance(card, stack, cardIndex);
+      const warpDestination = previewSelectionWarpDestination(card, stack, cardIndex);
+      if (warpDestination) {
+        applyPreviewWarp(game, player, preview, warpDestination);
+      } else {
+        applyPreviewMove(preview, distance, stack.move_choices[cardIndex], card, stack, cardIndex);
+      }
+      if (svg) drawMovementPathPreview(svg, before, preview);
+      const baseLabel = labelPrefix
+        ? `${labelPrefix}${stackIndex + 1}.${cardIndex + 1}`
+        : previewMoveLabel(stackIndex, cardIndex, distance, warpDestination);
+      if (svg) drawPositionPreview(svg, preview, `${baseLabel}${pass ? " OD" : ""}`);
+    });
+  }
+}
+
+function applyStackMovementToPreview(game, player, preview, stack, cardById) {
+  const selections = stack.cards
+    .map((cardId, cardIndex) => {
+      const card = cardById[cardId] || inferCardFromId(cardId);
+      return { card, cardIndex, family: effectiveCardFamily(card, stack, cardIndex) };
+    })
+    .filter((selection) => selection.card && selection.family === "move");
+  if (selections.length) {
+    drawStackMovementPreview(null, game, player, preview, stack, 0, selections, "");
+  }
+}
+
+function drawStackAttackPreview(svg, game, player, preview, stack, stackIndex, selections, labelPrefix = "") {
+  attackProjectionsForStack(game, player, preview, stack, stackIndex, null, labelPrefix, selections).forEach((projection) => {
+    drawAttackPreview(svg, preview, projection.target, projection.label, projection);
+  });
+}
+
+function attackProjectionsForStack(game, player, preview, stack, stackIndex, cardById = null, labelPrefix = "", selections = null) {
+  const allSelections = selections || stack.cards
+    .map((cardId, cardIndex) => {
+      const card = cardById?.[cardId] || inferCardFromId(cardId);
+      return { card, cardIndex, family: effectiveCardFamily(card, stack, cardIndex) };
+    })
+    .filter((selection) => selection.card && selection.family);
+  const attackSelections = allSelections.filter((selection) => selection.family === "attack");
+  const primary = attackProjectionsForSelections(game, player, preview, stack, stackIndex, attackSelections, labelPrefix, false);
+  if (stack.seal_mode !== "overdrive") return primary;
+  const overdriveSelections = allSelections.filter(({ card, cardIndex, family }) => (
     family === "attack" && !previewSelectionIsDesperate(card, stack, cardIndex)
   ));
-  if (!attackSelections.length) return;
+  const overdrive = attackProjectionsForSelections(game, player, preview, stack, stackIndex, overdriveSelections, labelPrefix, true);
+  return primary.concat(overdrive);
+}
 
+function attackProjectionsForSelections(game, player, preview, stack, stackIndex, attackSelections, labelPrefix = "", isOverdriveCopy = false) {
+  if (!attackSelections.length) return [];
   const firstAttack = attackSelections.find(({ card, cardIndex }) => effectiveCardRequiresTarget(card, stack, cardIndex));
   const attacksAll = attackSelections.some(({ card, cardIndex }) => previewSelectionAttacksAll(card, stack, cardIndex));
   const targets = attacksAll
-    ? Object.values(game.players || {}).filter((candidate) => candidate.id !== attackerId)
+    ? Object.values(game.players || {}).filter((candidate) => candidate.id !== player.id)
     : firstAttack && game.players[stack.targets[firstAttack.cardIndex]]
       ? [game.players[stack.targets[firstAttack.cardIndex]]]
       : [];
+  const baseLabel = `${labelPrefix}A${stackIndex + 1}${isOverdriveCopy ? " OD" : ""}`;
+  return targets.map((target) => ({
+    ...attackProjection(player, preview, target, attackSelections, stack),
+    isOverdriveCopy,
+    label: baseLabel,
+    target,
+  }));
+}
+
+function attackProjection(attacker, shooterPreview, target, attackSelections, stack) {
+  const distance = hexDistance(shooterPreview.q, shooterPreview.r, target.ship.q, target.ship.r);
   const damage = previewVolleyDamage(attackSelections, stack);
   const aimBonus = attackSelections.reduce(
     (total, { card, cardIndex }) => total + previewSelectionAimBonus(card, stack, cardIndex),
     0,
-  );
+  ) + (attacker?.captain_id === "malcolm_manderly" ? 2 : 0);
   const alwaysHits = attackSelections.some(({ card, cardIndex }) => previewSelectionAlwaysHits(card, stack, cardIndex));
-  targets.forEach((target) => {
-    drawAttackPreview(svg, preview, target, `${labelPrefix}A${stackIndex + 1} OD`, { damage, aimBonus, alwaysHits });
-  });
+  const leadTheTarget = attackSelections.some(({ card, cardIndex }) => previewSelectionLeadTheTarget(card, stack, cardIndex));
+  const fixedDefenseThreshold = attackSelections
+    .map(({ card, cardIndex }) => previewSelectionFixedDefenseThreshold(card, stack, cardIndex))
+    .find((value) => value !== null && value !== undefined);
+  const maxRange = attackSelections
+    .map(({ card, cardIndex }) => previewSelectionMaxRange(card, stack, cardIndex))
+    .find((value) => value !== null && value !== undefined);
+  const targetMovement = leadTheTarget ? 0 : (target.ship.movement_this_action || 0);
+  const targetDefenseBonus = target.ship.defense_bonus_this_action || 0;
+  const defense = fixedDefenseThreshold ?? (distance + targetMovement + targetDefenseBonus);
+  const inRange = maxRange === null || maxRange === undefined || distance <= maxRange;
+  const targetRoll = Math.max(0, defense - aimBonus);
+  return {
+    aimBonus,
+    alwaysHits,
+    damage,
+    defense,
+    distance,
+    fixedDefenseThreshold,
+    inRange,
+    leadTheTarget,
+    maxRange,
+    targetDefenseBonus,
+    targetMovement,
+    targetRoll,
+    hitChance: projectedHitChance(targetRoll, alwaysHits, inRange),
+  };
+}
+
+function projectedHitChance(targetRoll, alwaysHits, inRange) {
+  if (!inRange) return 0;
+  if (alwaysHits || targetRoll <= 1) return 1;
+  const needed = Math.min(12, Math.max(1, Math.ceil(targetRoll)));
+  return (13 - needed) / 12;
+}
+
+function attackProjectionSummary(projection) {
+  const rollText = !projection.inRange
+    ? `out of range ${projection.distance}/${projection.maxRange}`
+    : projection.alwaysHits
+      ? "always hits"
+      : `${projection.targetRoll}+ (${formatPercent(projection.hitChance)})`;
+  const parts = [
+    `${titleCase(projection.target.id)}: ${rollText}`,
+    `${projection.damage} damage`,
+    `+${projection.aimBonus} Aim`,
+    `Defense ${projection.defense}`,
+  ];
+  if (projection.targetMovement) parts.push(`${projection.targetMovement} target move`);
+  if (projection.targetDefenseBonus) parts.push(`+${projection.targetDefenseBonus} defense`);
+  if (projection.fixedDefenseThreshold !== null && projection.fixedDefenseThreshold !== undefined) parts.push("fixed defense");
+  if (projection.leadTheTarget) parts.push("ignores movement");
+  return parts.join(" | ");
+}
+
+function formatPercent(value) {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
 function shouldShowBuilderDraft(game, player) {
@@ -2369,6 +2408,24 @@ function previewSelectionAimBonus(card, stack, cardIndex) {
 
 function previewSelectionAlwaysHits(card, stack, cardIndex) {
   return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.always_hits);
+}
+
+function previewSelectionLeadTheTarget(card, stack, cardIndex) {
+  return Boolean(selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face?.lead_the_target);
+}
+
+function previewSelectionFixedDefenseThreshold(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.fixed_defense_threshold ?? null;
+  }
+  return null;
+}
+
+function previewSelectionMaxRange(card, stack, cardIndex) {
+  if (selectedFace(card, stack, cardIndex) === "desperate" && card?.desperate_face) {
+    return card.desperate_face.max_range ?? null;
+  }
+  return null;
 }
 
 function previewSelectionAttacksAll(card, stack, cardIndex) {
@@ -2555,38 +2612,63 @@ function drawAttackPreview(svg, shooterPreview, target, labelText, attackPreview
   const [sourceX, sourceY] = axialToPixel(shooterPreview.q, shooterPreview.r);
   const [targetX, targetY] = axialToPixel(target.ship.q, target.ship.r);
   const color = SHIP_COLORS[target.id] || "#6f5ab8";
-  const defense = hexDistance(shooterPreview.q, shooterPreview.r, target.ship.q, target.ship.r);
   const damage = attackPreview.damage || 0;
   const aimBonus = attackPreview.aimBonus || 0;
-  const targetRoll = Math.max(0, defense - aimBonus);
-  const targetText = attackPreview.alwaysHits
-    ? "HIT"
-    : aimBonus
-      ? `${targetRoll}+ (+${aimBonus} Aim)`
-      : `${targetRoll}+`;
+  const targetText = !attackPreview.inRange
+    ? `RNG ${attackPreview.distance}/${attackPreview.maxRange}`
+    : attackPreview.alwaysHits
+      ? "HIT"
+      : aimBonus
+        ? `${attackPreview.targetRoll}+ (+${aimBonus} Aim)`
+        : `${attackPreview.targetRoll}+`;
+  const curve = volleyCurve(svg, sourceX, sourceY, targetX, targetY);
   const group = svgEl("g");
   group.setAttribute("class", aimBonus || attackPreview.alwaysHits ? "volley-preview bonus-preview" : "volley-preview");
 
-  const line = svgEl("line");
-  line.setAttribute("x1", sourceX);
-  line.setAttribute("y1", sourceY);
-  line.setAttribute("x2", targetX);
-  line.setAttribute("y2", targetY);
-  line.setAttribute("stroke", color);
+  const path = svgEl("path");
+  path.setAttribute("d", `M ${sourceX} ${sourceY} Q ${curve.controlX} ${curve.controlY} ${targetX} ${targetY}`);
+  path.setAttribute("stroke", color);
 
   const arrow = svgEl("polygon");
   arrow.setAttribute("class", "volley-arrowhead");
   arrow.setAttribute("fill", color);
-  arrow.setAttribute("points", arrowheadPoints(sourceX, sourceY, targetX, targetY).map((point) => point.join(",")).join(" "));
+  arrow.setAttribute("points", arrowheadPoints(curve.controlX, curve.controlY, targetX, targetY).map((point) => point.join(",")).join(" "));
 
   const label = svgEl("text");
-  label.setAttribute("x", (sourceX + targetX) / 2);
-  label.setAttribute("y", (sourceY + targetY) / 2 - HEX_SIZE * 0.45);
-  label.textContent = `${labelText} ROLL ${targetText} DMG ${damage}`;
+  label.setAttribute("x", curve.labelX);
+  label.setAttribute("y", curve.labelY);
+  label.textContent = `${labelText} ROLL ${targetText} DMG ${damage} ${formatPercent(attackPreview.hitChance)}`;
 
-  group.append(line, arrow, label);
+  const title = svgEl("title");
+  title.textContent = attackProjectionSummary({ ...attackPreview, target });
+
+  group.append(path, arrow, label, title);
   svg.append(group);
   drawPositionPreview(svg, shooterPreview, labelText);
+}
+
+function volleyCurve(svg, sourceX, sourceY, targetX, targetY) {
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const length = Math.hypot(dx, dy) || 1;
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  const key = `${Math.round(sourceX)},${Math.round(sourceY)}>${Math.round(targetX)},${Math.round(targetY)}`;
+  const counts = svg._volleyPathCounts || new Map();
+  const index = counts.get(key) || 0;
+  counts.set(key, index + 1);
+  svg._volleyPathCounts = counts;
+  const side = index % 2 === 0 ? 1 : -1;
+  const rank = Math.floor(index / 2);
+  const offset = side * (HEX_SIZE * (0.72 + rank * 0.48));
+  const midX = (sourceX + targetX) / 2;
+  const midY = (sourceY + targetY) / 2;
+  return {
+    controlX: midX + normalX * offset,
+    controlY: midY + normalY * offset,
+    labelX: midX + normalX * (offset + HEX_SIZE * 0.4),
+    labelY: midY + normalY * (offset + HEX_SIZE * 0.4),
+  };
 }
 
 function burstPoints(x, y, outerRadius, innerRadius) {
@@ -3124,11 +3206,56 @@ function renderActionStack(stack, stackIndex, availableCards, game, readOnly) {
     </div>
   `;
   section.append(header);
+  const attackPreview = renderStackAttackPreviewSummary(game, stack, stackIndex, cardById);
+  if (attackPreview) {
+    const preview = document.createElement("div");
+    preview.className = "stack-attack-preview";
+    preview.innerHTML = attackPreview;
+    section.append(preview);
+  }
 
   for (let cardIndex = 0; cardIndex < 2; cardIndex += 1) {
     section.append(renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game, readOnly));
   }
   return section;
+}
+
+function renderStackAttackPreviewSummary(game, stack, stackIndex, cardById) {
+  const player = game?.players?.[state.builderPlayerId];
+  if (!game || !player) return "";
+  const preview = previewBeforeBuilderStack(game, player, stackIndex, cardById);
+  const projections = attackProjectionsForStack(game, player, preview, stack, stackIndex, cardById, "");
+  if (!projections.length) return "";
+
+  const targetLines = projections.map((projection) => (
+    `<div class="stack-attack-preview-target">
+      <strong>${escapeHtml(projection.label)}</strong>
+      <span>${escapeHtml(attackProjectionSummary(projection))}</span>
+    </div>`
+  )).join("");
+  const hasOverdrive = projections.some((projection) => projection.isOverdriveCopy);
+  const overdriveLine = hasOverdrive
+    ? `<p>${escapeHtml("Overdrive repeats non-Desperate attack cards as a second volley.")}</p>`
+    : "";
+  return `
+    <div class="stack-attack-preview-kicker">Shot Preview</div>
+    ${targetLines}
+    ${overdriveLine}
+  `;
+}
+
+function previewBeforeBuilderStack(game, player, stackIndex, cardById) {
+  const preview = {
+    q: player.ship.q,
+    r: player.ship.r,
+    facing: player.ship.facing,
+  };
+  const firstUnresolvedStack = firstUnresolvedStackIndex(game.phase);
+  state.builderDraft.stacks.forEach((priorStack, priorStackIndex) => {
+    if (priorStackIndex < firstUnresolvedStack || priorStackIndex >= stackIndex) return;
+    applyStackMovementToPreview(game, player, preview, priorStack, cardById);
+  });
+  return preview;
 }
 
 function renderCardSlot(stack, stackIndex, cardIndex, availableCards, cardById, game, readOnly) {

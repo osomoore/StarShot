@@ -611,7 +611,31 @@
     label.innerHTML = `Action<br>${["I", "II", "III"][index]}`;
     node.appendChild(label);
     node.appendChild(cardsHtml);
+    const shotPreview = slotShotPreviewEl(index);
+    if (shotPreview) node.appendChild(shotPreview);
     node.appendChild(seal);
+    return node;
+  }
+
+  function slotShotPreviewEl(index) {
+    const projections = attackProjectionsForSlot(index);
+    if (!projections.length) return null;
+    const node = document.createElement("div");
+    node.className = "slot-shot-preview";
+    node.innerHTML = `
+      <div class="shot-preview-kicker">Shot Preview</div>
+      ${projections.map((projection) => `
+        <div class="shot-preview-row">
+          <b>${esc(projection.label)}</b>
+          <span>${esc(projectionSummary(projection))}</span>
+        </div>
+      `).join("")}
+      ${projections.some((projection) => projection.overdriveCopy)
+        ? `<div class="shot-preview-note">${esc(overdriveCopiesAction()
+          ? "Overdrive repeats eligible cards as a second volley."
+          : "Overdrive combines eligible card values into this volley.")}</div>`
+        : ""}
+    `;
     return node;
   }
 
@@ -1058,6 +1082,155 @@
     return { pos: { q, r, facing }, moved: value };
   }
 
+  function previewPositionBeforeSlot(slotIndex) {
+    let pos = { q: myPlayer().ship.q, r: myPlayer().ship.r, facing: myPlayer().ship.facing };
+    for (let index = 0; index < slotIndex; index++) {
+      pos = previewPositionAfterSlot(pos, draft.slots[index]);
+    }
+    return pos;
+  }
+
+  function previewPositionAfterSlot(startPos, slot) {
+    let pos = { ...startPos };
+    const actionCopy = slot.seal === "overdrive" && overdriveCopiesAction();
+    const cardCopy = slot.seal === "overdrive" && overdriveCopiesCards();
+    const passes = actionCopy || cardCopy ? 2 : 1;
+    for (let pass = 0; pass < passes; pass++) {
+      for (const selection of slot.cards.filter((s) => s.family === "move")) {
+        if (
+          pass > 0
+          && actionCopy
+          && selection.face === "desperate"
+          && !view.rules_config?.allow_overdrive_desperation
+        ) continue;
+        pos = simMove(pos, selection).pos;
+      }
+    }
+    return pos;
+  }
+
+  function attackProjectionsForSlot(slotIndex, startPos = null) {
+    const me = myPlayer();
+    if (!view || !me || !me.ship) return [];
+    const slot = draft.slots[slotIndex];
+    if (!slot) return [];
+    const pos = startPos ? { ...startPos } : previewPositionAfterSlot(previewPositionBeforeSlot(slotIndex), slot);
+    const attackSelections = slot.cards.filter((s) => s.family === "attack");
+    if (!attackSelections.length) return [];
+    const primary = attackProjectionsForSelections(slotIndex, pos, attackSelections, false, slot.seal === "overdrive" && overdriveCopiesCards());
+    if (slot.seal !== "overdrive") return primary;
+    if (overdriveCopiesCards()) return primary;
+    const copySelections = attackSelections.filter((selection) => (
+      selection.face !== "desperate" || view.rules_config?.allow_overdrive_desperation
+    ));
+    return primary.concat(attackProjectionsForSelections(slotIndex, pos, copySelections, true, false));
+  }
+
+  function attackProjectionsForSelections(slotIndex, pos, attackSelections, overdriveCopy, combineCards) {
+    if (!attackSelections.length) return [];
+    let target = null;
+    for (const selection of attackSelections) {
+      if (selection.target_player_id) target = selection.target_player_id;
+    }
+    let ahead = false;
+    if (!target) {
+      target = forwardTarget(pos);
+      ahead = true;
+    }
+    if (!target) {
+      if (!ahead) return [];
+      const [dq, dr] = Board.DIRECTIONS[((pos.facing % 6) + 6) % 6];
+      return [{
+        label: `A${["I", "II", "III"][slotIndex]} ⇢`,
+        from: { q: pos.q, r: pos.r },
+        to: { q: pos.q + dq * 4, r: pos.r + dr * 4 },
+        summary: "No ship ahead",
+        noTarget: true,
+      }];
+    }
+    const enemy = view.players[target];
+    if (!enemy || !enemy.ship) return [];
+    return [attackProjection(slotIndex, pos, target, enemy, attackSelections, ahead, overdriveCopy, combineCards)];
+  }
+
+  function attackProjection(slotIndex, pos, targetId, enemy, attackSelections, ahead, overdriveCopy, combineCards) {
+    const me = myPlayer();
+    let aim = 0, damageBonus = 0, baseDamage = 1;
+    let always = false, lead = false, maxRange = null, fixedDefense = null;
+    for (const selection of attackSelections) {
+      if (selection.face === "desperate") {
+        const face = selection.card.desperate_face || {};
+        aim += face.aim_bonus || 0;
+        damageBonus += face.damage_bonus || 0;
+        baseDamage = Math.max(baseDamage, face.base_damage || face.value || 1);
+        always = always || face.always_hits || (face.aim_bonus || 0) >= 99;
+        lead = lead || !!face.lead_the_target;
+        if (face.max_range != null && maxRange == null) maxRange = face.max_range;
+        if (face.fixed_defense_threshold != null && fixedDefense == null) fixedDefense = face.fixed_defense_threshold;
+      } else {
+        const aimMatch = /aim \+?(\d+)/i.exec(selection.card.name || "");
+        const damageMatch = /damage \+?(\d+)/i.exec(selection.card.name || "");
+        if (aimMatch) aim += parseInt(aimMatch[1], 10);
+        if (damageMatch || selection.card.is_hybrid) damageBonus += damageMatch ? parseInt(damageMatch[1], 10) : 1;
+      }
+    }
+    if (combineCards) {
+      aim *= 2;
+      damageBonus *= 2;
+    }
+    if (captainId(me) === "malcolm_manderly") aim += 2;
+    const distance = Board.hexDistance(pos.q, pos.r, enemy.ship.q, enemy.ship.r);
+    const targetMove = lead ? 0 : Math.round(expectedTargetMove(targetId));
+    const targetDefense = enemy.ship.defense_bonus_this_action || 0;
+    const defense = fixedDefense ?? (distance + targetMove + targetDefense);
+    const needed = defense - aim;
+    const attackDice = activeStarfall("clear_skies") ? 3 : 2;
+    const inRange = maxRange == null || distance <= maxRange;
+    const hitChance = inRange ? (always ? 1 : pDiceAtLeast(attackDice, needed)) : 0;
+    const labelBase = `A${["I", "II", "III"][slotIndex]}${ahead ? " ⇢" : ""}${overdriveCopy ? " OD" : ""}`;
+    return {
+      aim,
+      always,
+      baseDamage,
+      damage: baseDamage + damageBonus,
+      defense,
+      distance,
+      fixedDefense,
+      from: { q: pos.q, r: pos.r },
+      hitChance,
+      inRange,
+      label: labelBase,
+      lead,
+      maxRange,
+      needed,
+      target: targetId,
+      targetDefense,
+      targetMove,
+      to: { q: enemy.ship.q, r: enemy.ship.r },
+      overdriveCopy,
+    };
+  }
+
+  function projectionSummary(projection) {
+    if (projection.noTarget) return projection.summary;
+    const roll = !projection.inRange
+      ? `out of range ${projection.distance}/${projection.maxRange}`
+      : projection.always
+        ? "always hits"
+        : `${Math.max(2, projection.needed)}+ (${Math.round(projection.hitChance * 100)}%)`;
+    const parts = [
+      `${displayName(projection.target)}: ${roll}`,
+      `${projection.damage} dmg`,
+      `+${projection.aim} Aim`,
+      `Defense ${projection.defense}`,
+    ];
+    if (projection.targetMove) parts.push(`${projection.targetMove} move`);
+    if (projection.targetDefense) parts.push(`+${projection.targetDefense} defense`);
+    if (projection.lead) parts.push("ignores movement");
+    if (projection.fixedDefense != null) parts.push("fixed defense");
+    return parts.join(" · ");
+  }
+
   function computePreview() {
     if (!view || view.phase !== "give_orders") { Board.clearPreview(); return; }
     const me = myPlayer();
@@ -1095,44 +1268,15 @@
         });
       }
       if (attackSelections.length) {
-        let aim = 0, always = false, lead = false, target = null;
-        for (const selection of attackSelections) {
-          if (selection.target_player_id) target = selection.target_player_id;
-          if (selection.face === "desperate") {
-            const face = selection.card.desperate_face;
-            aim += face.aim_bonus || 0;
-            always = always || face.always_hits || (face.aim_bonus || 0) >= 99;
-            lead = lead || face.lead_the_target;
-          } else {
-            const match_ = /aim \+?(\d+)/i.exec(selection.card.name);
-            if (match_) aim += parseInt(match_[1], 10);
-          }
-        }
-        if (captainId(me) === "malcolm_manderly") aim += 2;
-        // Untargeted volley: it will hit whatever sits dead ahead after we move.
-        let ahead = false;
-        if (!target) {
-          target = forwardTarget(pos);
-          ahead = true;
-        }
-        const enemy = target && view.players[target];
-        if (enemy && enemy.ship) {
-          const distance = Board.hexDistance(pos.q, pos.r, enemy.ship.q, enemy.ship.r);
-          const predictedMove = lead ? 0 : Math.round(expectedTargetMove(target));
-          const needed = distance + predictedMove - aim;
-          const attackDice = activeStarfall("clear_skies") ? 3 : 2;
-          const pct = Math.round((always ? 1 : pDiceAtLeast(attackDice, needed)) * 100);
+        for (const projection of attackProjectionsForSlot(index, pos)) {
           items.push({
-            kind: "shot", from: { q: pos.q, r: pos.r }, to: { q: enemy.ship.q, r: enemy.ship.r },
-            label: `A${numerals[index]}${ahead ? " ⇢ ahead" : ""} · ${pct}% to hit${overdriven ? " ×2" : ""}`,
-          });
-        } else if (ahead) {
-          // Nothing on the line right now — show the wasted shot honestly.
-          const [dq, dr] = Board.DIRECTIONS[((pos.facing % 6) + 6) % 6];
-          items.push({
-            kind: "shot", from: { q: pos.q, r: pos.r },
-            to: { q: pos.q + dq * 4, r: pos.r + dr * 4 },
-            label: `A${numerals[index]} ⇢ no ship ahead!`,
+            kind: "shot",
+            from: projection.from,
+            to: projection.to,
+            label: projection.noTarget
+              ? `A${numerals[index]} ⇢ no ship ahead!`
+              : `${projection.label} · ${Math.round(projection.hitChance * 100)}% · ${projection.damage} dmg`,
+            title: projectionSummary(projection),
           });
         }
       }
