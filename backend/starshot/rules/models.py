@@ -208,13 +208,17 @@ class StarBreachState:
 
     scenario_id: str = "bauble_breacher"
     prey_player_id: str = ""
+    # Board token: the nose hex and the facing of the last movement.
     anchor_q: int = 0
-    anchor_r: int = -9
-    # Destroyed boss hull hexes in boss-local coordinates.
+    anchor_r: int = -10
+    facing: int = 5
+    # Destroyed hexes on the boss's internal damage board.
     destroyed_hexes: set[tuple[int, int]] = field(default_factory=set)
     # Remaining shield HP per shield arc (forward/port/rear/starboard).
     shield_hp: dict[str, int] = field(default_factory=dict)
     progress: int = 0
+    # Tiers actually powering slots; refreshed from progress at round start.
+    active_tiers: tuple[int, ...] = ()
     fleet: list[FleetCraftState] = field(default_factory=list)
     boss_movement_this_action: int = 0
     repaired_ship_ids_this_action: list[str] = field(default_factory=list)

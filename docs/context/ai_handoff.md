@@ -84,6 +84,11 @@ Implemented expansions:
   `boss:<area>`, `craft:<id>`, or an ally player id (Engineer repairs only).
   Boss half-phases resolve at the start of player actions 1/2/3 (0.5/1.5/2.5)
   and at the start of award_baubles (3.5 + StarBreach). 1-4 players allowed.
+  The boss occupies 3 board hexes (nose + two flanks, facing = last movement
+  direction); its detailed hull is an internal damage board (popup in the UI).
+  Each active boss slot performs exactly one action; progress tiers reached
+  mid-round only power slots from the next round (`active_tiers`). Shields:
+  nose 1 charge (intrinsic), other arcs 3, each powered by one nose generator.
 
 Not implemented yet:
 

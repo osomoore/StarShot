@@ -18,17 +18,41 @@ from dataclasses import dataclass
 EXPANSION_ID = "star_breach"
 SCENARIO_ID = "bauble_breacher"
 
-BOSS_ANCHOR = (0, -9)
-SHIELD_ARC_HP = 3
+# On the big board the boss is a 3-hex curved token: nose plus two trailing
+# flank hexes. Its detailed hull below is an internal damage board, like the
+# players' ship layouts.
+BOSS_START = (0, -10)
+BOSS_START_FACING = 5  # pointing south, toward The Fang
 GLANCING_BLOW_ROLL = 1
 DAMAGE_LANE_ROLLS = tuple(range(2, 9))  # seven lanes, d8 rolls 2-8
 
 AREAS = ("forward", "port", "rear", "starboard")
 
+# The nose (shield generator area) carries one charge; each other area gets
+# three, powered by one of the nose generators.
+INITIAL_SHIELD_HP = {"forward": 1, "port": 3, "rear": 3, "starboard": 3}
+
 HUNTER_KILLER_HP = 3
 HUNTER_KILLER_MOVE = 2
-HUNTER_KILLER_AIM = 1
+HUNTER_KILLER_AIM = 0  # passives toned down for playtesting
 TANK_PROXIMITY_JAMMER_RANGE = 3
+
+_AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
+
+# Which target area each board-token hex counts as when struck directly.
+BOARD_HEX_AREAS = ("forward", "port", "starboard")
+
+
+def boss_board_hexes(nose_q: int, nose_r: int, facing: int) -> tuple[tuple[int, int], ...]:
+    """The boss token: nose, back-left (port) flank, back-right (starboard)
+    flank — a curved 3-hex line pointing along `facing`."""
+    left_dq, left_dr = _AXIAL_DIRECTIONS[(facing + 2) % 6]
+    right_dq, right_dr = _AXIAL_DIRECTIONS[(facing - 2) % 6]
+    return (
+        (nose_q, nose_r),
+        (nose_q + left_dq, nose_r + left_dr),
+        (nose_q + right_dq, nose_r + right_dr),
+    )
 
 # Progress-track spaces that unlock each Standard/Boss tier slot.
 TIER_PROGRESS = {1: 2, 2: 4, 3: 6, 4: 8, 5: 10, 6: 12}
@@ -88,7 +112,7 @@ class BossComponent:
 
 BOSS_COMPONENTS: tuple[BossComponent, ...] = (
     BossComponent("sg_left", "Shield Generator L", "shield_generator", -2, -1, shield_arcs=("port",)),
-    BossComponent("sg_center", "Shield Generator C", "shield_generator", 0, -2, shield_arcs=("forward", "rear")),
+    BossComponent("sg_center", "Shield Generator C", "shield_generator", 0, -2, shield_arcs=("rear",)),
     BossComponent("sg_right", "Shield Generator R", "shield_generator", 2, -3, shield_arcs=("starboard",)),
     BossComponent("fc_a", "Firing Computer LC1", "firing_computer", -5, 1, linked_phase="0.5"),
     BossComponent("fc_b", "Firing Computer LC2", "firing_computer", -5, 2, linked_phase="0.5"),
@@ -158,12 +182,30 @@ BOSS_PHASES: tuple[tuple[str, str, tuple[tuple[str, object], ...]], ...] = (
 
 BOSS_PHASES_BY_PLAYER_ACTION = {1: "0.5", 2: "1.5", 3: "2.5"}
 
-# Hunter-Killer fleet for the Bauble Breacher scenario (boss-local start offsets).
+# Hunter-Killer fleet for the Bauble Breacher scenario (offsets from the nose).
 FLEET_SCENARIO: tuple[tuple[str, str, str, tuple[int, int]], ...] = (
-    ("hk_blue", "hunter_killer", "blue", (-7, 4)),
-    ("hk_green", "hunter_killer", "green", (0, 5)),
-    ("hk_yellow", "hunter_killer", "yellow", (7, -3)),
+    ("hk_blue", "hunter_killer", "blue", (-7, 5)),
+    ("hk_green", "hunter_killer", "green", (0, 6)),
+    ("hk_yellow", "hunter_killer", "yellow", (7, -2)),
 )
+
+
+def expected_phase_actions(
+    destroyed_components: set[str], active_tiers: tuple[int, ...]
+) -> dict[str, int]:
+    """Deterministic action count per boss phase: one action per active slot."""
+    result: dict[str, int] = {}
+    for key, _kind, slots in BOSS_PHASES:
+        count = 0
+        for slot_type, detail in slots:
+            if slot_type == "base":
+                count += 1
+            elif slot_type == "component" and detail not in destroyed_components:
+                count += 1
+            elif slot_type == "tier" and detail in active_tiers:
+                count += 1
+        result[key] = count
+    return result
 
 
 def unlocked_tiers(progress: int) -> tuple[int, ...]:

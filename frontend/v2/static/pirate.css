@@ -365,6 +365,60 @@ h1, h2, .brand, .poster-title, .banner-text {
   60% { transform: translateX(-50%) scale(1.08); opacity: 1; }
   100% { transform: translateX(-50%) scale(1); }
 }
+
+/* ── StarBreach boss UI ── */
+.boss-callout {
+  position: absolute; left: 50%; top: 12%; transform: translateX(-50%);
+  z-index: 6; min-width: 240px; max-width: 360px;
+  background: rgba(20,10,26,.94); border: 1px solid #a86ad1; border-radius: 10px;
+  padding: 10px 14px; box-shadow: 0 0 26px rgba(168,106,209,.4), 0 8px 24px rgba(0,0,0,.5);
+  animation: calloutPop .4s ease-out; pointer-events: none;
+}
+.boss-callout b {
+  display: block; font-family: "Pirata One", serif; font-size: 22px; color: #d9a6ff;
+  text-shadow: 0 0 14px rgba(168,106,209,.7);
+}
+.boss-callout .bc-sources { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 5px; }
+.boss-callout .bc-source {
+  font-size: 10px; padding: 2px 7px; border-radius: 8px;
+  background: rgba(168,106,209,.18); border: 1px solid rgba(168,106,209,.5); color: #e6c8ff;
+}
+.boss-callout .bc-bar { margin-top: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.boss-callout .bc-bar-fill { height: 100%; background: linear-gradient(90deg,#a86ad1,#ff6a8a); }
+.boss-progress-rail {
+  position: absolute; right: 12px; top: 16%; bottom: 22%; width: 16px; z-index: 4;
+  border: 1px solid rgba(168,106,209,.55); border-radius: 8px;
+  background: rgba(9,14,27,.85); overflow: hidden;
+}
+.boss-progress-rail .bpr-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(0deg,#a86ad1,#ff6a8a); transition: height .5s ease;
+}
+.boss-progress-rail .bpr-tick { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.35); }
+.boss-progress-rail .bpr-tick.active { background: var(--gold-bright); height: 2px; box-shadow: 0 0 6px rgba(212,167,72,.8); }
+.boss-progress-rail .bpr-label {
+  position: absolute; left: 50%; top: -18px; transform: translateX(-50%);
+  font-size: 11px; color: #d9a6ff; white-space: nowrap;
+}
+.sb-pause-toggle {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(168,106,209,.55); border-radius: 8px;
+  padding: 6px 10px; background: rgba(9,14,27,.84); color: var(--ink-dim);
+  font-size: 11px; cursor: pointer; user-select: none;
+}
+.sb-continue {
+  position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 8;
+}
+.boss-modal-map { width: 100%; overflow: auto; }
+.boss-modal-grid { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.boss-modal-side { min-width: 190px; flex: 1; font-size: 12px; color: var(--ink-dim); }
+.boss-modal-side h4 { font-family: "Pirata One", serif; color: #d9a6ff; margin: 8px 0 3px; font-size: 16px; }
+.boss-modal-side table { width: 100%; border-collapse: collapse; }
+.boss-modal-side td { padding: 2px 4px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.boss-track { margin-top: 6px; height: 12px; border-radius: 6px; background: rgba(255,255,255,.08); position: relative; overflow: hidden; }
+.boss-track .bt-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg,#a86ad1,#ff6a8a); }
+.boss-track .bt-tick { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.4); }
+.boss-track .bt-tick.active { background: var(--gold-bright); }
 .board-wrap.shake { animation: shake .4s; }
 
 .replay-controls {

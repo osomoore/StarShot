@@ -915,15 +915,11 @@ def _coop_enemy_target(state: GameState, pos: Pos) -> tuple[str, tuple[int, int]
         return f"craft:{nearest.id}", (nearest.q, nearest.r)
     from starshot.rules import star_breach as sb_data
 
-    intact = [
-        (sb.anchor_q + q, sb.anchor_r + r)
-        for q, r in sb_data.BOSS_FOOTPRINT
-        if (q, r) not in sb.destroyed_hexes
-    ]
-    if not intact:
+    if len(sb.destroyed_hexes) >= len(sb_data.BOSS_FOOTPRINT):
         return None
-    hex_q, hex_r = min(intact, key=lambda h: hex_distance(pos.q, pos.r, h[0], h[1]))
-    area = sb_data.region_of_hex(hex_q - sb.anchor_q, hex_r - sb.anchor_r)
+    token = sb_data.boss_board_hexes(sb.anchor_q, sb.anchor_r, sb.facing)
+    hex_q, hex_r = min(token, key=lambda h: hex_distance(pos.q, pos.r, h[0], h[1]))
+    area = dict(zip(token, sb_data.BOARD_HEX_AREAS))[(hex_q, hex_r)]
     return f"boss:{area}", (hex_q, hex_r)
 
 

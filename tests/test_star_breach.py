@@ -72,7 +72,9 @@ class StarBreachSetupTests(unittest.TestCase):
         self.assertEqual(len(state.players["bob"].hand), 7)  # engineer draws +2
         self.assertEqual(len(state.players["alice"].hand), 5)
         self.assertEqual([craft.id for craft in sb.fleet], ["hk_blue", "hk_green", "hk_yellow"])
-        self.assertEqual(sb.shield_hp, {area: 3 for area in sbd.AREAS})
+        self.assertEqual(sb.shield_hp, {"forward": 1, "port": 3, "rear": 3, "starboard": 3})
+        self.assertEqual((sb.anchor_q, sb.anchor_r, sb.facing), (0, -10, 5))
+        self.assertEqual(sb.active_tiers, ())
 
     def test_solo_play_is_allowed_and_gets_all_roles(self):
         state = _coop_state(player_ids=("solo",))
@@ -140,13 +142,14 @@ class StarBreachCombatTests(unittest.TestCase):
 
     def test_boss_shield_arc_absorbs_hits(self):
         state = _coop_state()
-        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -13
+        # Adjacent to the boss nose (token at (0,-10) facing south).
+        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -11
         _set_hand(state, "alice", "targeted_attack_aim_1_a")
         state = self._submit_both(state, _attack_orders("targeted_attack_aim_1_a", "boss:forward"))
         with self._quiet_enemies():
             state = resolve_next_step(state)
         sb = state.star_breach
-        self.assertEqual(sb.shield_hp["forward"], 2)
+        self.assertEqual(sb.shield_hp["forward"], 0)  # the nose carries one charge
         self.assertEqual(len(sb.destroyed_hexes), 0)
         event = next(e for e in state.event_log if e["type"] == "boss_volley_resolved")
         self.assertTrue(event["hit"])
@@ -155,7 +158,7 @@ class StarBreachCombatTests(unittest.TestCase):
 
     def test_boss_lane_strike_destroys_hull_then_component(self):
         state = _coop_state()
-        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -13
+        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -11
         state.star_breach.shield_hp["forward"] = 0
         _set_hand(state, "alice", "targeted_attack_aim_1_a", "targeted_attack_aim_1_b")
         orders = OrdersSubmission(
@@ -173,7 +176,7 @@ class StarBreachCombatTests(unittest.TestCase):
         self.assertIn((0, -3), sb.destroyed_hexes)
         self.assertIn((0, -2), sb.destroyed_hexes)  # Shield Generator C hex
         self.assertIn("sg_center", sbd.destroyed_component_ids(sb.destroyed_hexes))
-        # Destroying SG C drops the forward and rear shield arcs immediately.
+        # SG C powers the rear arc: its shield drops immediately.
         self.assertEqual(sb.shield_hp["rear"], 0)
         events = [e for e in state.event_log if e["type"] == "boss_volley_resolved"]
         self.assertEqual(len(events), 2)
@@ -181,7 +184,7 @@ class StarBreachCombatTests(unittest.TestCase):
 
     def test_glancing_blow_awards_desperation_card(self):
         state = _coop_state()
-        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -13
+        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -11
         state.star_breach.shield_hp["forward"] = 0
         # Alice is the Fighting Ace: kill the ace shift by making lane 2 dead too.
         state.players["alice"].roles = ("treasure_hunter",)
@@ -198,9 +201,9 @@ class StarBreachCombatTests(unittest.TestCase):
     def test_craft_can_be_damaged_and_destroyed(self):
         state = _coop_state()
         craft = next(c for c in state.star_breach.fleet if c.id == "hk_green")
-        craft.q, craft.r = 1, -13
+        craft.q, craft.r = 1, 12
         craft.hp = 1
-        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -13
+        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, 12
         _set_hand(state, "alice", "targeted_attack_aim_1_a")
         state = self._submit_both(state, _attack_orders("targeted_attack_aim_1_a", "craft:hk_green"))
         with self._quiet_enemies():
@@ -252,16 +255,16 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
         anchor_before = (state.star_breach.anchor_q, state.star_breach.anchor_r)
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=0), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=2
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
             state = resolve_next_step(state)  # action 1 (boss 0.5 attack phase)
             self.assertEqual((state.star_breach.anchor_q, state.star_breach.anchor_r), anchor_before)
             state = resolve_next_step(state)  # action 2 (boss 1.5 move phase)
         sb = state.star_breach
         self.assertNotEqual((sb.anchor_q, sb.anchor_r), anchor_before)
-        # Base + two intact fuel tanks = 3 slots x 2 hexes.
-        self.assertEqual(sb.boss_movement_this_action, 6)
+        # Base + two intact fuel tanks = 3 slots x 1 hex each.
+        self.assertEqual(sb.boss_movement_this_action, 3)
+        # Facing follows the direction of the last movement (south, toward prey).
+        self.assertEqual(sb.facing, 5)
 
     def test_enemy_attacks_target_prey_and_advance_progress(self):
         state = _coop_state()
@@ -269,12 +272,11 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         state.players["bob"].ship.q, state.players["bob"].ship.r = 0, 13
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=30), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=1
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=30):
             state = resolve_next_step(state)  # boss 0.5: base + fc_a + fc_b, plus 3 craft
         shots = [e for e in state.event_log if e["type"] == "enemy_volley_resolved"]
-        self.assertTrue(shots)
+        # One shot per active slot (3) plus one per hunter-killer (3).
+        self.assertEqual(len(shots), 6)
         self.assertTrue(all(shot["target_id"] == "alice" for shot in shots))
         self.assertTrue(all(shot["hit"] for shot in shots))
         self.assertEqual(state.star_breach.progress, len(shots))
@@ -287,9 +289,7 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         state.players["alice"].ship.q, state.players["alice"].ship.r = 0, 13
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=30), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=1
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=30):
             state = resolve_next_step(state)
         craft_shot = next(
             e for e in state.event_log
@@ -297,6 +297,7 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         )
         self.assertEqual(craft_shot["target_id"], "bob")
         self.assertEqual(craft_shot["dice"], 1)
+        self.assertEqual(craft_shot["aim_bonus"], 0)  # HK passives toned down
 
     def test_firing_computer_destruction_disables_attack_slot(self):
         state = _coop_state()
@@ -304,24 +305,38 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         sb.destroyed_hexes.update({(-5, 1), (-5, 2)})  # fc_a and fc_b
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=0), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=1
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
             state = resolve_next_step(state)
         event = next(e for e in state.event_log if e["type"] == "boss_phase_resolved" and e["boss_phase"] == "0.5")
         self.assertEqual([slot["slot"] for slot in event["slots"]], ["base"])
 
-    def test_progress_tiers_unlock_extra_slots(self):
+    def test_active_tier_powers_extra_slot(self):
         state = _coop_state()
         state.star_breach.progress = sbd.TIER_PROGRESS[1]
+        state.star_breach.active_tiers = (1,)
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=0), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=1
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
             state = resolve_next_step(state)
         event = next(e for e in state.event_log if e["type"] == "boss_phase_resolved" and e["boss_phase"] == "0.5")
-        self.assertIn({"slot": "tier", "tier": 1, "amount": 1, "attacks": event["slots"][-1]["attacks"]}, [event["slots"][-1]])
+        self.assertEqual(event["slots"][-1]["slot"], "tier")
+        self.assertEqual(event["slots"][-1]["tier"], 1)
+        self.assertEqual(event["slots"][-1]["amount"], 1)
+
+    def test_tiers_reached_mid_round_activate_at_next_round_start(self):
+        state = _coop_state()
+        state.star_breach.progress = sbd.TIER_PROGRESS[1]  # reached, not yet active
+        state = submit_orders(state, "alice", _empty_stacks())
+        state = submit_orders(state, "bob", _empty_stacks())
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
+            state = resolve_next_step(state)  # action 1
+        event = next(e for e in state.event_log if e["type"] == "boss_phase_resolved" and e["boss_phase"] == "0.5")
+        self.assertNotIn("tier", [slot["slot"] for slot in event["slots"]])
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
+            while state.round_number == 1 and state.phase.value != "complete":
+                state = resolve_next_step(state)
+        self.assertIn(1, state.star_breach.active_tiers)
+        self.assertTrue(any(e["type"] == "boss_tiers_activated" for e in state.event_log))
 
 
 class StarBreachOutcomeTests(unittest.TestCase):
@@ -380,9 +395,7 @@ class StarBreachRoleHelperTests(unittest.TestCase):
         bauble = next(b for b in state.baubles if b.number == 1 and not b.is_fang)
         state.players["alice"].ship.q, state.players["alice"].ship.r = bauble.q, bauble.r
         state.phase = GamePhase.AWARD_BAUBLES
-        with patch("starshot.rules.engine._roll_d6_sum", return_value=0), patch(
-            "starshot.rules.engine._roll_d3_plus_1", return_value=1
-        ):
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
             state = resolve_next_step(state)
         self.assertGreaterEqual(state.players["alice"].bonus_draws_pending, 1)
         self.assertGreaterEqual(state.players["bob"].bonus_draws_pending, 1)

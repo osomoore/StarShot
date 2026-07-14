@@ -85,18 +85,27 @@ def state_from_dict(data: dict) -> GameState:
 
 def star_breach_to_dict(sb: StarBreachState) -> dict:
     destroyed = sorted(sb.destroyed_hexes)
-    destroyed_components = sorted(sb_data.destroyed_component_ids(sb.destroyed_hexes))
+    destroyed_components = sb_data.destroyed_component_ids(sb.destroyed_hexes)
+    board_hexes = sb_data.boss_board_hexes(sb.anchor_q, sb.anchor_r, sb.facing)
     return {
         "scenario_id": sb.scenario_id,
         "prey_player_id": sb.prey_player_id,
         "anchor_q": sb.anchor_q,
         "anchor_r": sb.anchor_r,
+        "facing": sb.facing,
+        "board_hexes": [
+            {"q": q, "r": r, "area": area}
+            for (q, r), area in zip(board_hexes, sb_data.BOARD_HEX_AREAS)
+        ],
         "destroyed_hexes": [[q, r] for q, r in destroyed],
-        "destroyed_component_ids": destroyed_components,
+        "destroyed_component_ids": sorted(destroyed_components),
         "shield_hp": dict(sb.shield_hp),
+        "shield_max": dict(sb_data.INITIAL_SHIELD_HP),
         "progress": sb.progress,
         "tiers_unlocked": list(sb_data.unlocked_tiers(sb.progress)),
+        "active_tiers": list(sb.active_tiers),
         "tier_progress": {str(tier): threshold for tier, threshold in sb_data.TIER_PROGRESS.items()},
+        "expected_actions": sb_data.expected_phase_actions(destroyed_components, sb.active_tiers),
         "fleet": [fleet_craft_to_dict(craft) for craft in sb.fleet],
         "boss_movement_this_action": sb.boss_movement_this_action,
         "repaired_ship_ids_this_action": list(sb.repaired_ship_ids_this_action),
@@ -111,9 +120,11 @@ def star_breach_from_dict(data: dict) -> StarBreachState:
         prey_player_id=data.get("prey_player_id", ""),
         anchor_q=data.get("anchor_q", 0),
         anchor_r=data.get("anchor_r", 0),
+        facing=data.get("facing", 5),
         destroyed_hexes={(hex_[0], hex_[1]) for hex_ in data.get("destroyed_hexes", [])},
         shield_hp=dict(data.get("shield_hp", {})),
         progress=data.get("progress", 0),
+        active_tiers=tuple(data.get("active_tiers", ())),
         fleet=[fleet_craft_from_dict(craft) for craft in data.get("fleet", [])],
         boss_movement_this_action=data.get("boss_movement_this_action", 0),
         repaired_ship_ids_this_action=list(data.get("repaired_ship_ids_this_action", [])),

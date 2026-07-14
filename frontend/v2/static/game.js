@@ -248,7 +248,10 @@
   function isVisualEvent(event) {
     return ["movement_resolved", "volley_resolved", "bauble_awarded", "round_advanced",
       "desperation_consequence", "player_forfeited", "starfall_revealed",
-      "starfall_take_cover_damage", "captain_cleanup_movement"].includes(event.type);
+      "starfall_take_cover_damage", "captain_cleanup_movement",
+      "boss_phase_started", "boss_phase_resolved", "enemy_volley_resolved",
+      "boss_volley_resolved", "craft_volley_resolved", "repair_volley_resolved",
+      "boss_progress_advanced", "boss_tiers_activated"].includes(event.type);
   }
 
   function shouldOfferEntryReplay(event) {
@@ -362,24 +365,66 @@
     const sb = view.star_breach;
     if (!sb) {
       if (node) node.remove();
+      document.getElementById("boss-progress-rail")?.remove();
+      document.getElementById("sb-pause-toggle")?.remove();
       return;
     }
     if (!node) {
       node = document.createElement("div");
       node.id = "starbreach-status";
       node.className = "starfall-status";
+      node.style.cursor = "pointer";
+      node.addEventListener("click", showBossModal);
       statusStack().appendChild(node);
     }
-    const tiers = sb.tiers_unlocked || [];
     const shields = ["forward", "port", "rear", "starboard"]
       .map((area) => `${area[0].toUpperCase()}${sb.shield_hp?.[area] ?? 0}`)
       .join(" ");
     const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
     const roleNames = myRoles().map((role) => (sb.roles && sb.roles[role] ? sb.roles[role].name : role)).join(" + ");
     node.innerHTML = `<b>☄ StarBreacher</b>
-      <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}${tiers.length ? ` (Tier ${Math.max(...tiers)})` : ""}
-      · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}</span>`;
-    node.title = "Boss shield arcs (Forward/Port/Rear/Starboard) and progress track. Hits on The Prey advance the track and unlock more boss actions.";
+      <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}
+      · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}
+      · <u>damage board</u></span>`;
+    node.title = "Click for the StarBreacher's damage board.";
+    renderBossProgressRail();
+    renderPauseToggle();
+  }
+
+  function renderBossProgressRail() {
+    const sb = view.star_breach;
+    let rail = document.getElementById("boss-progress-rail");
+    if (!sb) { rail?.remove(); return; }
+    if (!rail) {
+      rail = document.createElement("div");
+      rail.id = "boss-progress-rail";
+      rail.className = "boss-progress-rail";
+      rail.title = "Boss Progress Track — hits on The Prey fill it; tiers power up at the next round's start.";
+      els["board-wrap"].appendChild(rail);
+    }
+    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), sb.progress || 0);
+    const ticks = Object.entries(sb.tier_progress || {}).map(([tier, threshold]) => {
+      const active = (sb.active_tiers || []).includes(Number(tier));
+      return `<div class="bpr-tick ${active ? "active" : ""}" style="bottom:${(threshold / maxTrack) * 100}%"></div>`;
+    }).join("");
+    rail.innerHTML = `<div class="bpr-label">☄ ${sb.progress}</div>
+      <div class="bpr-fill" style="height:${Math.min(100, (sb.progress / maxTrack) * 100)}%"></div>${ticks}`;
+  }
+
+  function pauseAfterActions() {
+    try { return (localStorage.getItem("ss_sb_pause") ?? "1") === "1"; } catch (err) { return true; }
+  }
+
+  function renderPauseToggle() {
+    if (document.getElementById("sb-pause-toggle")) return;
+    const label = document.createElement("label");
+    label.id = "sb-pause-toggle";
+    label.className = "sb-pause-toggle";
+    label.innerHTML = `<input type="checkbox" ${pauseAfterActions() ? "checked" : ""}> ⏸ Pause after each player action`;
+    label.querySelector("input").addEventListener("change", (event) => {
+      try { localStorage.setItem("ss_sb_pause", event.target.checked ? "1" : "0"); } catch (err) {}
+    });
+    statusStack().appendChild(label);
   }
 
   function statusStack() {
@@ -505,9 +550,11 @@
         const tiers = event.tiers_unlocked || [];
         return {
           cls: "hit",
-          text: `☄ Boss progress +${event.amount} (now ${event.progress})${tiers.length ? ` — Tier ${tiers.join(", ")} unlocked!` : ""}`,
+          text: `☄ Boss progress +${event.amount} (now ${event.progress})${tiers.length ? ` — Tier ${tiers.join(", ")} reached (powers up next round)` : ""}`,
         };
       }
+      case "boss_tiers_activated":
+        return { cls: "hit", text: `☄ Boss Tier ${event.tiers.join(", ")} comes online — more boss actions this round.` };
       case "enemy_volley_resolved": {
         const result = event.shielded ? "shield takes it" : event.hit ? `HIT for ${event.damage_applied || 1}` : "misses";
         return { cls: event.hit ? "hit" : "", text: `${targetLabel(event.attacker)} fires on ${name(event.target_id)} — 🎲${event.roll}${event.aim_bonus ? "+" + event.aim_bonus : ""} vs ${event.defense_threshold}: ${result}${event.target_destroyed ? " — SHIP DESTROYED ☠" : ""}` };
@@ -812,11 +859,102 @@
   }
 
   function handleBossClick(area) {
-    if (!targetResolver) return;
-    const resolve = targetResolver;
-    targetResolver = null;
-    hidePicker();
-    resolve("boss:" + area);
+    if (targetResolver) {
+      const resolve = targetResolver;
+      targetResolver = null;
+      hidePicker();
+      resolve("boss:" + area);
+      return;
+    }
+    showBossModal();
+  }
+
+  /* The StarBreacher's damage board: internal hull, components, shields,
+     expected actions per boss step, and the progress track. */
+  function showBossModal() {
+    const sb = view.star_breach;
+    if (!sb || !sb.boss_layout) return;
+    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+    const componentsByHex = {};
+    for (const component of sb.boss_layout.components || []) {
+      componentsByHex[component.q + "," + component.r] = component;
+    }
+    const AREA_FILL = { forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120" };
+    const BADGE = { shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉" };
+    const size = 13, sq = Math.sqrt(3);
+    const cells = sb.boss_layout.footprint || [];
+    let svgBody = "";
+    for (const cell of cells) {
+      const x = size * 1.5 * cell.q, y = size * sq * (cell.r + cell.q / 2);
+      const dead = destroyed.has(cell.q + "," + cell.r);
+      const tint = AREA_FILL[cell.area] || "150,150,150";
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 180) * (60 * i);
+        pts.push(`${(x + (size - 0.8) * Math.cos(a)).toFixed(1)},${(y + (size - 0.8) * Math.sin(a)).toFixed(1)}`);
+      }
+      const component = componentsByHex[cell.q + "," + cell.r];
+      svgBody += `<polygon points="${pts.join(" ")}" fill="${dead ? "rgba(25,25,32,.9)" : `rgba(${tint},.5)`}"
+        stroke="${dead ? "#333" : `rgb(${tint})`}" stroke-width="1"><title>${esc(component ? component.name : `${cell.area} hull`)}${dead ? " (destroyed)" : ""}</title></polygon>`;
+      if (component) {
+        svgBody += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="8.5" font-weight="700"
+          fill="${dead ? "#555" : "#0a0f1e"}" pointer-events="none">${BADGE[component.type] || "?"}</text>`;
+      } else if (dead) {
+        svgBody += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9" fill="#555" pointer-events="none">✕</text>`;
+      }
+    }
+    const qs = cells.map((c) => c.q), rs = cells.map((c) => size * sq * (c.r + c.q / 2));
+    const minX = Math.min(...qs) * size * 1.5 - size * 1.5, maxX = Math.max(...qs) * size * 1.5 + size * 1.5;
+    const minY = Math.min(...rs) - size * 1.5, maxY = Math.max(...rs) + size * 1.5;
+    const shields = ["forward", "port", "rear", "starboard"].map((area) => {
+      const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
+      return `<td>${esc(area)}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td>`;
+    }).map((row) => `<tr>${row}</tr>`).join("");
+    const PHASE_NAMES = { "0.5": "Action 0.5 (attack)", "1.5": "Action 1.5 (move)", "2.5": "Action 2.5 (move)", "3.5": "Action 3.5 (attack)", starbreach: "StarBreach (attack)" };
+    const expected = Object.entries(sb.expected_actions || {})
+      .map(([phase, count]) => `<tr><td>${esc(PHASE_NAMES[phase] || phase)}</td><td><b>${count}</b> action${count === 1 ? "" : "s"}</td></tr>`)
+      .join("");
+    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), sb.progress || 0);
+    const ticks = Object.entries(sb.tier_progress || {}).map(([tier, threshold]) => {
+      const active = (sb.active_tiers || []).includes(Number(tier));
+      const reached = (sb.tiers_unlocked || []).includes(Number(tier));
+      return `<div class="bt-tick ${active ? "active" : ""}" style="left:${(threshold / maxTrack) * 100}%"
+        title="Tier ${tier} at ${threshold}${active ? " (active)" : reached ? " (powers up next round)" : ""}"></div>`;
+    }).join("");
+    const pendingTiers = (sb.tiers_unlocked || []).filter((tier) => !(sb.active_tiers || []).includes(tier));
+    const overlay = els["picker-overlay"];
+    overlay.innerHTML = "";
+    overlay.classList.remove("hidden");
+    const box = document.createElement("div");
+    box.className = "picker";
+    box.style.maxWidth = "640px";
+    box.innerHTML = `
+      <h3>☄ The StarBreacher — Damage Board</h3>
+      <div class="boss-modal-grid">
+        <div class="boss-modal-map">
+          <svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" style="width:100%;max-height:300px">${svgBody}</svg>
+        </div>
+        <div class="boss-modal-side">
+          <h4>Progress Track — ${sb.progress}</h4>
+          <div class="boss-track">
+            <div class="bt-fill" style="width:${Math.min(100, (sb.progress / maxTrack) * 100)}%"></div>
+            ${ticks}
+          </div>
+          ${pendingTiers.length ? `<div style="margin-top:4px;color:#ff9d8a">Tier ${pendingTiers.join(", ")} powers up next round!</div>` : ""}
+          <h4>Shield Arcs</h4>
+          <table>${shields}</table>
+          <h4>Expected Actions</h4>
+          <table>${expected}</table>
+          <div style="margin-top:6px">SG = Shield Generator · FC = Firing Computer · FT = Fuel Tank.
+            Destroying an FC or FT removes its action; hits on The Prey advance the track.</div>
+        </div>
+      </div>
+      <button class="btn ghost picker-cancel" id="boss-modal-close">Close</button>`;
+    overlay.appendChild(box);
+    box.querySelector("#boss-modal-close").addEventListener("click", hidePicker);
+    overlay.addEventListener("click", function onOverlay(event) {
+      if (event.target === overlay) { hidePicker(); overlay.removeEventListener("click", onOverlay); }
+    });
   }
 
   /* Co-op target list: intact boss areas, living hunter-killers, and (for
@@ -835,7 +973,7 @@
       options.push({
         icon: "☄", value: "boss:" + area,
         label: `StarBreacher — ${area}`,
-        sub: `shield ${sb.shield_hp?.[area] ?? 0}`,
+        sub: `shield ${sb.shield_hp?.[area] ?? 0}/${sb.shield_max?.[area] ?? 3}`,
       });
     }
     for (const craft of sb.fleet || []) {
@@ -1343,14 +1481,11 @@
       return { ship: { q: craft.q, r: craft.r, defense_bonus_this_action: 0, shields: 0 } };
     }
     if (target.startsWith("boss:")) {
-      const area = target.split(":")[1];
-      const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+      // Distance always counts to the boss's nearest board hex.
       let best = null, bestDistance = Infinity;
-      for (const cell of (sb.boss_layout || {}).footprint || []) {
-        if (cell.area !== area || destroyed.has(cell.q + "," + cell.r)) continue;
-        const q = sb.anchor_q + cell.q, r = sb.anchor_r + cell.r;
-        const distance = Board.hexDistance(pos.q, pos.r, q, r);
-        if (distance < bestDistance) { bestDistance = distance; best = { q, r }; }
+      for (const cell of sb.board_hexes || []) {
+        const distance = Board.hexDistance(pos.q, pos.r, cell.q, cell.r);
+        if (distance < bestDistance) { bestDistance = distance; best = cell; }
       }
       if (!best) return null;
       return { ship: { q: best.q, r: best.r, defense_bonus_this_action: 0, shields: 0 } };
@@ -1535,6 +1670,61 @@
     callout._timer = setTimeout(() => node.classList.add("hidden"), 1400);
   }
 
+  /* Rich boss-phase banner: total actions, where each charge came from, and
+     the current progress track. */
+  async function showBossPhaseCallout(event) {
+    const sb = view.star_breach || {};
+    const names = {};
+    for (const component of (sb.boss_layout || {}).components || []) {
+      const words = component.name.split(" ");
+      names[component.id] = words[words.length - 1];
+    }
+    const sources = (event.slots || []).map((slot) => {
+      if (slot.slot === "base") return "Base";
+      if (slot.slot === "tier") return `Tier ${slot.tier}`;
+      return names[slot.component_id] || slot.component_id;
+    });
+    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), event.progress || 0);
+    const label = event.boss_phase === "starbreach" ? "STARBREACH" : `Action ${event.boss_phase}`;
+    document.getElementById("boss-phase-callout")?.remove();
+    const node = document.createElement("div");
+    node.id = "boss-phase-callout";
+    node.className = "boss-callout";
+    node.innerHTML = `
+      <b>☄ Boss ${esc(label)} — ${event.total_actions} ${esc(event.kind)}${event.total_actions === 1 ? "" : "s"}</b>
+      <div class="bc-sources">${sources.map((source) => `<span class="bc-source">${esc(source)}</span>`).join("")}</div>
+      <div class="bc-bar"><div class="bc-bar-fill" style="width:${Math.min(100, ((event.progress || 0) / maxTrack) * 100)}%"></div></div>`;
+    els["board-wrap"].appendChild(node);
+    await wait(1500);
+    node.remove();
+  }
+
+  function updateProgressRail(progress) {
+    const sb = view.star_breach;
+    const rail = document.getElementById("boss-progress-rail");
+    if (!sb || !rail) return;
+    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), progress || 0);
+    const fill = rail.querySelector(".bpr-fill");
+    const label = rail.querySelector(".bpr-label");
+    if (fill) fill.style.height = Math.min(100, (progress / maxTrack) * 100) + "%";
+    if (label) label.textContent = "☄ " + progress;
+  }
+
+  /* "Pause after each player action": wait for the captain to click on. */
+  function continueGate() {
+    return new Promise((resolve) => {
+      const button = document.createElement("button");
+      button.className = "btn gold sb-continue";
+      button.textContent = "▶ Continue";
+      button.addEventListener("click", () => { button.remove(); resolve(); });
+      els["board-wrap"].appendChild(button);
+      const poll = setInterval(() => {
+        if (skipReplay) { clearInterval(poll); button.remove(); resolve(); }
+      }, 200);
+      button.addEventListener("click", () => clearInterval(poll));
+    });
+  }
+
   async function playEvents(events) {
     animating = true;
     skipReplay = false;
@@ -1569,6 +1759,16 @@
       renderFleet();
       for (let index = 0; index < events.length; index++) {
         const event = events[index];
+        // StarBreach: let the crew study the board after each player action.
+        if (
+          view.star_breach
+          && event.type === "phase_changed"
+          && ["action_2", "action_3", "award_baubles"].includes(event.phase)
+          && pauseAfterActions()
+          && !skipReplay
+        ) {
+          await continueGate();
+        }
         if (event.type === "movement_resolved") {
           const movementEvents = [event];
           while (
@@ -1609,7 +1809,7 @@
   }
 
   function reverseShipEvent(ships, event) {
-    if (event.type === "volley_resolved") {
+    if (event.type === "volley_resolved" || event.type === "enemy_volley_resolved") {
       const ship = ships[event.target_id];
       if (!ship) return;
       if (event.shielded) ship.shields = (ship.shields || 0) + 1;
@@ -1619,6 +1819,17 @@
         ship.knocked_out_round = null;
         ship.knocked_out_action_number = null;
         ship.knocked_out_phase = null;
+      }
+    } else if (event.type === "repair_volley_resolved" && event.hit) {
+      const ship = ships[event.target_id];
+      if (!ship) return;
+      if (event.restored_component_id) {
+        const destroyed = new Set(ship.destroyed_components || []);
+        destroyed.add(event.restored_component_id);
+        ship.destroyed_components = Array.from(destroyed);
+        ship.damage_taken = (ship.damage_taken || 0) + 1;
+      } else if (event.shield_restored) {
+        ship.shields = Math.max(0, (ship.shields || 0) - 1);
       }
     } else if (event.type === "ramming_resolved") {
       reverseDamageResult(ships[event.target_id], event.target_damage || {});
@@ -1765,6 +1976,112 @@
         playStarfallFx(event);
         applyShipEvent(event);
         await wait(1200);
+        return;
+      }
+      case "boss_phase_started": {
+        await showBossPhaseCallout(event);
+        return;
+      }
+      case "boss_phase_resolved": {
+        if (event.kind !== "move") return;
+        for (const slot of event.slots || []) {
+          const move = slot.movement;
+          if (!move || !move.moved) continue;
+          Board.renderStarBreach(view.star_breach, {
+            pose: { q: move.after.anchor_q, r: move.after.anchor_r, facing: move.after.facing },
+            preyPos: preyPosition(),
+          });
+          FX.trail(Board.hexToScreen(move.after.anchor_q, move.after.anchor_r), "#a86ad1");
+          for (const push of move.pushed || []) {
+            const pushedPlayer = view.players[push.ship];
+            if (pushedPlayer) Board.placeShip(push.ship, push.to[0], push.to[1], pushedPlayer.ship.facing);
+          }
+          await wait(340);
+        }
+        Board.renderStarBreach(view.star_breach, { preyPos: preyPosition() });
+        return;
+      }
+      case "enemy_volley_resolved": {
+        const from = Board.hexToScreen(event.attacker_position?.q ?? 0, event.attacker_position?.r ?? 0);
+        const targetShip = displayShipFor(event.target_id);
+        const to = Board.hexToScreen(event.target_position?.q ?? targetShip.q, event.target_position?.r ?? targetShip.r);
+        FX.laser(from, to, "#a86ad1");
+        await wait(240);
+        const rollText = `🎲 ${event.roll}${event.aim_bonus ? "+" + event.aim_bonus : ""} vs ${event.defense_threshold}`;
+        if (event.shielded) {
+          FX.shield(to);
+          const ship = replayShipStates && replayShipStates[event.target_id];
+          if (ship) ship.shields = Math.max(0, (ship.shields || 0) - 1);
+          FX.floatText(to, rollText + " — SHIELDED", "#7ed8ff");
+        } else if (event.hit) {
+          FX.impact(to, false);
+          applyDamageResult(event.target_id, event);
+          FX.floatText(to, rollText + " — HIT", "#ff8d7a");
+        } else {
+          FX.floatText(to, rollText + " — miss", "#8fa3bd");
+        }
+        renderFleet();
+        await wait(430);
+        return;
+      }
+      case "boss_volley_resolved": {
+        const from = Board.hexToScreen(event.attacker_position?.q ?? 0, event.attacker_position?.r ?? 0);
+        const to = Board.hexToScreen(event.target_position?.q ?? 0, event.target_position?.r ?? 0);
+        FX.laser(from, to, Board.colorOf(event.attacker_id));
+        await wait(240);
+        if (!event.hit) {
+          FX.floatText(to, `🎲 ${event.roll} vs ${event.defense_threshold} — miss`, "#8fa3bd");
+        } else {
+          FX.impact(to, (event.hexes_destroyed || 0) > 0);
+          const bits = [];
+          if (event.shields_absorbed) bits.push("SHIELD -" + event.shields_absorbed);
+          if (event.hexes_destroyed) bits.push("HULL -" + event.hexes_destroyed);
+          if ((event.components_destroyed || []).length) bits.push(event.components_destroyed.join(", ").toUpperCase() + " DESTROYED");
+          if (event.desperation_cards_drawn) bits.push("glancing blow");
+          FX.floatText(to, bits.join(" · ") || "no effect", "#d9a6ff");
+        }
+        await wait(430);
+        return;
+      }
+      case "craft_volley_resolved": {
+        const from = Board.hexToScreen(event.attacker_position?.q ?? 0, event.attacker_position?.r ?? 0);
+        const to = Board.hexToScreen(event.target_position?.q ?? 0, event.target_position?.r ?? 0);
+        FX.laser(from, to, Board.colorOf(event.attacker_id));
+        await wait(240);
+        if (event.hit) {
+          FX.impact(to, event.craft_destroyed);
+          FX.floatText(to, event.craft_destroyed ? "HUNTER DESTROYED ☠" : `HIT — ${event.craft_hp_left} HP left`, "#ffb27a");
+        } else {
+          FX.floatText(to, `🎲 ${event.roll} vs ${event.defense_threshold} — miss`, "#8fa3bd");
+        }
+        await wait(430);
+        return;
+      }
+      case "repair_volley_resolved": {
+        const from = Board.hexToScreen(event.attacker_position?.q ?? 0, event.attacker_position?.r ?? 0);
+        const to = Board.hexToScreen(event.target_position?.q ?? 0, event.target_position?.r ?? 0);
+        FX.laser(from, to, "#3ea86b");
+        await wait(240);
+        const outcome = event.hit
+          ? (event.restored_component_id ? "REPAIRED " + event.restored_component_id.replace(/_/g, " ").toUpperCase()
+            : event.shield_restored ? "SHIELD RESTORED" : "nothing to fix")
+          : "repair fumbled";
+        FX.floatText(to, "🔧 " + outcome, "#8fe3a5");
+        if (event.hit && event.restored_component_id && replayShipStates && replayShipStates[event.target_id]) {
+          const ship = replayShipStates[event.target_id];
+          ship.destroyed_components = (ship.destroyed_components || []).filter((id) => id !== event.restored_component_id);
+          renderFleet();
+        }
+        await wait(430);
+        return;
+      }
+      case "boss_progress_advanced": {
+        updateProgressRail(event.progress);
+        return;
+      }
+      case "boss_tiers_activated": {
+        callout(`☄ Boss Tier ${event.tiers.join(", ")} online!`, true);
+        await wait(700);
         return;
       }
       case "starfall_take_cover_damage": {

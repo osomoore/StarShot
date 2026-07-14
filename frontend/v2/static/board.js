@@ -119,55 +119,60 @@
     el("stop", { offset: "100%", "stop-color": "#c08a2e" }, grad);
   }
 
-  /* StarBreach: the boss hull, its components, and the enemy fleet dice. */
+  /* StarBreach: the boss's 3-hex board token and the enemy fleet dice.
+     The detailed hull is an internal damage board shown in its own popup. */
   const AREA_TINT = {
-    forward: "106,140,190", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120",
+    forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120",
   };
   const CRAFT_COLORS = { blue: "#4f86d1", green: "#3ea86b", yellow: "#d4c748" };
-  const COMPONENT_BADGE = {
-    shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉",
-  };
+
+  function bossTokenHexes(noseQ, noseR, facing) {
+    const left = DIRECTIONS[((facing + 2) % 6 + 6) % 6];
+    const right = DIRECTIONS[((facing - 2) % 6 + 6) % 6];
+    return [
+      { q: noseQ, r: noseR, area: "forward" },
+      { q: noseQ + left[0], r: noseR + left[1], area: "port" },
+      { q: noseQ + right[0], r: noseR + right[1], area: "starboard" },
+    ];
+  }
 
   function renderStarBreach(sb, options = {}) {
     if (!bossLayer) return;
     bossLayer.innerHTML = "";
-    if (!sb || !sb.boss_layout) return;
-    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
-    const componentsByHex = {};
-    for (const component of sb.boss_layout.components || []) {
-      componentsByHex[component.q + "," + component.r] = component;
-    }
-    for (const cell of sb.boss_layout.footprint || []) {
-      const q = sb.anchor_q + cell.q, r = sb.anchor_r + cell.r;
-      if (hexDistance(0, 0, q, r) > RADIUS) continue;
-      const [x, y] = axialToXY(q, r);
-      const dead = destroyed.has(cell.q + "," + cell.r);
-      const tint = AREA_TINT[cell.area] || "120,120,120";
-      const poly = el("polygon", {
-        points: hexPoints(x, y, HEX - 1.2),
-        fill: dead ? "rgba(30,30,38,.85)" : `rgba(${tint},.55)`,
-        stroke: dead ? "#333" : `rgb(${tint})`,
-        "stroke-width": 1,
-        class: "boss-hull",
-        "data-area": cell.area,
-      }, bossLayer);
-      poly.addEventListener("click", () => { if (onBossClick) onBossClick(cell.area); });
-      const component = componentsByHex[cell.q + "," + cell.r];
-      if (component) {
-        const badge = el("text", {
-          x, y: y + 3.5, "text-anchor": "middle", "font-size": 9, "font-weight": 700,
-          fill: dead ? "#666" : "#0a0f1e", "pointer-events": "none",
-        }, bossLayer);
-        badge.textContent = COMPONENT_BADGE[component.type] || "?";
+    if (!sb) return;
+    const totalHull = (sb.boss_layout?.footprint || []).length || 1;
+    const hullDamage = (sb.destroyed_hexes || []).length / totalHull;
+    const alive = (sb.destroyed_hexes || []).length < totalHull;
+    const pose = options.pose || { q: sb.anchor_q, r: sb.anchor_r, facing: sb.facing || 0 };
+    if (alive) {
+      const token = sb.board_hexes && !options.pose
+        ? sb.board_hexes
+        : bossTokenHexes(pose.q, pose.r, pose.facing);
+      const group = el("g", { class: "boss-token" }, bossLayer);
+      for (const cell of token) {
+        const [x, y] = axialToXY(cell.q, cell.r);
+        const tint = AREA_TINT[cell.area] || "168,106,209";
+        const poly = el("polygon", {
+          points: hexPoints(x, y, HEX - 1.0),
+          fill: `rgba(60,20,80,${0.92 - hullDamage * 0.4})`,
+          stroke: `rgb(${tint})`,
+          "stroke-width": cell.area === "forward" ? 2 : 1.2,
+          class: "boss-hull",
+          "data-area": cell.area,
+          cursor: "pointer",
+        }, group);
+        poly.addEventListener("click", () => { if (onBossClick) onBossClick(cell.area); });
         const tip = el("title", {}, poly);
-        tip.textContent = `${component.name}${dead ? " (destroyed)" : ""} — ${cell.area} section`;
-      } else if (dead) {
-        el("text", { x, y: y + 4, "text-anchor": "middle", "font-size": 10, fill: "#555", "pointer-events": "none" }, bossLayer)
-          .textContent = "✕";
-      } else {
-        const tip = el("title", {}, poly);
-        tip.textContent = `StarBreacher hull — ${cell.area} section (shield ${sb.shield_hp?.[cell.area] ?? 0})`;
+        tip.textContent = `StarBreacher (${cell.area}) — click for the damage board. Hull ${Math.round((1 - hullDamage) * 100)}%`;
       }
+      // Nose chevron pointing along the last movement direction.
+      const [nx, ny] = axialToXY(token[0].q, token[0].r);
+      const nose = el("g", { transform: `translate(${nx},${ny}) rotate(${facingAngle(pose.facing)})`, "pointer-events": "none" }, group);
+      nose.innerHTML = `
+        <polygon points="11,0 -4,7 -1,0 -4,-7" fill="#d9a6ff" stroke="#2a1038" stroke-width="1"/>
+        <circle cx="-1" cy="0" r="2" fill="#ff6a8a"/>`;
+      el("text", { x: nx, y: ny - HEX * 1.15, "text-anchor": "middle", "font-size": 9, fill: "#d9a6ff", class: "ship-label" }, group)
+        .textContent = "☄ StarBreacher";
     }
     for (const craft of sb.fleet || []) {
       if (craft.destroyed) continue;
