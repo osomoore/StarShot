@@ -270,7 +270,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 /* ── game layout ─────────────────────────── */
 .game-grid {
   display: grid;
-  grid-template-columns: 270px 1fr 640px;
+  grid-template-columns: 270px minmax(0, 1fr) 700px;
   gap: 12px; padding: 12px;
   flex: 1 1 auto; min-height: 0;
 }
@@ -392,7 +392,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .ship-label { font-family: "Space Grotesk"; font-size: 9px; fill: #dfe6ff; text-anchor: middle; paint-order: stroke; stroke: #060a14; stroke-width: 2.5px; }
 
 /* ── orders panel / cards ────────────────── */
-.orders-panel { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.orders-panel { display: flex; flex-direction: column; min-height: 0; overflow: visible; position: relative; z-index: 8; }
 .orders-head { display: flex; justify-content: space-between; align-items: flex-start; }
 
 .pile-row { display: flex; gap: 10px; }
@@ -415,11 +415,13 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 /* Three action stacks side by side, each a vertical column: label, cards, seal. */
-.order-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+.order-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .order-slot {
-  border: 1px dashed rgba(212,167,72,.4); border-radius: 10px; padding: 10px 8px;
-  background: rgba(10,16,32,.6); min-height: 190px;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  border: 1px dashed rgba(212,167,72,.4); border-radius: 10px; padding: 9px;
+  background: rgba(10,16,32,.6); min-height: 218px;
+  display: grid; gap: 8px;
+  grid-template-rows: auto minmax(138px, 1fr) auto;
+  justify-items: center;
   transition: border-color .15s, box-shadow .15s;
   cursor: pointer;
   position: relative;
@@ -429,11 +431,11 @@ h1, h2, .brand, .poster-title, .banner-text {
   border-style: solid; border-color: var(--gold-bright);
   box-shadow: 0 0 18px rgba(212,167,72,.5), inset 0 0 24px rgba(212,167,72,.08);
 }
-.order-slot .slot-label { font-family: "Pirata One", serif; font-size: 17px; color: var(--gold); text-align: center; line-height: 1.05; }
-.order-slot .slot-cards { display: flex; gap: 6px; min-height: 94px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.order-slot .slot-label { font-family: "Pirata One", serif; font-size: 18px; color: var(--gold); text-align: center; line-height: 1; }
+.order-slot .slot-cards { display: flex; gap: 7px; min-height: 138px; align-items: center; justify-content: center; flex-wrap: wrap; width: 100%; }
 .seal-toggle {
-  width: 52px; height: 52px; border-radius: 50%; cursor: pointer; border: 2px solid #6e5a24;
-  display: grid; place-items: center; font-size: 22px; user-select: none;
+  width: 58px; height: 28px; border-radius: 999px; cursor: pointer; border: 2px solid #6e5a24;
+  display: grid; place-items: center; user-select: none;
   background: radial-gradient(circle at 35% 30%, #d4a748, #7a5c1c);
   box-shadow: inset 0 -3px 6px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.5);
   transition: transform .15s;
@@ -446,7 +448,54 @@ h1, h2, .brand, .poster-title, .banner-text {
   animation: flamePulse 1.2s ease-in-out infinite;
 }
 @keyframes flamePulse { 50% { box-shadow: inset 0 -3px 6px rgba(0,0,0,.4), 0 0 26px rgba(232,106,74,.95); } }
-.seal-note { font-size: 9px; text-align: center; color: var(--ink-dim); margin-top: 2px; }
+.seal-mode-text {
+  color: #241a05;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.seal-toggle.overdrive .seal-mode-text {
+  color: #fff0df;
+  font-size: 8px;
+}
+
+.seal-control {
+  align-items: center;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  width: 100%;
+}
+
+.seal-details {
+  z-index: 120;
+}
+
+.seal-details-button {
+  background: rgba(10, 16, 32, 0.86);
+  border: 1px solid rgba(212, 167, 72, 0.42);
+  border-radius: 50%;
+  color: var(--gold-bright);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  height: 22px;
+  line-height: 20px;
+  padding: 0;
+  text-align: center;
+  width: 22px;
+}
+
+.seal-details-button:hover,
+.seal-details-button:focus {
+  border-color: var(--gold-bright);
+  outline: none;
+}
 
 .slot-shot-preview {
   background: rgba(6, 10, 20, 0.96);
@@ -455,37 +504,52 @@ h1, h2, .brand, .poster-title, .banner-text {
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.55);
   color: var(--ink);
   display: grid;
-  font-size: 11px;
-  gap: 5px;
-  left: 8px;
-  line-height: 1.3;
+  font-size: 13px;
+  gap: 7px;
+  line-height: 1.38;
   opacity: 0;
-  padding: 8px 9px;
+  padding: 10px 12px;
   pointer-events: none;
   position: absolute;
-  right: 8px;
-  top: 42px;
+  left: 0;
+  top: calc(100% - 4px);
   transform: translateY(-4px);
   transition:
     opacity 140ms ease 520ms,
     transform 140ms ease 520ms,
     visibility 0s linear 660ms;
   visibility: hidden;
-  z-index: 45;
+  width: min(300px, 78vw);
+  z-index: 1000;
 }
 
-.order-slot:hover .slot-shot-preview,
-.order-slot:focus-within .slot-shot-preview {
+.order-slot:nth-child(2) .slot-shot-preview {
+  left: 50%;
+  transform: translate(-50%, -4px);
+}
+
+.order-slot:nth-child(3) .slot-shot-preview {
+  left: auto;
+  right: 0;
+}
+
+.seal-details:hover .slot-shot-preview,
+.seal-details:focus-within .slot-shot-preview {
   opacity: 1;
   transform: translateY(0);
   transition-delay: 520ms;
   visibility: visible;
 }
 
+.order-slot:nth-child(2) .seal-details:hover .slot-shot-preview,
+.order-slot:nth-child(2) .seal-details:focus-within .slot-shot-preview {
+  transform: translate(-50%, 0);
+}
+
 .shot-preview-kicker {
   color: var(--gold-bright);
   font-family: "Pirata One", serif;
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -496,7 +560,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 
 .shot-preview-row b {
   color: #fff4cf;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .shot-preview-row span,
@@ -505,7 +569,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 .shot-preview-note {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* physical cards */
@@ -535,11 +599,11 @@ h1, h2, .brand, .poster-title, .banner-text {
   content: "☄"; position: absolute; right: 5px; bottom: 4px; color: var(--desperate);
   font-size: 13px; filter: drop-shadow(0 0 4px rgba(168,111,212,.9));
 }
-.card.in-slot { width: 64px; height: 90px; font-size: 8px; }
-.card.in-slot .card-icon { font-size: 14px; margin-top: 2px; }
-.card.in-slot .card-name { font-size: 8.5px; }
-.card.in-slot .card-text { font-size: 7px; }
-.card.in-slot:hover { transform: translateY(-4px) scale(1.7) !important; }
+.card.in-slot { width: 82px; height: 114px; font-size: 9px; }
+.card.in-slot .card-icon { font-size: 18px; margin-top: 4px; }
+.card.in-slot .card-name { font-size: 10px; }
+.card.in-slot .card-text { font-size: 8px; }
+.card.in-slot:hover { transform: translateY(-4px) scale(1.35) !important; }
 .card.desperate-face { background: linear-gradient(168deg, #33204e 0%, #241540 55%, #180e2e 100%); }
 .card.desperate-face .card-trim { border-color: var(--desperate); }
 .card.selected { outline: 2px solid var(--gold-bright); box-shadow: 0 0 18px rgba(212,167,72,.6); }
@@ -891,13 +955,13 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .seal-toggle {
-    height: 42px;
-    width: 42px;
+    height: 26px;
+    width: 54px;
   }
 
   :root[data-device="phone"] .card.in-slot {
-    height: 74px;
-    width: 52px;
+    height: 82px;
+    width: 58px;
   }
 
   :root[data-device="phone"] .hand-area {
@@ -996,10 +1060,10 @@ h1, h2, .brand, .poster-title, .banner-text {
 
 /* responsive-ish */
 @media (max-width: 1500px) {
-  .game-grid { grid-template-columns: 240px 1fr 520px; }
+  .game-grid { grid-template-columns: 240px minmax(0, 1fr) 590px; }
 }
 @media (max-width: 1200px) {
-  .game-grid { grid-template-columns: 220px 1fr 420px; }
+  .game-grid { grid-template-columns: 220px minmax(0, 1fr) 480px; }
   .hand-area .card { width: 100px; height: 140px; }
   .lobby-grid { grid-template-columns: 1fr; }
 }

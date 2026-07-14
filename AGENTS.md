@@ -1,4 +1,5 @@
 # StarShot Agent Notes
 
 - Read `docs/context/ai_handoff.md` when starting work in this repo.
-- When changing frontend files under `frontend/debug/`, bump the cache-buster query string in `frontend/debug/index.html` for any changed static assets, especially `/static/app.js?v=...`. The browser can keep serving old JavaScript even after the tab is closed.
+- The active browser UI is `frontend/v2/`, served at `/v2`. The root URL redirects there.
+- When changing v2 frontend files, bump the matching query string in `frontend/v2/index.html`.

@@ -338,13 +338,13 @@
     counts.set(key, index + 1);
     const side = index % 2 === 0 ? 1 : -1;
     const rank = Math.floor(index / 2);
-    const offset = side * (HEX * (0.62 + rank * 0.42));
+    const offset = side * (HEX * (1.15 + rank * 0.75));
     const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
     return {
       cx: midX + nx * offset,
       cy: midY + ny * offset,
-      lx: midX + nx * (offset + HEX * 0.34),
-      ly: midY + ny * (offset + HEX * 0.34) - 4,
+      lx: midX + nx * (offset + HEX * 0.58),
+      ly: midY + ny * (offset + HEX * 0.58) - 4,
     };
   }
 

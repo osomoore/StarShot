@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,7 +18,6 @@ from starshot.v2.router import router as v2_router
 
 app = FastAPI(title="StarShot")
 ROOT = Path(__file__).resolve().parents[3]
-FRONTEND_DIR = ROOT / "frontend" / "debug"
 V2_FRONTEND_DIR = ROOT / "frontend" / "v2"
 RESOURCES_DIR = ROOT / "resources"
 DEFAULT_DB_PATH = ROOT / ".starshot" / "games.sqlite3"
@@ -70,9 +69,6 @@ app.include_router(v2_router)
 from starshot.v2.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router)
-
-if (FRONTEND_DIR / "static").exists():
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 
 if (V2_FRONTEND_DIR / "static").exists():
     app.mount("/v2/static", StaticFiles(directory=V2_FRONTEND_DIR / "static"), name="v2static")
@@ -193,19 +189,8 @@ def _debug_draw_desperation_to_hand(state: GameState, player_id: str, representa
 
 
 @app.get("/")
-def index() -> FileResponse:
-    index_path = FRONTEND_DIR / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Debug UI not found.")
-    return FileResponse(index_path, headers={"Cache-Control": "no-store"})
-
-
-@app.get("/ship-sim")
-def ship_simulator() -> FileResponse:
-    index_path = FRONTEND_DIR / "ship-sim.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Ship simulator UI not found.")
-    return FileResponse(index_path)
+def index() -> RedirectResponse:
+    return RedirectResponse(url="/v2", status_code=307)
 
 
 @app.get("/api/health")

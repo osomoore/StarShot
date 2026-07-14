@@ -13,7 +13,7 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 - `backend/starshot/rules/`: pure deterministic rules engine.
 - `backend/starshot/api/`: FastAPI app and HTTP routes.
 - `backend/starshot/persistence/`: SQLite snapshot/event persistence.
-- `frontend/debug/`: legacy debug UI served by FastAPI at `/`; do not spend effort on it unless explicitly requested.
+- `frontend/v2/`: active browser interface served by FastAPI at `/v2`; `/` redirects there.
 - `tests/`: unittest suite for rules, persistence, serialization, and API.
 - `docs/rules/`: canonical rules PDF, extracted text, and implementation checklist.
 - `resources/decks/core_0_2/`: default human-editable TOML deck data.
@@ -52,7 +52,7 @@ Implemented so far:
 - Submit hidden orders.
 - Resolve phases from `give_orders` through cleanup.
 - Move ships on an axial hex grid. Move cards turn first, then move forward in the new facing. No U-Turn on base move cards.
-- Render a radius-12 hex board in the debug UI.
+- Render a radius-12 hex board in the v2 UI.
 - Start ships near board corners, 3 hexes in from the corner.
 - Preview all three planned action stacks on the hex board.
 - Show movement stops, facing, and attack burst previews.
@@ -83,7 +83,7 @@ Not implemented yet:
 
 - Hex coordinates are axial `(q, r)`.
 - Board radius is `14` (code constant `BOARD_RADIUS`).
-- Hex direction indexes live in `backend/starshot/rules/hex.py` and are mirrored in `frontend/debug/static/app.js`.
+- Hex direction indexes live in `backend/starshot/rules/hex.py` and are mirrored in `frontend/v2/static/board.js`.
 - Ship facing points toward hex faces, not corners.
 - Move cards: `turn_left` rotates facing +1 then moves forward; `turn_right` rotates facing -1 (mod 6) then moves forward; `forward` moves straight. No U-Turn.
 - Overdrive duplicates the full order as an immediate copy. It does **not** boost card values.
@@ -99,5 +99,5 @@ Not implemented yet:
 - Prefer small working increments that can be tried in the browser.
 - When changing rules, update or add tests first or alongside the change.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
-- `/v2` is the active browser interface. Treat the non-v2 debug UI as legacy and out of scope unless the user explicitly asks for it.
+- `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
 - 96 tests passing as of last session.

@@ -560,7 +560,7 @@
     if (ordering) {
       // Click the slot itself (not a card/seal) to arm it for slot-first picking.
       node.addEventListener("click", (event) => {
-        if (event.target.closest(".card") || event.target.closest(".seal-toggle")) return;
+        if (event.target.closest(".card") || event.target.closest(".seal-toggle") || event.target.closest(".seal-details")) return;
         armedSlot = armedSlot === index ? null : index;
         renderOrdersPanel();
       });
@@ -597,9 +597,12 @@
       cardsHtml.appendChild(hint);
     }
     const seal = document.createElement("div");
+    seal.className = "seal-control";
     const overdriveNote = overdriveCopiesAction() ? "OVERDRIVE x2" : "OVERDRIVE";
     seal.innerHTML = `<div class="seal-toggle ${slot.seal === "overdrive" ? "overdrive" : ""}" title="Toggle Sealed / Overdrive">${slot.seal === "overdrive" ? "🔥" : "☠"}</div>
       <div class="seal-note">${slot.seal === "overdrive" ? overdriveNote : "sealed"}</div>`;
+    seal.querySelector(".seal-toggle").innerHTML = `<span class="seal-mode-text">${slot.seal === "overdrive" ? overdriveNote : "SEALED"}</span>`;
+    seal.querySelector(".seal-note")?.remove();
     if (ordering) {
       seal.querySelector(".seal-toggle").addEventListener("click", () => {
         slot.seal = slot.seal === "overdrive" ? "sealed" : "overdrive";
@@ -608,11 +611,22 @@
     }
     const label = document.createElement("div");
     label.className = "slot-label";
-    label.innerHTML = `Action<br>${["I", "II", "III"][index]}`;
+    label.textContent = `Action ${index + 1}`;
     node.appendChild(label);
     node.appendChild(cardsHtml);
     const shotPreview = slotShotPreviewEl(index);
-    if (shotPreview) node.appendChild(shotPreview);
+    if (shotPreview) {
+      const details = document.createElement("div");
+      details.className = "seal-details";
+      details.innerHTML = `<button class="seal-details-button" type="button">Details</button>`;
+      details.querySelector(".seal-details-button").textContent = "i";
+      details.querySelector(".seal-details-button").setAttribute("aria-label", "Shot details");
+      details.querySelector(".seal-details-button").addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+      details.appendChild(shotPreview);
+      seal.appendChild(details);
+    }
     node.appendChild(seal);
     return node;
   }
@@ -1180,17 +1194,19 @@
     }
     if (captainId(me) === "malcolm_manderly") aim += 2;
     const distance = Board.hexDistance(pos.q, pos.r, enemy.ship.q, enemy.ship.r);
-    const targetMove = lead ? 0 : Math.round(expectedTargetMove(targetId));
+    const targetMove = 0;
     const targetDefense = enemy.ship.defense_bonus_this_action || 0;
     const defense = fixedDefense ?? (distance + targetMove + targetDefense);
     const needed = defense - aim;
     const attackDice = activeStarfall("clear_skies") ? 3 : 2;
     const inRange = maxRange == null || distance <= maxRange;
-    const hitChance = inRange ? (always ? 1 : pDiceAtLeast(attackDice, needed)) : 0;
+    const naturalAutoHitChance = 1 / (6 ** attackDice);
+    const hitChance = inRange ? (always ? 1 : Math.max(naturalAutoHitChance, pDiceAtLeast(attackDice, needed))) : 0;
     const labelBase = `A${["I", "II", "III"][slotIndex]}${ahead ? " ⇢" : ""}${overdriveCopy ? " OD" : ""}`;
     return {
       aim,
       always,
+      attackDice,
       baseDamage,
       damage: baseDamage + damageBonus,
       defense,
@@ -1206,6 +1222,7 @@
       target: targetId,
       targetDefense,
       targetMove,
+      targetMoveHidden: !lead,
       to: { q: enemy.ship.q, r: enemy.ship.r },
       overdriveCopy,
     };
@@ -1217,7 +1234,9 @@
       ? `out of range ${projection.distance}/${projection.maxRange}`
       : projection.always
         ? "always hits"
-        : `${Math.max(2, projection.needed)}+ (${Math.round(projection.hitChance * 100)}%)`;
+        : projection.needed > projection.attackDice * 6
+          ? `natural ${projection.attackDice * 6} (${Math.round(projection.hitChance * 100)}%)`
+          : `${Math.max(projection.attackDice, projection.needed)}+ (${Math.round(projection.hitChance * 100)}%)`;
     const parts = [
       `${displayName(projection.target)}: ${roll}`,
       `${projection.damage} dmg`,

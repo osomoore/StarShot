@@ -92,15 +92,14 @@ Start, check, or stop the local server:
 .\stop_server.bat
 ```
 
-The server runs at `http://127.0.0.1:8000` and writes logs to `.starshot\server.log`. Open that URL in a browser to use the debug UI.
+The server runs at `http://127.0.0.1:8000` and writes logs to `.starshot\server.log`. Open that URL in a browser; it redirects to the active `/v2` game UI.
 
-The debug UI can:
+The v2 UI can:
 
-- Create a red/blue test game.
-- List saved games from `.starshot\games.sqlite3`.
-- Show round, phase, players, events, and raw state.
-- Submit canned red and blue orders.
-- Toggle hidden order reveal for debugging.
+- Sign in or register a local test captain.
+- Create and join battles with human or AI seats.
+- Build and seal action stacks.
+- Replay battles and export debug logs.
 
 ### Manual Commands
 
