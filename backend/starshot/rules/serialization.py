@@ -10,6 +10,7 @@ from starshot.rules.models import (
     CardFamily,
     DesperateFace,
     DesperationDeck,
+    FleetCraftState,
     GamePhase,
     GameResult,
     GameState,
@@ -19,8 +20,10 @@ from starshot.rules.models import (
     RulesConfig,
     SealMode,
     ShipState,
+    StarBreachState,
 )
 from starshot.rules.star_command import CAPTAINS_BY_ID, STARFALLS_BY_ID, captain_to_dict, starfall_to_dict
+from starshot.rules import star_breach as sb_data
 from starshot.rules.deck_data import active_catalog
 from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
 
@@ -54,6 +57,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         ),
         "active_starfall_round": state.active_starfall_round,
         "starfall_bauble_number": state.starfall_bauble_number,
+        "star_breach": star_breach_to_dict(state.star_breach) if state.star_breach else None,
     }
 
 
@@ -75,6 +79,72 @@ def state_from_dict(data: dict) -> GameState:
         active_starfall_id=data.get("active_starfall_id"),
         active_starfall_round=data.get("active_starfall_round"),
         starfall_bauble_number=data.get("starfall_bauble_number"),
+        star_breach=star_breach_from_dict(data["star_breach"]) if data.get("star_breach") else None,
+    )
+
+
+def star_breach_to_dict(sb: StarBreachState) -> dict:
+    destroyed = sorted(sb.destroyed_hexes)
+    destroyed_components = sorted(sb_data.destroyed_component_ids(sb.destroyed_hexes))
+    return {
+        "scenario_id": sb.scenario_id,
+        "prey_player_id": sb.prey_player_id,
+        "anchor_q": sb.anchor_q,
+        "anchor_r": sb.anchor_r,
+        "destroyed_hexes": [[q, r] for q, r in destroyed],
+        "destroyed_component_ids": destroyed_components,
+        "shield_hp": dict(sb.shield_hp),
+        "progress": sb.progress,
+        "tiers_unlocked": list(sb_data.unlocked_tiers(sb.progress)),
+        "tier_progress": {str(tier): threshold for tier, threshold in sb_data.TIER_PROGRESS.items()},
+        "fleet": [fleet_craft_to_dict(craft) for craft in sb.fleet],
+        "boss_movement_this_action": sb.boss_movement_this_action,
+        "repaired_ship_ids_this_action": list(sb.repaired_ship_ids_this_action),
+        "boss_layout": sb_data.boss_layout_to_dict(),
+        "roles": {role.id: sb_data.role_to_dict(role) for role in sb_data.ROLES},
+    }
+
+
+def star_breach_from_dict(data: dict) -> StarBreachState:
+    return StarBreachState(
+        scenario_id=data.get("scenario_id", "bauble_breacher"),
+        prey_player_id=data.get("prey_player_id", ""),
+        anchor_q=data.get("anchor_q", 0),
+        anchor_r=data.get("anchor_r", 0),
+        destroyed_hexes={(hex_[0], hex_[1]) for hex_ in data.get("destroyed_hexes", [])},
+        shield_hp=dict(data.get("shield_hp", {})),
+        progress=data.get("progress", 0),
+        fleet=[fleet_craft_from_dict(craft) for craft in data.get("fleet", [])],
+        boss_movement_this_action=data.get("boss_movement_this_action", 0),
+        repaired_ship_ids_this_action=list(data.get("repaired_ship_ids_this_action", [])),
+    )
+
+
+def fleet_craft_to_dict(craft: FleetCraftState) -> dict:
+    return {
+        "id": craft.id,
+        "kind": craft.kind,
+        "color": craft.color,
+        "q": craft.q,
+        "r": craft.r,
+        "hp": craft.hp,
+        "max_hp": craft.max_hp,
+        "destroyed": craft.destroyed,
+        "movement_this_action": craft.movement_this_action,
+    }
+
+
+def fleet_craft_from_dict(data: dict) -> FleetCraftState:
+    return FleetCraftState(
+        id=data["id"],
+        kind=data.get("kind", "hunter_killer"),
+        color=data.get("color", "blue"),
+        q=data.get("q", 0),
+        r=data.get("r", 0),
+        hp=data.get("hp", 0),
+        max_hp=data.get("max_hp", data.get("hp", 0)),
+        destroyed=data.get("destroyed", False),
+        movement_this_action=data.get("movement_this_action", 0),
     )
 
 
@@ -138,6 +208,8 @@ def player_to_dict(player: PlayerState, *, reveal_orders: bool) -> dict:
             for captain_id in player.captain_options
             if captain_id in CAPTAINS_BY_ID
         ],
+        "roles": list(player.roles),
+        "bonus_draws_pending": player.bonus_draws_pending,
     }
 
 
@@ -159,6 +231,8 @@ def player_from_dict(data: dict) -> PlayerState:
             option["id"] if isinstance(option, dict) else option
             for option in data.get("captain_options", ())
         ),
+        roles=tuple(data.get("roles", ())),
+        bonus_draws_pending=data.get("bonus_draws_pending", 0),
     )
 
 

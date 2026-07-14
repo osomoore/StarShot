@@ -87,7 +87,7 @@ def _public_profile(user: dict) -> dict:
 
 
 def _validated_expansions(active_expansions: list[str]) -> list[str]:
-    allowed_expansions = {"star_command"}
+    allowed_expansions = {"star_command", "star_breach"}
     result = [expansion for expansion in dict.fromkeys(active_expansions) if expansion]
     unknown = [expansion for expansion in result if expansion not in allowed_expansions]
     if unknown:
@@ -365,10 +365,11 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
             raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
     if body.ai_types and body.ai_level not in AI_LEVELS:
         raise HTTPException(status_code=400, detail=f"Unknown AI level: {body.ai_level}")
-    total = 1 + len(body.ai_types) + body.open_seats
-    if total < 2 or total > 4:
-        raise HTTPException(status_code=400, detail="Matches need 2 to 4 combatants.")
     active_expansions = _validated_expansions(body.active_expansions)
+    total = 1 + len(body.ai_types) + body.open_seats
+    minimum = 1 if "star_breach" in active_expansions else 2
+    if total < minimum or total > 4:
+        raise HTTPException(status_code=400, detail=f"Matches need {minimum} to 4 combatants.")
     store = get_v2_store()
     store.leave_queue(user["id"])  # starting your own battle cancels quick-match
     name = body.name.strip() or f"{user['username']}'s raid"

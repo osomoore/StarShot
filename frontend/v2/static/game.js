@@ -137,6 +137,7 @@
     document.body.classList.add("mobile-game-active");
     Board.build();
     Board.setShipClickHandler(handleShipClick);
+    Board.setBossClickHandler(handleBossClick);
     if (document.documentElement.dataset.device === "phone") Board.resetView?.();
     await fetchView(true);
     if (pollTimer) clearInterval(pollTimer);
@@ -280,13 +281,30 @@
     return seat && seat.title ? seat.title : "";
   }
 
+  /* Pretty label for any attack target: player, boss area, or fleet craft. */
+  function targetLabel(target) {
+    if (!target) return "";
+    if (target.startsWith && target.startsWith("boss:")) {
+      const area = target.split(":")[1];
+      return `the StarBreacher (${area})`;
+    }
+    if (target.startsWith && target.startsWith("craft:")) {
+      const id = target.split(":")[1];
+      return id.replace("hk_", "") + " Hunter-Killer";
+    }
+    if (target === "starbreacher") return "the StarBreacher";
+    return displayName(target);
+  }
+
   function renderAll() {
     if (!view) return;
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
     Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
+    Board.renderStarBreach(view.star_breach, { preyPos: preyPosition() });
     Board.renderShips(view.players, seatOrder(), you);
     renderStarfallStatus();
     renderCaptainStatus();
+    renderStarBreachStatus();
     renderFleet();
     renderLog();
     renderOrdersPanel();
@@ -325,6 +343,43 @@
       statusStack().appendChild(node);
     }
     node.innerHTML = `<b>${esc(captain.callsign || captain.name)}</b><span>${esc(captain.text)}</span>`;
+  }
+
+  function preyPosition() {
+    const sb = view && view.star_breach;
+    if (!sb) return null;
+    const prey = view.players[sb.prey_player_id];
+    return prey && prey.ship && !prey.ship.destroyed ? { q: prey.ship.q, r: prey.ship.r } : null;
+  }
+
+  function myRoles() {
+    const me = myPlayer();
+    return (me && me.roles) || [];
+  }
+
+  function renderStarBreachStatus() {
+    let node = document.getElementById("starbreach-status");
+    const sb = view.star_breach;
+    if (!sb) {
+      if (node) node.remove();
+      return;
+    }
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "starbreach-status";
+      node.className = "starfall-status";
+      statusStack().appendChild(node);
+    }
+    const tiers = sb.tiers_unlocked || [];
+    const shields = ["forward", "port", "rear", "starboard"]
+      .map((area) => `${area[0].toUpperCase()}${sb.shield_hp?.[area] ?? 0}`)
+      .join(" ");
+    const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
+    const roleNames = myRoles().map((role) => (sb.roles && sb.roles[role] ? sb.roles[role].name : role)).join(" + ");
+    node.innerHTML = `<b>☄ StarBreacher</b>
+      <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}${tiers.length ? ` (Tier ${Math.max(...tiers)})` : ""}
+      · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}</span>`;
+    node.title = "Boss shield arcs (Forward/Port/Rear/Starboard) and progress track. Hits on The Prey advance the track and unlock more boss actions.";
   }
 
   function statusStack() {
@@ -367,6 +422,8 @@
             ${playerId === you ? '<span class="badge-you">YOU</span>' : ""}
             ${titleFor(playerId) ? `<span class="badge-title">${esc(titleFor(playerId))}</span>` : ""}
             ${seat && seat.is_ai ? `<span class="badge-ai">${esc(seat.ai_label || "AI")}</span>` : ""}
+            ${view.star_breach && view.star_breach.prey_player_id === playerId ? '<span class="badge-title" style="color:#ff8a7a">PREY</span>' : ""}
+            ${view.star_breach && (player.roles || []).length ? `<span class="badge-title">${esc((player.roles || []).map((role) => (view.star_breach.roles?.[role]?.name) || role).join(" · "))}</span>` : ""}
           </span>
           <span class="vp">${player.victory_points} VP</span>
         </div>
@@ -439,6 +496,44 @@
         return { cls: "loot", text: `✦ Loot claimed: ${who}` };
       }
       case "desperation_consequence": return { cls: "hit", text: `${name(event.player_id)} grows desperate…` };
+      case "boss_phase_resolved": {
+        if (!(event.slots || []).length && !(event.fleet || []).length) return null;
+        const label = event.boss_phase === "starbreach" ? "STARBREACH" : `Action ${event.boss_phase}`;
+        return { cls: "round", text: `☄ The StarBreacher acts (${label}) — ${event.kind}.` };
+      }
+      case "boss_progress_advanced": {
+        const tiers = event.tiers_unlocked || [];
+        return {
+          cls: "hit",
+          text: `☄ Boss progress +${event.amount} (now ${event.progress})${tiers.length ? ` — Tier ${tiers.join(", ")} unlocked!` : ""}`,
+        };
+      }
+      case "enemy_volley_resolved": {
+        const result = event.shielded ? "shield takes it" : event.hit ? `HIT for ${event.damage_applied || 1}` : "misses";
+        return { cls: event.hit ? "hit" : "", text: `${targetLabel(event.attacker)} fires on ${name(event.target_id)} — 🎲${event.roll}${event.aim_bonus ? "+" + event.aim_bonus : ""} vs ${event.defense_threshold}: ${result}${event.target_destroyed ? " — SHIP DESTROYED ☠" : ""}` };
+      }
+      case "boss_volley_resolved": {
+        let result = "misses";
+        if (event.hit) {
+          const bits = [];
+          if (event.shields_absorbed) bits.push(`${event.shields_absorbed} soaked by shields`);
+          if (event.hexes_destroyed) bits.push(`${event.hexes_destroyed} hull hex${event.hexes_destroyed > 1 ? "es" : ""} destroyed`);
+          if ((event.components_destroyed || []).length) bits.push(`${event.components_destroyed.join(", ")} DESTROYED`);
+          if (event.desperation_cards_drawn) bits.push("glancing blow — desperation card");
+          result = "HIT: " + (bits.join(", ") || "no effect");
+        }
+        return { cls: event.hit ? "hit" : "", text: `${name(event.attacker_id)} fires on ${targetLabel(event.target_id)} — 🎲${event.roll} vs ${event.defense_threshold}: ${result}` };
+      }
+      case "craft_volley_resolved": {
+        const result = event.hit ? (event.craft_destroyed ? "DESTROYED ☠" : `HIT for ${event.damage_applied} (${event.craft_hp_left} HP left)`) : "misses";
+        return { cls: event.hit ? "hit" : "", text: `${name(event.attacker_id)} fires on the ${targetLabel(event.target_id)} — 🎲${event.roll} vs ${event.defense_threshold}: ${result}` };
+      }
+      case "repair_volley_resolved": {
+        const result = event.hit
+          ? (event.restored_component_id ? `repairs ${event.restored_component_id.replace(/_/g, " ")}` : event.shield_restored ? "restores a shield" : "nothing to fix")
+          : "fumbles the repair";
+        return { cls: "loot", text: `🔧 ${name(event.attacker_id)} works on ${name(event.target_id)} — 🎲${event.roll} vs ${event.defense_threshold}: ${result}.` };
+      }
       case "player_forfeited": return { cls: "round", text: `🏳 ${name(event.player_id)} strikes their colors and abandons the battle!` };
       case "deck_refreshed": return { cls: "", text: `${name(event.player_id)} reshuffles.` };
       default: return null;
@@ -694,6 +789,16 @@
   let armedSlot = null;
 
   function handleShipClick(playerId) {
+    if (targetResolver && view.star_breach) {
+      // Co-op: clicking a crew ship is only meaningful for Engineer repairs.
+      if (myRoles().includes("engineer")) {
+        const resolve = targetResolver;
+        targetResolver = null;
+        hidePicker();
+        resolve(playerId);
+      }
+      return;
+    }
     if (targetResolver && playerId !== you) {
       const resolve = targetResolver;
       targetResolver = null;
@@ -704,6 +809,56 @@
     if (document.documentElement.dataset.device === "phone") {
       showShipModal(playerId);
     }
+  }
+
+  function handleBossClick(area) {
+    if (!targetResolver) return;
+    const resolve = targetResolver;
+    targetResolver = null;
+    hidePicker();
+    resolve("boss:" + area);
+  }
+
+  /* Co-op target list: intact boss areas, living hunter-killers, and (for
+     the Engineer) crew ships to repair. */
+  function coopTargetOptions() {
+    const sb = view.star_breach;
+    if (!sb) return [];
+    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+    const areaAlive = {};
+    for (const cell of (sb.boss_layout || {}).footprint || []) {
+      if (!destroyed.has(cell.q + "," + cell.r)) areaAlive[cell.area] = true;
+    }
+    const options = [];
+    for (const area of ["forward", "port", "rear", "starboard"]) {
+      if (!areaAlive[area]) continue;
+      options.push({
+        icon: "☄", value: "boss:" + area,
+        label: `StarBreacher — ${area}`,
+        sub: `shield ${sb.shield_hp?.[area] ?? 0}`,
+      });
+    }
+    for (const craft of sb.fleet || []) {
+      if (craft.destroyed) continue;
+      options.push({
+        icon: "▣", value: "craft:" + craft.id,
+        label: `${craft.color} Hunter-Killer`,
+        sub: `${craft.hp}/${craft.max_hp} HP`,
+      });
+    }
+    if (myRoles().includes("engineer")) {
+      for (const pid of seatOrder()) {
+        const player = view.players[pid];
+        if (!player || player.eliminated || (player.ship || {}).destroyed) continue;
+        const damage = (player.ship.destroyed_components || []).length;
+        options.push({
+          icon: "🔧", value: pid,
+          label: `Repair ${displayName(pid)}`,
+          sub: damage ? `${damage} damaged` : `${player.ship.shields} shields`,
+        });
+      }
+    }
+    return options;
   }
 
   function showPicker(title, options, allowCancel = true) {
@@ -919,7 +1074,17 @@
       if (!needsTarget) {
         selection.untargeted = true;
       }
-      if (needsTarget) {
+      if (needsTarget && view.star_breach) {
+        const options = coopTargetOptions();
+        if (!options.length) { App.toast("Nothing left to shoot at."); return; }
+        const chosen = await new Promise((resolve) => {
+          targetResolver = resolve;
+          showPicker("Mark yer target (or click the boss)", options)
+            .then((value) => { if (targetResolver) { targetResolver = null; resolve(value); } });
+        });
+        if (!chosen) return;
+        selection.target_player_id = chosen;
+      } else if (needsTarget) {
         const enemies = seatOrder().filter((pid) => {
           const player = view.players[pid];
           return pid !== you && player && !player.eliminated && !(player.ship || {}).destroyed;
@@ -964,7 +1129,7 @@
       const existing = slot.cards[0].target_player_id;
       if (existing && selection.target_player_id && existing !== selection.target_player_id) {
         selection.target_player_id = existing;
-        App.toast("Both cannons aim at " + displayName(existing) + " — one volley, one target.", true);
+        App.toast("Both cannons aim at " + targetLabel(existing) + " — one volley, one target.", true);
       }
     }
     slot.cards.push(selection);
@@ -1162,9 +1327,35 @@
         noTarget: true,
       }];
     }
-    const enemy = view.players[target];
+    let enemy = view.players[target];
+    if ((!enemy || !enemy.ship) && view.star_breach) enemy = coopTargetStub(target, pos);
     if (!enemy || !enemy.ship) return [];
     return [attackProjection(slotIndex, pos, target, enemy, attackSelections, ahead, overdriveCopy, combineCards)];
+  }
+
+  /* Stand-in "enemy" so attack previews can point at the boss or a craft. */
+  function coopTargetStub(target, pos) {
+    const sb = view.star_breach;
+    if (!sb || !target || !target.startsWith) return null;
+    if (target.startsWith("craft:")) {
+      const craft = (sb.fleet || []).find((candidate) => candidate.id === target.split(":")[1]);
+      if (!craft || craft.destroyed) return null;
+      return { ship: { q: craft.q, r: craft.r, defense_bonus_this_action: 0, shields: 0 } };
+    }
+    if (target.startsWith("boss:")) {
+      const area = target.split(":")[1];
+      const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+      let best = null, bestDistance = Infinity;
+      for (const cell of (sb.boss_layout || {}).footprint || []) {
+        if (cell.area !== area || destroyed.has(cell.q + "," + cell.r)) continue;
+        const q = sb.anchor_q + cell.q, r = sb.anchor_r + cell.r;
+        const distance = Board.hexDistance(pos.q, pos.r, q, r);
+        if (distance < bestDistance) { bestDistance = distance; best = { q, r }; }
+      }
+      if (!best) return null;
+      return { ship: { q: best.q, r: best.r, defense_bonus_this_action: 0, shields: 0 } };
+    }
+    return null;
   }
 
   function attackProjection(slotIndex, pos, targetId, enemy, attackSelections, ahead, overdriveCopy, combineCards) {
@@ -1700,6 +1891,9 @@
     last_ship_standing: "Last ship still flying",
     all_ships_destroyed: "Every ship destroyed — mutual annihilation",
     round_six_victory_points: "Most plunder after six rounds",
+    star_breach_victory: "The Prey reached The Fang — the StarBreacher is denied!",
+    star_breach_prey_destroyed: "The Prey was destroyed — the StarBreacher feeds",
+    star_breach_objective_failed: "Round 6 ended with The Prey outside The Fang",
   };
 
   function showEndgame() {
@@ -1723,7 +1917,7 @@
     const box = document.createElement("div");
     box.className = "endgame";
     box.innerHTML = `
-      <h2>${you === null ? "Battle Report" : youWon ? "🏴‍☠ VICTORY!" : winners.size ? "Defeat…" : "Stalemate"}</h2>
+      <h2>${you === null ? "Battle Report" : youWon ? "🏴‍☠ VICTORY!" : winners.size ? "Defeat…" : view.star_breach ? "☄ The StarBreacher Prevails…" : "Stalemate"}</h2>
       <div class="eg-sub">${esc([...winners].map(displayName).join(" & ") || "No captain")} rules this stretch of the void
         ${view.result && view.result.is_tie ? " (a tie, settled over grog)" : ""}<br>
         <b>How it ended:</b> ${esc(reason)} · ${view.round_number > 6 ? 6 : view.round_number} round${view.round_number > 1 ? "s" : ""} fought

@@ -17,8 +17,14 @@ class DrawHandResult:
     moved_overheat_to_discard: list[Card]
 
 
+ENGINEER_BONUS_HAND_SIZE = 2
+
+
 def hand_size_for_player(player: PlayerState) -> int:
-    return SHIELDS_EXHAUSTED_HAND_SIZE if player.ship.shields <= 0 else DEFAULT_HAND_SIZE
+    size = SHIELDS_EXHAUSTED_HAND_SIZE if player.ship.shields <= 0 else DEFAULT_HAND_SIZE
+    if "engineer" in player.roles:
+        size += ENGINEER_BONUS_HAND_SIZE
+    return size
 
 
 def draw_hand(
@@ -29,8 +35,9 @@ def draw_hand(
     drawn: list[Card] = []
     reshuffled_discard: list[Card] = []
     moved_overheat_to_discard: list[Card] = []
-    target = max(0, hand_size_for_player(player) - player.overdrive_seals_pending)
+    target = max(0, hand_size_for_player(player) + player.bonus_draws_pending - player.overdrive_seals_pending)
     player.overdrive_seals_pending = 0
+    player.bonus_draws_pending = 0
     while len(drawn) < target and player.deck:
         drawn.append(player.deck.pop(0))
     while len(drawn) < target:

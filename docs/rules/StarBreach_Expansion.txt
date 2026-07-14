@@ -1,0 +1,322 @@
+StarBreach Rules
+
+A cooperative expansion for StarShot
+
+Overview
+
+In StarBreach, one to four players work together against a massive alien StarBreacher and its supporting fleet. Instead of competing with each other, the players must accomplish the scenario objective before the StarBreacher completes its own.
+
+Unless otherwise stated below, all normal StarShot rules remain in effect.
+
+Scenario: Bauble Breacher
+Player Objective
+
+One player is designated The Prey at the start of the game.
+
+The players win if:
+
+The Prey ends Round 6 inside The Fang.
+Boss Objective
+
+The StarBreacher attempts to prevent this by eliminating The Prey.
+
+If the Prey is destroyed, the players immediately lose.
+
+Player Roles
+
+Each player chooses one role.
+
+If playing with fewer than four players, one player may control multiple roles.
+
+Treasure Hunter
+No Overdrive draw penalty from Move-only Orders.
+Whenever this player collects a Bauble, every player draws one bonus card.
+Tank
+Begins with one additional Shield Charge.
+Proximity Jammer: While within three hexes of an enemy, that enemy targets the Tank instead of any other valid target. Enemy attacks against the Tank roll one fewer attack die.
+Engineer
+Draw two additional cards during Draw.
+Attack Orders may target allies instead of enemies.
+Repairs are resolved as attacks using 1d6 instead of 2d6.
+A successful repair restores one HP instead of dealing damage.
+A ship may be repaired at most once per action.
+Fighting Ace
+
+Choose one of the following each time an attack is made:
+
+Roll one additional attack die, or
+Modify the Boss Damage Lane roll by ±1.
+
+Additionally:
+
+Ignore Overdrive penalties on Attack-only Orders.
+Enemy Fleet
+
+The StarBreacher commands a supporting fleet.
+
+The Bauble Breacher scenario begins with:
+
+Blue Hunter-Killer
+Green Hunter-Killer
+Yellow Hunter-Killer
+
+Fleet craft use normal movement and attack rules.
+
+They are represented on the board by colored dice.
+
+Facing does not matter.
+
+Each craft simply tracks remaining HP until destroyed.
+
+Enemy Behaviors
+
+Enemy movement is deterministic.
+
+Players execute enemy turns by following the behavior rules.
+
+Hunter-Killer
+
+Movement
+
+Move directly toward The Prey.
+Never overshoot.
+
+Attack
+
+Always target The Prey.
+If unavailable, use the normal target priority.
+
+Passive
+
++1 Aim on all attacks.
+Bauble Runner
+
+(Not used in this scenario.)
+
+Movement
+
+Move toward this round's Bauble.
+If unreachable, move toward next round's Bauble.
+During Round 6, if no Bauble objective remains, move toward The Prey.
+
+Attack
+
+Nearest player.
+
+Passive
+
++1 Move.
+Blaster
+
+(Not used in this scenario.)
+
+Movement
+
+Nearest player.
+
+Attack
+
+Nearest player.
+
+Passive
+
++1 Damage.
+The StarBreacher
+
+The StarBreacher is represented by a large hex-grid ship.
+
+See the supplied ship diagram starbreach_boss_scenario_01.jpg in the docs/rules.
+
+The ship is not divided into independent health zones.
+
+Instead, every hex is part of one continuous structure.
+
+The labeled areas simply determine:
+
+which Damage Lane table is used,
+which Shield Generators protect that area,
+and which components belong to that section.
+
+The Bauble Breacher ship contains four functional regions:
+
+Forward Shields
+Port Cannons
+Rear Engines
+Starboard Cannons
+Ship Components
+
+Certain hexes represent important systems.
+
+See the supplied ship diagram for component locations.
+
+Shield Generators
+
+Three Shield Generators protect portions of the ship.
+
+Each generator provides a 3 HP shield to its assigned shield arc.
+
+Destroying a generator immediately removes that shield.
+
+Firing Computers
+
+Four Firing Computers control the StarBreacher's Attack action slots.
+
+Each computer is linked to one specific Boss Action Slot.
+
+When destroyed, that action slot is permanently disabled.
+
+Fuel Tanks
+
+Four Fuel Tanks control the StarBreacher's Move action slots.
+
+Each tank is linked to one specific Boss Action Slot.
+
+When destroyed, that action slot is permanently disabled.
+
+Breacher Core
+
+The Core appears on the ship diagram for future scenarios.
+
+It has no gameplay function in this implementation.
+
+Attacking the StarBreacher
+
+Players may attack either:
+
+enemy fleet craft, or
+the StarBreacher.
+
+Fleet attacks resolve exactly like normal StarShot attacks.
+
+Boss attacks are resolved differently.
+
+Choose a target ship area.
+Resolve the attack normally.
+On a successful hit, roll the area's Damage Lane die.
+The indicated damage lane determines which hull hex is struck (see the supplied ship diagram).
+Damage is applied directly to that hex.
+
+If a lane reaches a destroyed hull section, continue inward along that lane until the first intact hex is found.
+
+Damage Lanes
+
+Each ship area has seven damage lanes.
+
+Roll a d8.
+
+2–7: Strike the corresponding damage lane.
+1: Glancing Blow.
+
+A Glancing Blow does not strike the ship.
+
+Instead, the attacking player gains one Desperation card.
+
+The Fighting Ace may modify the lane roll by ±1 after rolling.
+
+Boss Progress Track
+
+The StarBreacher advances along its Progress Track during play.
+
+In this scenario:
+
+Each successful hit against The Prey advances the track by 1.
+Destroying The Prey advances the track by 3.
+
+Certain spaces grant new capabilities.
+
+Standard Tier spaces unlock additional Boss Action Slots.
+
+Boss Tier spaces will be used by future Boss abilities.
+
+See the scenario board for the exact progression track.
+
+Boss Actions
+
+The StarBreacher acts between player actions.
+
+Its action phases are:
+
+Action 0.5
+Action 1.5
+Action 2.5
+Action 3.5
+StarBreach
+
+Movement defense and shield timing follow the same rules as player actions, considering the current half-action and the immediately preceding one.
+
+Boss Action Slots
+
+Each Boss action phase contains multiple possible action slots.
+
+A slot may become active because:
+
+it is a Base slot,
+its linked component remains intact, or
+its required Progress Tier has been reached.
+
+The Bauble Breacher scenario begins with:
+
+Action 0.5 (Attack)
+Base
+Firing Computer A
+Firing Computer B
+Tier 1
+Action 1.5 (Move)
+Base
+Fuel Tank A
+Fuel Tank B
+Tier 2
+Action 2.5 (Move)
+Base
+Fuel Tank C
+Fuel Tank D
+Tier 3
+Action 3.5 (Attack)
+Base
+Firing Computer C
+Firing Computer D
+Tier 4
+StarBreach
+Tier 5
+Tier 6
+
+The StarBreach phase has no Base action.
+
+As components are destroyed, linked action slots are removed.
+
+As Progress Tiers are reached, Tier slots become active.
+
+The boss's available actions therefore increase through progression and decrease as players destroy critical systems.
+
+Resolving Boss Actions
+
+Each active slot performs one action.
+
+The action type depends on its phase.
+
+Action 0.5 — Attack
+Action 1.5 — Move
+Action 2.5 — Move
+Action 3.5 — Attack
+
+For every active slot:
+
+Roll a d3 (0,0,1,1,2,2).
+Add 1.
+
+Attack phases perform that many attacks.
+
+Move phases move that many hexes.
+
+Each slot is resolved independently.
+
+Future Expansion
+
+The following systems are intentionally reserved for future StarBreach scenarios and are not part of the current implementation:
+
+Breacher Core objectives
+Boss Deck
+Boss Tier abilities
+Additional enemy behavior types
+Additional StarBreach scenarios
+Scenario-specific components and mechanics

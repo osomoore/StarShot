@@ -72,12 +72,25 @@ Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_i
 
 **Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 
+Implemented expansions:
+
+- StarCommand (`star_command`): captains + Starfall events.
+- StarBreach (`star_breach`): cooperative Bauble Breacher boss scenario.
+  Rules source: `docs/rules/StarBreach_Expansion.txt` + `docs/rules/starbreach_boss_scenario_01.jpg`.
+  Backend: `backend/starshot/rules/star_breach.py` (boss layout/lanes/roles data)
+  plus a StarBreach section at the bottom of `engine.py`; state in
+  `GameState.star_breach` (`StarBreachState` in models.py); tests in
+  `tests/test_star_breach.py`. Player attack targets in co-op are strings:
+  `boss:<area>`, `craft:<id>`, or an ally player id (Engineer repairs only).
+  Boss half-phases resolve at the start of player actions 1/2/3 (0.5/1.5/2.5)
+  and at the start of award_baubles (3.5 + StarBreach). 1-4 players allowed.
+
 Not implemented yet:
 
 - Deferred desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, Overdrive 2x.
 - Real player accounts, sessions, or multiplayer lobby UX.
 - WebSocket/live updates; current UI is manual/poll-style HTTP.
-- Expansion content: StarCommand, StarTech, StarBreach, StarTrader, Starfall events, captains, NPC ships, bosses, mission systems.
+- Expansion content: StarTech, StarTrader, additional StarBreach scenarios (Boss Deck, Boss Tier abilities, Breacher Core objectives, Bauble Runner/Blaster fleet behaviors), NPC missions.
 
 ## Important Conventions
 
@@ -100,4 +113,4 @@ Not implemented yet:
 - When changing rules, update or add tests first or alongside the change.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 96 tests passing as of last session.
+- 193 tests passing as of last session (2 API test modules require `fastapi` installed).

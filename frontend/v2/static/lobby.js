@@ -22,6 +22,11 @@
   let crew = [];        // selected ai types
   let aiLevel = "deck_hand";
   let starCommandActive = false;
+  let starBreachActive = false;
+  const activeExpansions = () => [
+    ...(starCommandActive ? ["star_command"] : []),
+    ...(starBreachActive ? ["star_breach"] : []),
+  ];
   const autoEntered = new Set();  // pairings/challenges already jumped into
   const esc = (value) => Cards.escapeHtml(value);
   const feedbackBadge = (count) => Number(count || 0) > 0
@@ -147,15 +152,39 @@
     });
     const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
     const total = 1 + crew.length + openSeats;
+    const minShips = starBreachActive ? 1 : 2;
     const button = document.getElementById("btn-create-match");
-    button.disabled = total < 2 || total > 4;
-    button.textContent = total < 2 ? "🏴‍☠ Pick at least one foe" : `🏴‍☠ Launch Raid (${total} ships)`;
+    button.disabled = total < minShips || total > 4;
+    button.textContent = total < minShips ? "🏴‍☠ Pick at least one foe" : `🏴‍☠ Launch Raid (${total} ships)`;
   }
 
   function renderExpansionToggle() {
     const toggle = document.getElementById("exp-star-command");
-    if (!toggle) return;
-    toggle.checked = starCommandActive;
+    if (toggle) toggle.checked = starCommandActive;
+    const breachToggle = document.getElementById("exp-star-breach");
+    if (breachToggle) breachToggle.checked = starBreachActive;
+  }
+
+  function maybeShowStarBreachTutorial() {
+    try {
+      if (localStorage.getItem("ss_star_breach_tutorial_seen") === "1") return;
+      localStorage.setItem("ss_star_breach_tutorial_seen", "1");
+    } catch (err) {}
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker">
+        <h3>StarBreach — Bauble Breacher</h3>
+        <div class="tutorial-steps">
+          <div><b>1.</b> Everyone is on the same side against the StarBreacher and its Hunter-Killer fleet.</div>
+          <div><b>2.</b> One captain is <b>The Prey</b>. Win by ending Round 6 inside The Fang. If The Prey is destroyed, everyone loses.</div>
+          <div><b>3.</b> Each captain has a role: Treasure Hunter, Tank, Engineer, or Fighting Ace.</div>
+          <div><b>4.</b> The boss acts between your actions. Hitting The Prey advances its Progress Track — destroy Firing Computers and Fuel Tanks to slow it down.</div>
+        </div>
+        <button class="btn gold picker-cancel" id="star-breach-tutorial-ok">Got it</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#star-breach-tutorial-ok").addEventListener("click", () => overlay.remove());
   }
 
   function maybeShowStarCommandTutorial() {
@@ -315,7 +344,7 @@
       button.textContent = "⚔ Challenge";
       button.addEventListener("click", async () => {
         try {
-          await API.challenge(player.username, starCommandActive ? ["star_command"] : []);
+          await API.challenge(player.username, activeExpansions());
           App.toast(`Gauntlet thrown at ${player.username}!`, true);
           refresh();
         } catch (error) { App.toast(error.message); }
@@ -685,6 +714,14 @@
         if (starCommandActive) maybeShowStarCommandTutorial();
       });
     }
+    const breachToggle = document.getElementById("exp-star-breach");
+    if (breachToggle) {
+      breachToggle.addEventListener("change", (event) => {
+        starBreachActive = !!event.target.checked;
+        updateCrewUI();
+        if (starBreachActive) maybeShowStarBreachTutorial();
+      });
+    }
     document.getElementById("btn-create-match").addEventListener("click", async () => {
       const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
       try {
@@ -692,7 +729,7 @@
           ai_types: crew,
           ai_level: aiLevel,
           open_seats: openSeats,
-          active_expansions: starCommandActive ? ["star_command"] : [],
+          active_expansions: activeExpansions(),
         });
         crew = [];
         updateCrewUI();

@@ -899,6 +899,110 @@ def _plan_blaster(situation: Situation) -> OrdersSubmission:
     return _finalize(plans)
 
 
+# --------------------------------------------------------------------------
+# StarBreach co-op planner
+# --------------------------------------------------------------------------
+
+
+def _coop_enemy_target(state: GameState, pos: Pos) -> tuple[str, tuple[int, int]] | None:
+    """Nearest fleet craft, else the nearest intact boss area."""
+    sb = state.star_breach
+    if sb is None:
+        return None
+    crafts = [craft for craft in sb.fleet if not craft.destroyed]
+    if crafts:
+        nearest = min(crafts, key=lambda craft: hex_distance(pos.q, pos.r, craft.q, craft.r))
+        return f"craft:{nearest.id}", (nearest.q, nearest.r)
+    from starshot.rules import star_breach as sb_data
+
+    intact = [
+        (sb.anchor_q + q, sb.anchor_r + r)
+        for q, r in sb_data.BOSS_FOOTPRINT
+        if (q, r) not in sb.destroyed_hexes
+    ]
+    if not intact:
+        return None
+    hex_q, hex_r = min(intact, key=lambda h: hex_distance(pos.q, pos.r, h[0], h[1]))
+    area = sb_data.region_of_hex(hex_q - sb.anchor_q, hex_r - sb.anchor_r)
+    return f"boss:{area}", (hex_q, hex_r)
+
+
+def _plan_star_breach(situation: Situation) -> OrdersSubmission:
+    state, me = situation.state, situation.me
+    sb = state.star_breach
+    assert sb is not None
+    moves = list(situation.hand_moves)
+    attacks = list(situation.hand_attacks)
+    plans: list[StackPlan] = []
+    pos = situation.pos
+    is_prey = me.id == sb.prey_player_id
+
+    # The Prey runs its objective: baubles early, The Fang from round 4 on.
+    if is_prey:
+        fang = next((bauble for bauble in state.baubles if bauble.is_fang), None)
+        if state.round_number >= 4 and fang is not None:
+            goal = (fang.q, fang.r)
+        else:
+            targets = _round_baubles(state, me)
+            goal = (targets[0].q, targets[0].r) if targets else ((fang.q, fang.r) if fang else None)
+        if goal:
+            route = _plan_route(situation, moves, goal[0], goal[1], 3, allow_desperate=True)
+            if route:
+                for option in route[:3]:
+                    plans.append(option.plan)
+                    moves, attacks = _consume_plan(option.plan, moves, attacks)
+                    pos = option.end
+
+    # The Engineer patches the most damaged nearby ally (or itself) once.
+    if "engineer" in me.roles and len(plans) < 3 and attacks:
+        candidates = [
+            player
+            for player in state.players.values()
+            if not player.eliminated
+            and not player.ship.destroyed
+            and (player.ship.destroyed_components or player.ship.shields == 0)
+            and hex_distance(pos.q, pos.r, player.ship.q, player.ship.r) <= 4
+        ]
+        if candidates:
+            patient = max(candidates, key=lambda player: len(player.ship.destroyed_components))
+            use = next((candidate for candidate in attacks if not candidate.is_desperate), attacks[0])
+            plan = StackPlan(cards=[_targeted(use.selection, use.effect, patient.id)])
+            plans.append(plan)
+            moves, attacks = _consume_plan(plan, moves, attacks)
+
+    while len(plans) < 3:
+        target = _coop_enemy_target(state, pos)
+        usable = [use for use in attacks if not use.is_desperate] or list(attacks)
+        if target is not None and usable:
+            target_id, target_hex = target
+            cards: list[OrderCardSelection] = []
+            used_ids: set[str] = set()
+            for use in usable:
+                if use.selection.card_id in used_ids:
+                    continue
+                cards.append(_targeted(use.selection, use.effect, target_id))
+                used_ids.add(use.selection.card_id)
+                if len(cards) == 2:
+                    break
+            plan = StackPlan(cards=cards)
+            plans.append(plan)
+            moves, attacks = _consume_plan(plan, moves, attacks)
+            continue
+        if target is not None and moves:
+            target_hex = target[1]
+            options = _move_stack_options(
+                [use for use in moves if not use.is_desperate], pos, allow_overdrive=False, rules=situation.rules
+            )
+            if options:
+                best = min(options, key=lambda option: hex_distance(option.end.q, option.end.r, target_hex[0], target_hex[1]))
+                plans.append(best.plan)
+                moves, attacks = _consume_plan(best.plan, moves, attacks)
+                pos = best.end
+                continue
+        plans.append(StackPlan())
+    return _finalize(plans)
+
+
 _PLANNERS = {
     "bauble_runner": _plan_bauble_runner,
     "hunter_killer": _plan_hunter_killer,
@@ -910,7 +1014,7 @@ def build_ai_orders(state: GameState, player_id: str, ai_type: str, ai_level: st
     me = state.players[player_id]
     seed_material = (state.rng_seed or 1) * 31 + len(state.event_log)
     situation = Situation(state, me, Random(seed_material), _active_ai_rules())
-    planner = _PLANNERS.get(ai_type, _plan_blaster)
+    planner = _plan_star_breach if state.star_breach is not None else _PLANNERS.get(ai_type, _plan_blaster)
     try:
         orders = planner(situation)
         if ai_level == "deck_hand":

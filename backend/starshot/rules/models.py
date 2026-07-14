@@ -158,6 +158,10 @@ class PlayerState:
     overdrive_seals_pending: int = 0
     captain_id: str | None = None
     captain_options: tuple[str, ...] = ()
+    # StarBreach cooperative roles held by this player (empty outside StarBreach).
+    roles: tuple[str, ...] = ()
+    # Extra cards owed on the next Draw (Treasure Hunter bauble bonus).
+    bonus_draws_pending: int = 0
 
 
 @dataclass(slots=True)
@@ -183,6 +187,39 @@ class DesperationDeck:
     shuffle_marker_on_top: bool = True
 
 
+@dataclass(slots=True)
+class FleetCraftState:
+    """A StarBreach enemy fleet craft (represented by a colored die)."""
+
+    id: str
+    kind: str
+    color: str
+    q: int
+    r: int
+    hp: int
+    max_hp: int
+    destroyed: bool = False
+    movement_this_action: int = 0
+
+
+@dataclass(slots=True)
+class StarBreachState:
+    """Cooperative boss-scenario state for the StarBreach expansion."""
+
+    scenario_id: str = "bauble_breacher"
+    prey_player_id: str = ""
+    anchor_q: int = 0
+    anchor_r: int = -9
+    # Destroyed boss hull hexes in boss-local coordinates.
+    destroyed_hexes: set[tuple[int, int]] = field(default_factory=set)
+    # Remaining shield HP per shield arc (forward/port/rear/starboard).
+    shield_hp: dict[str, int] = field(default_factory=dict)
+    progress: int = 0
+    fleet: list[FleetCraftState] = field(default_factory=list)
+    boss_movement_this_action: int = 0
+    repaired_ship_ids_this_action: list[str] = field(default_factory=list)
+
+
 @dataclass(frozen=True, slots=True)
 class GameResult:
     winner_ids: tuple[str, ...]
@@ -204,6 +241,7 @@ class GameState:
     event_log: list[dict] = field(default_factory=list)
     result: GameResult | None = None
     active_expansions: tuple[str, ...] = ()
+    star_breach: StarBreachState | None = None
     starfall_deck: list[str] = field(default_factory=list)
     active_starfall_id: str | None = None
     active_starfall_round: int | None = None

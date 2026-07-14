@@ -10,11 +10,12 @@
   const NS = "http://www.w3.org/2000/svg";
 
   let zoom = 1, panX = 0, panY = 0;
-  let shipLayer = null, baubleLayer = null, hexLayer = null, previewLayer = null;
+  let shipLayer = null, baubleLayer = null, hexLayer = null, previewLayer = null, bossLayer = null;
   let seatColorByPlayer = {};
   let nameMap = {};
   let titleMap = {};
   let onShipClick = null;
+  let onBossClick = null;
   const shipEls = {};
 
   function hexDistance(aq, ar, bq, br) {
@@ -57,6 +58,7 @@
     svg.innerHTML = "";
     hexLayer = el("g", {}, svg);
     baubleLayer = el("g", {}, svg);
+    bossLayer = el("g", {}, svg);
     previewLayer = el("g", { "pointer-events": "none" }, svg);
     shipLayer = el("g", {}, svg);
     for (let q = -RADIUS; q <= RADIUS; q++) {
@@ -115,6 +117,79 @@
     const grad = el("radialGradient", { id: "baubleGrad", cx: "35%", cy: "30%" }, defs);
     el("stop", { offset: "0%", "stop-color": "#f6d98a" }, grad);
     el("stop", { offset: "100%", "stop-color": "#c08a2e" }, grad);
+  }
+
+  /* StarBreach: the boss hull, its components, and the enemy fleet dice. */
+  const AREA_TINT = {
+    forward: "106,140,190", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120",
+  };
+  const CRAFT_COLORS = { blue: "#4f86d1", green: "#3ea86b", yellow: "#d4c748" };
+  const COMPONENT_BADGE = {
+    shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉",
+  };
+
+  function renderStarBreach(sb, options = {}) {
+    if (!bossLayer) return;
+    bossLayer.innerHTML = "";
+    if (!sb || !sb.boss_layout) return;
+    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+    const componentsByHex = {};
+    for (const component of sb.boss_layout.components || []) {
+      componentsByHex[component.q + "," + component.r] = component;
+    }
+    for (const cell of sb.boss_layout.footprint || []) {
+      const q = sb.anchor_q + cell.q, r = sb.anchor_r + cell.r;
+      if (hexDistance(0, 0, q, r) > RADIUS) continue;
+      const [x, y] = axialToXY(q, r);
+      const dead = destroyed.has(cell.q + "," + cell.r);
+      const tint = AREA_TINT[cell.area] || "120,120,120";
+      const poly = el("polygon", {
+        points: hexPoints(x, y, HEX - 1.2),
+        fill: dead ? "rgba(30,30,38,.85)" : `rgba(${tint},.55)`,
+        stroke: dead ? "#333" : `rgb(${tint})`,
+        "stroke-width": 1,
+        class: "boss-hull",
+        "data-area": cell.area,
+      }, bossLayer);
+      poly.addEventListener("click", () => { if (onBossClick) onBossClick(cell.area); });
+      const component = componentsByHex[cell.q + "," + cell.r];
+      if (component) {
+        const badge = el("text", {
+          x, y: y + 3.5, "text-anchor": "middle", "font-size": 9, "font-weight": 700,
+          fill: dead ? "#666" : "#0a0f1e", "pointer-events": "none",
+        }, bossLayer);
+        badge.textContent = COMPONENT_BADGE[component.type] || "?";
+        const tip = el("title", {}, poly);
+        tip.textContent = `${component.name}${dead ? " (destroyed)" : ""} — ${cell.area} section`;
+      } else if (dead) {
+        el("text", { x, y: y + 4, "text-anchor": "middle", "font-size": 10, fill: "#555", "pointer-events": "none" }, bossLayer)
+          .textContent = "✕";
+      } else {
+        const tip = el("title", {}, poly);
+        tip.textContent = `StarBreacher hull — ${cell.area} section (shield ${sb.shield_hp?.[cell.area] ?? 0})`;
+      }
+    }
+    for (const craft of sb.fleet || []) {
+      if (craft.destroyed) continue;
+      const [x, y] = axialToXY(craft.q, craft.r);
+      const color = CRAFT_COLORS[craft.color] || "#999";
+      const group = el("g", { transform: `translate(${x},${y})` }, bossLayer);
+      el("rect", { x: -7, y: -7, width: 14, height: 14, rx: 3, fill: color, stroke: "#0a0f1e", "stroke-width": 1.4 }, group);
+      el("text", { x: 0, y: 4, "text-anchor": "middle", "font-size": 10, "font-weight": 700, fill: "#0a0f1e" }, group)
+        .textContent = String(craft.hp);
+      const tip = el("title", {}, group);
+      tip.textContent = `${craft.color} Hunter-Killer — ${craft.hp}/${craft.max_hp} HP`;
+      el("text", { x: 0, y: 17, class: "ship-label", "font-size": 7.5 }, group).textContent = "HK " + craft.color;
+    }
+    if (options.preyPos) {
+      const [x, y] = axialToXY(options.preyPos.q, options.preyPos.r);
+      el("circle", {
+        cx: x, cy: y, r: HEX * 1.05, fill: "none", stroke: "#ff5a5a",
+        "stroke-width": 1.4, "stroke-dasharray": "5 3", opacity: 0.9, "pointer-events": "none",
+      }, bossLayer);
+      el("text", { x, y: y - HEX * 1.2, "text-anchor": "middle", "font-size": 8, fill: "#ff8a7a", "pointer-events": "none" }, bossLayer)
+        .textContent = "PREY";
+    }
   }
 
   function shipMarkup(color) {
@@ -351,6 +426,8 @@
   window.Board = {
     build: buildBoard,
     renderBaubles,
+    renderStarBreach,
+    setBossClickHandler: (fn) => { onBossClick = fn; },
     renderShips,
     placeShip,
     setShipDead,
