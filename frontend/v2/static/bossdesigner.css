@@ -1,0 +1,72 @@
+/* Boss Ship Designer admin tab — styles are namespaced with .bd- so nothing
+   here touches the rest of the admin console. */
+
+.bd-designbar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px;
+}
+.bd-designbar select, .bd-designbar input, .bd-topbar input,
+.bd-regionbar select, .bd-step select, .bd-step input {
+  background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
+  color: var(--ink); padding: 7px 9px; font-size: 13px; font-family: inherit;
+}
+.bd-designbar select { min-width: 260px; }
+
+.bd-topbar {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
+}
+.bd-topbar label { display: flex; align-items: center; gap: 6px; color: var(--ink-dim); font-size: 13px; }
+.bd-modes { display: flex; gap: 6px; margin-left: auto; }
+.bd-mode.active { border-color: var(--gold); color: var(--gold-bright); }
+#bd-save.attention { border-color: #ff9a8a; color: #ffb9ac; }
+
+.bd-grid { display: grid; grid-template-columns: minmax(360px, 1fr) 340px; gap: 14px; }
+@media (max-width: 1000px) { .bd-grid { grid-template-columns: 1fr; } }
+
+.bd-board-wrap {
+  background: #081020; border: 1px solid var(--panel-edge); border-radius: 10px; padding: 8px;
+}
+.bd-board svg { width: 100%; max-height: 66vh; display: block; }
+.bd-cell { cursor: pointer; }
+.bd-cell:hover polygon:first-child { stroke: var(--gold-bright); stroke-width: 1.8; }
+.bd-badge { font-size: 8px; font-weight: 700; pointer-events: none; font-family: "Space Grotesk", sans-serif; }
+.bd-lane-num { font-size: 15px; font-family: "Pirata One", serif; }
+
+.bd-side { display: flex; flex-direction: column; gap: 4px; }
+.bd-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.bd-tool.active { border-color: var(--gold); color: var(--gold-bright); }
+#bd-tool-number-wrap, #bd-tool-stack-wrap {
+  display: flex; align-items: center; gap: 8px; color: var(--ink-dim); font-size: 13px; margin: 4px 0 8px;
+}
+#bd-tool-number-wrap.hidden, #bd-tool-stack-wrap.hidden { display: none; }
+#bd-tool-number-wrap select, #bd-tool-stack-wrap select {
+  background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
+  color: var(--ink); padding: 6px 8px;
+}
+
+.bd-regionbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.bd-regionbar select { flex: 1; min-width: 0; }
+.bd-shieldsubs { display: flex; gap: 6px; margin-bottom: 8px; }
+.bd-shieldsub.active { border-color: var(--gold); color: var(--gold-bright); }
+.bd-region-info { font-size: 13px; color: var(--ink-dim); display: flex; flex-direction: column; gap: 6px; }
+.bd-swatch {
+  display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+  vertical-align: -1px; margin-right: 5px;
+}
+
+.bd-triggers { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.bd-trigger { color: var(--ink); font-size: 13px; display: flex; align-items: center; gap: 7px; }
+
+.bd-steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.bd-step {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  background: #0d1426; border: 1px solid var(--panel-edge); border-radius: 8px; padding: 6px 8px;
+}
+.bd-step-index { color: var(--gold-bright); font-family: "Pirata One", serif; width: 20px; text-align: right; }
+.bd-step-fields { display: flex; gap: 8px; align-items: center; flex: 1; flex-wrap: wrap; }
+.bd-step-fields label { display: flex; align-items: center; gap: 4px; color: var(--ink-dim); font-size: 12px; }
+.bd-step input[type="number"] { width: 58px; }
+.bd-step-actions { display: flex; gap: 4px; }
+
+.bd-problems { margin-top: 12px; font-size: 13px; }
+.bd-problems .ok-note { color: #9fd8ae; }
+.bd-problem { color: #ffcf9a; margin-top: 3px; }

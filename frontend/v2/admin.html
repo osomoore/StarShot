@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=11">
 <link rel="stylesheet" href="/v2/static/admin.css?v=12">
+<link rel="stylesheet" href="/v2/static/bossdesigner.css?v=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -40,6 +41,7 @@
       <button class="btn ghost admin-tab active" data-tab="deck">🂠 Deck Editor</button>
       <button class="btn ghost admin-tab" data-tab="keywords">🔑 Keywords</button>
       <button class="btn ghost admin-tab" data-tab="battle">⚔ AI Battles</button>
+      <button class="btn ghost admin-tab" data-tab="bossdesign">☄ Boss Designer</button>
       <button class="btn ghost admin-tab" data-tab="feedback">Feedback and Bugs</button>
       <button class="btn ghost admin-tab" data-tab="account">🛠 Account & Project</button>
     </nav>
@@ -169,6 +171,9 @@
         <div id="battle-detail-overlay" class="battle-detail-overlay hidden"></div>
       </div>
 
+      <!-- boss ship designer (markup built by bossdesigner.js on first open) -->
+      <div id="tab-bossdesign" class="admin-tabpage hidden"></div>
+
       <!-- feedback -->
       <div id="tab-feedback" class="admin-tabpage hidden">
         <h2 class="panel-title">Feedback and Bugs</h2>
@@ -246,5 +251,6 @@
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
 <script src="/v2/static/admin.js?v=17"></script>
+<script src="/v2/static/bossdesigner.js?v=2"></script>
 </body>
 </html>

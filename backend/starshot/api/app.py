@@ -70,6 +70,10 @@ from starshot.v2.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router)
 
+from starshot.v2.boss_designer_api import boss_designer_router  # noqa: E402
+
+app.include_router(boss_designer_router)
+
 if (V2_FRONTEND_DIR / "static").exists():
     app.mount("/v2/static", StaticFiles(directory=V2_FRONTEND_DIR / "static"), name="v2static")
 

@@ -97,6 +97,20 @@ Implemented expansions:
   runs baubles, Corsair prioritizes hunter-killer craft, and Gunner prioritizes
   the boss. The v2 side panel uses tabs for Fleet and Log.
 
+Admin tools:
+
+- Boss Ship Designer (admin console tab "Boss Designer"): hex editor for custom
+  StarBreach-style bosses — hull tiles (generic / shield gen / firing computer /
+  fuel tank / core), shield regions with a powering generator and seven d8
+  damage lanes (rolls 2-8, each with an entry face), and a progression track
+  (triggers + filler/action-link/breacher-link/ability-trigger steps).
+  Designs are JSON documents in `resources/boss_designs/`; they are design
+  data only and are not yet consumed by the rules engine. Kept insulated:
+  schema/validation/storage in `backend/starshot/v2/boss_designs.py` (no
+  FastAPI), routes in `backend/starshot/v2/boss_designer_api.py`, UI in
+  `frontend/v2/static/bossdesigner.js` + `bossdesigner.css`; tests in
+  `tests/test_boss_designer.py`.
+
 Not implemented yet:
 
 - Deferred desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, Overdrive 2x.
@@ -130,4 +144,4 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 197 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 216 tests passing as of last session (2 API test modules require `fastapi` installed).
