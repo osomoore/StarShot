@@ -280,7 +280,24 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 .fleet-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-#fleet-list { display: flex; flex-direction: column; gap: 8px; }
+.side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.side-tab {
+  background: rgba(13,20,38,.88);
+  border: 1px solid var(--panel-edge);
+  border-radius: 7px;
+  color: var(--ink-dim);
+  cursor: pointer;
+  font: 700 12px "Space Grotesk", sans-serif;
+  min-height: 34px;
+}
+.side-tab.active {
+  background: rgba(212,167,72,.18);
+  border-color: rgba(212,167,72,.65);
+  color: var(--gold-bright);
+}
+.side-tab-panel { display: none; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.side-tab-panel.active { display: flex; flex-direction: column; }
+#fleet-list { display: flex; flex: 1 1 auto; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
 .fleet-card {
   border: 1px solid var(--panel-edge); border-left-width: 4px; border-radius: 8px;
   padding: 8px 10px; background: #0d1426; font-size: 13px;
@@ -410,6 +427,8 @@ h1, h2, .brand, .poster-title, .banner-text {
   position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 8;
 }
 .boss-modal-map { width: 100%; overflow: auto; }
+.boss-lane-mark text { paint-order: stroke; stroke: #10182b; stroke-width: 3px; }
+.boss-detail-shield { fill: none; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(126,216,255,.45)); }
 .boss-modal-grid { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
 .boss-modal-side { min-width: 190px; flex: 1; font-size: 12px; color: var(--ink-dim); }
 .boss-modal-side h4 { font-family: "Pirata One", serif; color: #d9a6ff; margin: 8px 0 3px; font-size: 16px; }
@@ -939,11 +958,6 @@ h1, h2, .brand, .poster-title, .banner-text {
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-right: 2px;
-  }
-
-  :root[data-device="phone"] .fleet-panel .panel-sub:nth-of-type(2),
-  :root[data-device="phone"] .fleet-panel .action-log {
-    display: none;
   }
 
   :root[data-device="phone"] .fleet-card {

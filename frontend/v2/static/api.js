@@ -26,6 +26,13 @@
     me: () => get("/me"),
     leaderboard: () => get("/leaderboard"),
     submitFeedback: (body) => post("/feedback", body),
+    clientEvent: (body) => fetch("/api/debug/client-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      keepalive: true,
+      body: JSON.stringify(body || {}),
+    }).catch(() => {}),
     lobby: () => get("/lobby"),
     queue: (action) => post("/lobby/queue", { action }),
     createMatch: (body) => post("/matches", body),

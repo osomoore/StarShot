@@ -92,6 +92,10 @@ Implemented expansions:
   Each active boss slot performs exactly one action; progress tiers reached
   mid-round only power slots from the next round (`active_tiers`). Shields:
   nose 1 charge (intrinsic), other arcs 3, each powered by one nose generator.
+  The host may choose the Prey at game creation, including an AI seat. AI
+  personalities do not change because they are the Prey; in co-op, Salvage
+  runs baubles, Corsair prioritizes hunter-killer craft, and Gunner prioritizes
+  the boss. The v2 side panel uses tabs for Fleet and Log.
 
 Not implemented yet:
 
@@ -126,4 +130,4 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 194 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 197 tests passing as of last session (2 API test modules require `fastapi` installed).

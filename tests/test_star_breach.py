@@ -81,6 +81,28 @@ class StarBreachSetupTests(unittest.TestCase):
         self.assertEqual(set(state.players["solo"].roles), set(sbd.ROLE_ASSIGN_ORDER))
         self.assertEqual(state.star_breach.prey_player_id, "solo")
 
+    def test_config_can_choose_prey(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("alice", "bob", "charlie"),
+                seed=11,
+                active_expansions=("star_breach",),
+                star_breach_prey_player_id="charlie",
+            )
+        )
+        self.assertEqual(state.star_breach.prey_player_id, "charlie")
+
+    def test_invalid_config_prey_falls_back_to_first_player(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("alice", "bob"),
+                seed=11,
+                active_expansions=("star_breach",),
+                star_breach_prey_player_id="nobody",
+            )
+        )
+        self.assertEqual(state.star_breach.prey_player_id, "alice")
+
     def test_base_game_still_requires_two_players(self):
         with self.assertRaises(RulesError):
             create_initial_state(GameConfig(player_ids=("solo",)))
@@ -197,6 +219,7 @@ class StarBreachCombatTests(unittest.TestCase):
         self.assertEqual(event["desperation_cards_drawn"], 1)
         self.assertEqual(len(state.star_breach.destroyed_hexes), 0)
         self.assertEqual(len(state.players["alice"].deck), deck_before + 1)
+        self.assertEqual(state.players["alice"].deck[0].id, event["shots"][0]["desperation_card_id"])
 
     def test_craft_can_be_damaged_and_destroyed(self):
         state = _coop_state()

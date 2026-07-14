@@ -114,6 +114,16 @@ class DeviceInfoRequest(BaseModel):
     data_device: str = ""
     detected_phone_layout: bool = False
     user_agent: str = ""
+
+
+class ClientEventRequest(BaseModel):
+    app: str = Field(default="v2", max_length=20)
+    event: str = Field(max_length=80)
+    game_id: str | None = Field(default=None, max_length=80)
+    player_id: str | None = Field(default=None, max_length=120)
+    phase: str | None = Field(default=None, max_length=80)
+    round_number: int | None = None
+    details: dict = Field(default_factory=dict)
     platform: str = ""
     vendor: str = ""
     max_touch_points: int = 0
@@ -228,6 +238,29 @@ def debug_device_info(payload: DeviceInfoRequest, request: Request) -> dict[str,
         payload.max_width_1366,
         payload.platform,
         payload.user_agent,
+    )
+    return {"ok": True}
+
+
+@app.post("/api/debug/client-event")
+def debug_client_event(payload: ClientEventRequest, request: Request) -> dict[str, bool]:
+    client_host = request.client.host if request.client else "unknown"
+    details = dict(payload.details or {})
+    for key, value in list(details.items()):
+        if isinstance(value, str) and len(value) > 240:
+            details[key] = value[:240] + "..."
+    if len(details) > 20:
+        details = dict(list(details.items())[:20])
+    device_logger.warning(
+        "Client event %s app=%s event=%s game=%s player=%s phase=%s round=%s details=%r",
+        client_host,
+        payload.app,
+        payload.event,
+        payload.game_id,
+        payload.player_id,
+        payload.phase,
+        payload.round_number,
+        details,
     )
     return {"ok": True}
 

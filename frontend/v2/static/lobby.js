@@ -21,6 +21,8 @@
   let queued = false;
   let crew = [];        // selected ai types
   let aiLevel = "deck_hand";
+  let currentUser = null;
+  let starBreachPreySelection = "__host__";
   let starCommandActive = false;
   let starBreachActive = false;
   const activeExpansions = () => [
@@ -93,6 +95,7 @@
     }
     try {
       const [me, board] = await Promise.all([API.me(), API.leaderboard()]);
+      currentUser = me.user;
       renderProfile(me.user);
       renderLeaderboardBundle(board);
       document.getElementById("lobby-user").textContent = "☠ " + me.user.username;
@@ -104,6 +107,7 @@
     const container = document.getElementById("ai-pickers");
     container.innerHTML = "";
     ensureAiLevelPicker();
+    ensureStarBreachPreyPicker();
     for (const type of Object.keys(AI_META)) {
       const meta = AI_META[type];
       const node = document.createElement("div");
@@ -153,6 +157,7 @@
     const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
     const total = 1 + crew.length + openSeats;
     const minShips = starBreachActive ? 1 : 2;
+    updateStarBreachPreyPicker();
     const button = document.getElementById("btn-create-match");
     button.disabled = total < minShips || total > 4;
     button.textContent = total < minShips ? "🏴‍☠ Pick at least one foe" : `🏴‍☠ Launch Raid (${total} ships)`;
@@ -163,6 +168,38 @@
     if (toggle) toggle.checked = starCommandActive;
     const breachToggle = document.getElementById("exp-star-breach");
     if (breachToggle) breachToggle.checked = starBreachActive;
+  }
+
+  function ensureStarBreachPreyPicker() {
+    if (document.getElementById("star-breach-prey")) return;
+    const box = document.querySelector(".expansion-box");
+    if (!box) return;
+    const label = document.createElement("label");
+    label.className = "open-seats-label star-breach-prey-label hidden";
+    label.innerHTML = `StarBreach Prey:
+      <select id="star-breach-prey"></select>`;
+    box.appendChild(label);
+    label.querySelector("select").addEventListener("change", (event) => {
+      starBreachPreySelection = event.target.value || "__host__";
+    });
+  }
+
+  function updateStarBreachPreyPicker() {
+    const label = document.querySelector(".star-breach-prey-label");
+    const select = document.getElementById("star-breach-prey");
+    if (!label || !select) return;
+    label.classList.toggle("hidden", !starBreachActive);
+    if (!starBreachActive) return;
+    const options = [{ value: "__host__", text: currentUser ? `You (${currentUser.username})` : "You" }];
+    crew.forEach((type, index) => {
+      const meta = AI_META[type] || { name: type };
+      options.push({ value: `__ai__:${index}`, text: `${meta.name} ${index + 1}` });
+    });
+    if (!options.some((option) => option.value === starBreachPreySelection)) {
+      starBreachPreySelection = "__host__";
+    }
+    select.innerHTML = options.map((option) => `<option value="${esc(option.value)}">${esc(option.text)}</option>`).join("");
+    select.value = starBreachPreySelection;
   }
 
   function maybeShowStarBreachTutorial() {
@@ -730,6 +767,7 @@
           ai_level: aiLevel,
           open_seats: openSeats,
           active_expansions: activeExpansions(),
+          star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
         });
         crew = [];
         updateCrewUI();

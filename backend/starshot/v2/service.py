@@ -281,7 +281,12 @@ def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None,
     active_expansions = tuple(match.get("active_expansions") or ())
     with deck_set_override(deck_path):
         state = create_initial_state(
-            GameConfig(player_ids=player_ids, seed=seed, active_expansions=active_expansions)
+            GameConfig(
+                player_ids=player_ids,
+                seed=seed,
+                active_expansions=active_expansions,
+                star_breach_prey_player_id=match.get("star_breach_prey_player_id"),
+            )
         )
     state = advance_game(state, match, deck_path)
     with deck_set_override(deck_path):

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS matches (
     seats INTEGER NOT NULL,
     ai_level TEXT NOT NULL DEFAULT 'deck_hand',
     active_expansions_json TEXT NOT NULL DEFAULT '[]',
+    star_breach_prey_player_id TEXT,
     game_id TEXT,
     stats_recorded INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
@@ -131,6 +132,7 @@ _MIGRATIONS = (
     "ALTER TABLE match_seats ADD COLUMN stats_exempt INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE matches ADD COLUMN ai_level TEXT NOT NULL DEFAULT 'deck_hand'",
     "ALTER TABLE matches ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE matches ADD COLUMN star_breach_prey_player_id TEXT",
     "ALTER TABLE challenges ADD COLUMN active_expansions_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE leaderboard_results ADD COLUMN score INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE leaderboard_results ADD COLUMN ship_losses INTEGER NOT NULL DEFAULT 0",
@@ -656,13 +658,14 @@ class V2Store:
         status: str,
         ai_level: str = "deck_hand",
         active_expansions: list[str] | None = None,
+        star_breach_prey_player_id: str | None = None,
     ) -> str:
         match_id = uuid.uuid4().hex[:12]
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO matches
-                   (id, name, status, host_user_id, seats, ai_level, active_expansions_json, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, name, status, host_user_id, seats, ai_level, active_expansions_json, star_breach_prey_player_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match_id,
                     name,
@@ -671,6 +674,7 @@ class V2Store:
                     seats,
                     ai_level,
                     json.dumps(active_expansions or []),
+                    star_breach_prey_player_id,
                     _now(),
                     _now(),
                 ),

@@ -12,9 +12,11 @@
   let pollTimer = null;
   let animating = false;
   let replayShipStates = null;
+  let replayBossPose = null;
   let endgameShown = false;
   let draft = null;
   let pendingFetch = false;
+  let sideTab = "registry";
 
   const els = {};
   function grab() {
@@ -24,6 +26,34 @@
       els[id] = document.getElementById(id);
     }
     els["fleet-panel"] = document.querySelector(".fleet-panel");
+    document.querySelectorAll("[data-side-tab]").forEach((button) => {
+      if (button.dataset.boundSideTab === "1") return;
+      button.dataset.boundSideTab = "1";
+      button.addEventListener("click", () => setSideTab(button.dataset.sideTab || "registry"));
+    });
+    setSideTab(sideTab);
+  }
+
+  function setSideTab(tab) {
+    const previous = sideTab;
+    sideTab = tab === "log" ? "log" : "registry";
+    document.querySelectorAll("[data-side-tab]").forEach((button) => {
+      const active = button.dataset.sideTab === sideTab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll(".side-tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.id === `fleet-tab-panel-${sideTab}`);
+    });
+    if (sideTab === "log" && previous !== "log") scrollLogToBottom();
+  }
+
+  function scrollLogToBottom() {
+    const container = els["action-log"];
+    if (!container) return;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }
 
   function isPhoneUser() {
@@ -120,6 +150,145 @@
     return { slots: [newSlot(), newSlot(), newSlot()] };
   }
   function newSlot() { return { seal: "sealed", cards: [] }; }
+
+  function draftStorageKey() {
+    if (!gameId || !you || !view) return null;
+    return `ss_draft_${gameId}_${you}_${view.round_number || 0}`;
+  }
+
+  function orderTraceKey() {
+    return gameId ? `ss_order_trace_${gameId}` : "ss_order_trace";
+  }
+
+  function orderTrace(event, details = {}) {
+    if (!view || view.phase !== "give_orders") return;
+    const me = view.players?.[you] || null;
+    const entry = {
+      at: new Date().toISOString(),
+      event,
+      game_id: gameId,
+      player_id: you,
+      phase: view.phase,
+      round_number: view.round_number,
+      details: {
+        submitted: !!me?.has_submitted_orders,
+        hand_count: (me?.hand || []).length,
+        draft_counts: (draft?.slots || []).map((slot) => (slot.cards || []).length),
+        ...details,
+      },
+    };
+    try {
+      const key = orderTraceKey();
+      const recent = JSON.parse(localStorage.getItem(key) || "[]");
+      recent.push(entry);
+      localStorage.setItem(key, JSON.stringify(recent.slice(-40)));
+    } catch (err) {}
+    try {
+      API.clientEvent?.({
+        app: "v2",
+        event: "order." + event,
+        game_id: gameId,
+        player_id: you,
+        phase: view.phase,
+        round_number: view.round_number,
+        details: entry.details,
+      });
+    } catch (err) {}
+  }
+
+  function canBuildOrders(player = myPlayer()) {
+    return view && view.phase === "give_orders" && player
+      && !player.has_submitted_orders && !player.eliminated && !(player.ship || {}).destroyed;
+  }
+
+  function serializeDraft() {
+    return {
+      slots: (draft?.slots || []).map((slot) => ({
+        seal: slot.seal === "overdrive" ? "overdrive" : "sealed",
+        cards: (slot.cards || []).map((selection) => ({
+          card_id: selection.card_id,
+          face: selection.face,
+          orientation: selection.orientation,
+          mode: selection.mode,
+          target_player_id: selection.target_player_id,
+          repair_component_ids: selection.repair_component_ids || [],
+          reconfigure_from_component_ids: selection.reconfigure_from_component_ids || [],
+          reconfigure_to_component_ids: selection.reconfigure_to_component_ids || [],
+          family: selection.family,
+        })),
+      })),
+    };
+  }
+
+  function hydrateDraft(saved, hand) {
+    if (!saved || !Array.isArray(saved.slots) || saved.slots.length !== 3) return null;
+    const handById = new Map((hand || []).map((card) => [card.id, card]));
+    const seen = new Set();
+    const slots = [];
+    for (const savedSlot of saved.slots) {
+      if (!savedSlot || !Array.isArray(savedSlot.cards) || savedSlot.cards.length > 2) return null;
+      const cards = [];
+      for (const selection of savedSlot.cards) {
+        const card = handById.get(selection.card_id);
+        if (!card || seen.has(card.id)) return null;
+        seen.add(card.id);
+        cards.push({
+          card_id: card.id,
+          face: selection.face === "desperate" ? "desperate" : "front",
+          orientation: selection.orientation || "up",
+          mode: selection.mode || null,
+          target_player_id: selection.target_player_id || null,
+          repair_component_ids: Array.isArray(selection.repair_component_ids) ? selection.repair_component_ids : [],
+          reconfigure_from_component_ids: Array.isArray(selection.reconfigure_from_component_ids) ? selection.reconfigure_from_component_ids : [],
+          reconfigure_to_component_ids: Array.isArray(selection.reconfigure_to_component_ids) ? selection.reconfigure_to_component_ids : [],
+          card,
+          family: selection.family || card.family || card.effect?.family || null,
+        });
+      }
+      slots.push({ seal: savedSlot.seal === "overdrive" ? "overdrive" : "sealed", cards });
+    }
+    return { slots };
+  }
+
+  function draftHasChoices() {
+    return (draft?.slots || []).some((slot) => slot.seal === "overdrive" || (slot.cards || []).length);
+  }
+
+  function saveDraft() {
+    const key = draftStorageKey();
+    if (!key) return;
+    try {
+      if (!canBuildOrders() || !draftHasChoices()) localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify(serializeDraft()));
+    } catch (err) {}
+  }
+
+  function restoreDraftIfAvailable() {
+    const me = myPlayer();
+    const key = draftStorageKey();
+    if (!key || !canBuildOrders(me)) {
+      draft = emptyDraft();
+      if (key) {
+        try { localStorage.removeItem(key); } catch (err) {}
+      }
+      return;
+    }
+    if (draftHasChoices()) return;
+    try {
+      const raw = localStorage.getItem(key);
+      const restored = raw ? hydrateDraft(JSON.parse(raw), me.hand || []) : null;
+      if (restored) {
+        draft = restored;
+        orderTrace("draft_restored", { card_ids: draft.slots.flatMap((slot) => slot.cards.map((card) => card.card_id)) });
+      } else if (raw) {
+        localStorage.removeItem(key);
+        orderTrace("draft_restore_rejected");
+      }
+    } catch (err) {
+      try { localStorage.removeItem(key); } catch (ignore) {}
+      orderTrace("draft_restore_failed", { message: err.message || String(err) });
+    }
+  }
 
   // ── entry / polling ────────────────────────────────────────────────────
   async function enter(id) {
@@ -301,6 +470,7 @@
 
   function renderAll() {
     if (!view) return;
+    restoreDraftIfAvailable();
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
     Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
     Board.renderStarBreach(view.star_breach, { preyPos: preyPosition() });
@@ -537,10 +707,29 @@
         return { cls: event.hit ? "hit" : "", text: `${name(event.attacker_id)} fires on ${name(event.target_id)} — 🎲${event.roll}+${event.aim_bonus} vs ${event.defense_threshold}: ${result}${event.target_destroyed ? " — SHIP DESTROYED ☠" : ""}` };
       }
       case "bauble_awarded": {
-        const who = (event.awards || []).map((award) => `${name(award.player_id)} +${award.vp_awarded} VP`).join(", ");
+        const who = (event.awards || []).map((award) => {
+          const draws = award.desperation_card_drawn
+            ? ` + desperate card added to deck from ${event.bauble?.is_fang ? "Fang" : "bauble"}${award.captain_bonus ? " (Beto bonus)" : ""}`
+            : "";
+          return `${name(award.player_id)} +${award.vp_awarded} VP${draws}`;
+        }).join(", ");
         return { cls: "loot", text: `✦ Loot claimed: ${who}` };
       }
-      case "desperation_consequence": return { cls: "hit", text: `${name(event.player_id)} grows desperate…` };
+      case "desperation_consequence": return { cls: "hit", text: `${name(event.player_id)} adds a desperate card to the top of their deck because their ship took unshielded hull damage.` };
+      case "hand_drawn": {
+        const bonus = event.bonus_draws || 0;
+        return bonus
+          ? { cls: "loot", text: `${name(event.player_id)} draws ${event.hand_count || "a hand"} cards, including ${bonus} bonus card${bonus === 1 ? "" : "s"} from StarBreach bauble support.` }
+          : null;
+      }
+      case "action_cards_moved":
+        return (event.returned_to_desperation_deck || []).length
+          ? { cls: "", text: `${name(event.player_id)} returns used desperate card${event.returned_to_desperation_deck.length === 1 ? "" : "s"} to the desperation deck.` }
+          : null;
+      case "starfall_jolly_roger_draw":
+        return { cls: "loot", text: `${name(event.player_id)} adds a desperate card to the top of their deck from Jolly Roger after their first hit this round.` };
+      case "captain_davey_reward":
+        return { cls: "loot", text: `${name(event.player_id)} adds a desperate card to the top of their deck from Davey Locker after a bridge/life-support break, and gains ${event.vp_awarded || 2} VP.` };
       case "boss_phase_resolved": {
         if (!(event.slots || []).length && !(event.fleet || []).length) return null;
         const label = event.boss_phase === "starbreach" ? "STARBREACH" : `Action ${event.boss_phase}`;
@@ -564,9 +753,18 @@
         if (event.hit) {
           const bits = [];
           if (event.shields_absorbed) bits.push(`${event.shields_absorbed} soaked by shields`);
-          if (event.hexes_destroyed) bits.push(`${event.hexes_destroyed} hull hex${event.hexes_destroyed > 1 ? "es" : ""} destroyed`);
+          const laneShots = (event.shots || [])
+            .filter((shot) => ["hull_destroyed", "glancing_blow", "overpenetration"].includes(shot.result))
+            .map((shot) => {
+              const shift = shot.ace_shift ? ` (Fighting Ace ${shot.ace_shift > 0 ? "+" : ""}${shot.ace_shift})` : "";
+              if (shot.result === "glancing_blow") return `lane roll ${shot.roll}${shift}: glancing blow, desperate card added to top of deck`;
+              if (shot.result === "overpenetration") return `lane roll ${shot.roll} -> lane ${shot.lane}${shift}: overpenetrates`;
+              const target = shot.component_id ? shot.component_id.replace(/_/g, " ") : `hex ${shot.hex?.join(",")}`;
+              return `lane roll ${shot.roll} -> lane ${shot.lane}${shift}: ${target} destroyed`;
+            });
+          if (laneShots.length) bits.push(laneShots.join("; "));
+          else if (event.hexes_destroyed) bits.push(`${event.hexes_destroyed} hull hex${event.hexes_destroyed > 1 ? "es" : ""} destroyed`);
           if ((event.components_destroyed || []).length) bits.push(`${event.components_destroyed.join(", ")} DESTROYED`);
-          if (event.desperation_cards_drawn) bits.push("glancing blow — desperation card");
           result = "HIT: " + (bits.join(", ") || "no effect");
         }
         return { cls: event.hit ? "hit" : "", text: `${name(event.attacker_id)} fires on ${targetLabel(event.target_id)} — 🎲${event.roll} vs ${event.defense_threshold}: ${result}` };
@@ -589,6 +787,7 @@
 
   function renderLog() {
     const container = els["action-log"];
+    const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 24;
     container.innerHTML = "";
     const events = (view.event_log || []).slice(-120);
     for (const event of events) {
@@ -599,7 +798,7 @@
       div.textContent = line.text;
       container.appendChild(div);
     }
-    container.scrollTop = container.scrollHeight;
+    if (sideTab === "log" && wasNearBottom) scrollLogToBottom();
   }
 
   // ── orders panel ──────────────────────────────────────────────────────
@@ -748,6 +947,8 @@
     if (ordering) {
       seal.querySelector(".seal-toggle").addEventListener("click", () => {
         slot.seal = slot.seal === "overdrive" ? "sealed" : "overdrive";
+        orderTrace("seal_toggled", { slot_index: index, seal: slot.seal });
+        saveDraft();
         renderOrdersPanel();
       });
     }
@@ -828,6 +1029,8 @@
   function removeFromSlot(index, selection) {
     const slot = draft.slots[index];
     slot.cards = slot.cards.filter((c) => c !== selection);
+    orderTrace("card_removed", { slot_index: index, card_id: selection.card_id });
+    saveDraft();
     renderOrdersPanel();
   }
 
@@ -880,9 +1083,19 @@
       componentsByHex[component.q + "," + component.r] = component;
     }
     const AREA_FILL = { forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120" };
+    const AREA_STROKE = { forward: "#9ee7ff", port: "#bcb0ff", rear: "#ffd08a", starboard: "#9fe8b6" };
     const BADGE = { shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉" };
     const size = 13, sq = Math.sqrt(3);
     const cells = sb.boss_layout.footprint || [];
+    const xy = (q, r) => [size * 1.5 * q, size * sq * (r + q / 2)];
+    const arcPath = (cx, cy, rx, ry, startDeg, endDeg) => {
+      const point = (deg) => {
+        const a = (Math.PI / 180) * deg;
+        return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
+      };
+      const [sx, sy] = point(startDeg), [ex, ey] = point(endDeg);
+      return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+    };
     let svgBody = "";
     for (const cell of cells) {
       const x = size * 1.5 * cell.q, y = size * sq * (cell.r + cell.q / 2);
@@ -904,8 +1117,49 @@
       }
     }
     const qs = cells.map((c) => c.q), rs = cells.map((c) => size * sq * (c.r + c.q / 2));
-    const minX = Math.min(...qs) * size * 1.5 - size * 1.5, maxX = Math.max(...qs) * size * 1.5 + size * 1.5;
-    const minY = Math.min(...rs) - size * 1.5, maxY = Math.max(...rs) + size * 1.5;
+    let laneSvg = "";
+    for (const [area, lanes] of Object.entries(sb.boss_layout.damage_lanes || {})) {
+      const color = AREA_STROKE[area] || "#d9a6ff";
+      for (const [roll, lane] of Object.entries(lanes || {})) {
+        if (!Array.isArray(lane) || lane.length < 2) continue;
+        const points = lane.map(([q, r]) => xy(q, r).map((n) => n.toFixed(1)).join(",")).join(" ");
+        const [firstQ, firstR] = lane[0];
+        const [secondQ, secondR] = lane[1];
+        const [fx, fy] = xy(firstQ, firstR);
+        const [sx, sy] = xy(secondQ, secondR);
+        const dx = sx - fx, dy = sy - fy;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = dx / len, ny = dy / len;
+        const labelX = fx - nx * size * 1.8;
+        const labelY = fy - ny * size * 1.8;
+        const tipX = fx - nx * size * 0.82;
+        const tipY = fy - ny * size * 0.82;
+        laneSvg += `<g class="boss-lane-mark"><title>${esc(area)} lane ${esc(roll)}</title>
+          <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.0"
+            stroke-linecap="round" stroke-linejoin="round" opacity=".2"/>
+          <text x="${labelX.toFixed(1)}" y="${(labelY + 4.5).toFixed(1)}" text-anchor="middle"
+            font-size="12" fill="#e8e0cc" font-family="Pirata One">${esc(roll)}</text>
+          <line x1="${(labelX + nx * 8).toFixed(1)}" y1="${(labelY + ny * 8).toFixed(1)}"
+            x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#e8e0cc" stroke-width="1.25"
+            marker-end="url(#bossLaneArrow)"/></g>`;
+      }
+    }
+    const centerByArea = { forward: [0, -2], port: [-5, 2], rear: [0, 3], starboard: [5, -3] };
+    const arcByArea = { forward: [-150, -30], port: [145, 250], rear: [35, 145], starboard: [-70, 35] };
+    let shieldSvg = "";
+    for (const area of ["forward", "port", "rear", "starboard"]) {
+      const hp = sb.shield_hp?.[area] ?? 0;
+      if (!hp) continue;
+      const center = centerByArea[area];
+      const angles = arcByArea[area];
+      const [cx, cy] = xy(center[0], center[1]);
+      for (let layer = 0; layer < hp; layer++) {
+        shieldSvg += `<path class="boss-detail-shield" d="${arcPath(cx, cy, size * (3.35 + layer * .34), size * (2.55 + layer * .25), angles[0], angles[1])}"
+          stroke="${AREA_STROKE[area]}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
+      }
+    }
+    const minX = Math.min(...qs) * size * 1.5 - size * 5.1, maxX = Math.max(...qs) * size * 1.5 + size * 5.1;
+    const minY = Math.min(...rs) - size * 4.3, maxY = Math.max(...rs) + size * 4.3;
     const shields = ["forward", "port", "rear", "starboard"].map((area) => {
       const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
       return `<td>${esc(area)}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td>`;
@@ -932,7 +1186,13 @@
       <h3>☄ The StarBreacher — Damage Board</h3>
       <div class="boss-modal-grid">
         <div class="boss-modal-map">
-          <svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" style="width:100%;max-height:300px">${svgBody}</svg>
+          <svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" style="width:100%;max-height:300px">
+            <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
+              <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
+            <g class="boss-detail-lanes">${laneSvg}</g>
+            <g class="boss-detail-hull">${svgBody}</g>
+            <g class="boss-detail-shields">${shieldSvg}</g>
+          </svg>
         </div>
         <div class="boss-modal-side">
           <h4>Progress Track — ${sb.progress}</h4>
@@ -1088,6 +1348,14 @@
   }
 
   async function beginPlacement(card, presetSlot = null) {
+    orderTrace("placement_started", {
+      card_id: card.id,
+      card_name: card.name,
+      preset_slot: presetSlot,
+      family: card.family || card.effect?.family || null,
+      has_desperate: !!card.desperate_face,
+      no_basic_face: !!card.no_basic_face,
+    });
     const selection = {
       card_id: card.id,
       face: "front",
@@ -1108,6 +1376,7 @@
         { icon: "⚓", label: "Basic side", sub: Cards.describeBasic(card), value: "front" },
         { icon: "☄", label: "DESPERATE", sub: Cards.describeDesperate(card.desperate_face), value: "desperate", desperate: true },
       ]);
+      orderTrace(face ? "face_selected" : "face_cancelled", { card_id: card.id, face });
       if (!face) return;
       selection.face = face;
     }
@@ -1120,6 +1389,7 @@
           { icon: "➤", label: "Move " + (card.effect.value || card.value), value: "move" },
           { icon: "☄", label: "Cannons +1 dmg", value: "attack" },
         ]);
+        orderTrace(mode ? "front_hybrid_mode_selected" : "front_hybrid_mode_cancelled", { card_id: card.id, mode });
         if (!mode) return;
         selection.mode = mode;
         selection.family = mode;
@@ -1135,6 +1405,7 @@
           { icon: "➤", label: "As a move", value: "move" },
           { icon: "☄", label: "As an attack", value: "attack" },
         ]);
+        orderTrace(mode ? "desperate_hybrid_mode_selected" : "desperate_hybrid_mode_cancelled", { card_id: card.id, mode });
         if (!mode) return;
         selection.mode = mode;
         selection.family = mode;
@@ -1144,6 +1415,7 @@
           { icon: "M", label: "Move stack", value: "move" },
           { icon: "A", label: "Attack stack", value: "attack" },
         ]);
+        orderTrace(mode ? "patch_mode_selected" : "patch_mode_cancelled", { card_id: card.id, mode });
         if (!mode) return;
         selection.mode = mode;
         selection.family = mode;
@@ -1154,6 +1426,7 @@
           label: Cards.orientationLabel(option),
           value: option,
         })));
+        orderTrace(pick ? "crazy_ivan_selected" : "crazy_ivan_cancelled", { card_id: card.id, orientation: pick });
         if (!pick) return;
         selection.orientation = pick;
         selection.family = pick === "u_turn_attack" ? "attack" : "move";
@@ -1172,6 +1445,7 @@
           label: Cards.orientationLabel(option).split(" ").slice(1).join(" ") || option,
           value: option,
         })));
+        orderTrace(orientation ? "orientation_selected" : "orientation_cancelled", { card_id: card.id, orientation });
         if (!orientation) return;
         selection.orientation = orientation;
       } else {
@@ -1182,12 +1456,14 @@
     if (selection.face === "desperate" && card.desperate_face) {
       if (card.desperate_face.repair_components) {
         const picked = await pickComponents("Restore which hull tile?", damagedComponents(), card.desperate_face.repair_components);
+        orderTrace(picked ? "repair_components_selected" : "repair_components_cancelled", { card_id: card.id, component_ids: picked || [] });
         if (!picked) return;
         selection.repair_component_ids = picked;
       }
       if (card.desperate_face.reconfigure_components) {
         const count = card.desperate_face.reconfigure_components;
         const from = await pickComponents("Move damage from...", damagedComponents(), count);
+        orderTrace(from ? "reconfigure_from_selected" : "reconfigure_from_cancelled", { card_id: card.id, component_ids: from || [] });
         if (!from) return;
         const interimDestroyed = new Set(destroyedComponentIds());
         from.forEach((id) => interimDestroyed.delete(id));
@@ -1196,6 +1472,7 @@
           intactComponents().filter((component) => !from.includes(component.id) && isAdjacentToIntact(component, interimDestroyed)),
           count
         );
+        orderTrace(to ? "reconfigure_to_selected" : "reconfigure_to_cancelled", { card_id: card.id, component_ids: to || [] });
         if (!to) return;
         selection.reconfigure_from_component_ids = from;
         selection.reconfigure_to_component_ids = to;
@@ -1214,27 +1491,43 @@
       }
       if (needsTarget && view.star_breach) {
         const options = coopTargetOptions();
-        if (!options.length) { App.toast("Nothing left to shoot at."); return; }
+        if (!options.length) {
+          orderTrace("target_options_empty", { card_id: card.id, star_breach: true });
+          App.toast("Nothing left to shoot at.");
+          return;
+        }
         const chosen = await new Promise((resolve) => {
           targetResolver = resolve;
           showPicker("Mark yer target (or click the boss)", options)
             .then((value) => { if (targetResolver) { targetResolver = null; resolve(value); } });
         });
-        if (!chosen) return;
+        if (!chosen) {
+          orderTrace("target_cancelled", { card_id: card.id, star_breach: true });
+          return;
+        }
+        orderTrace("target_selected", { card_id: card.id, target: chosen, star_breach: true });
         selection.target_player_id = chosen;
       } else if (needsTarget) {
         const enemies = seatOrder().filter((pid) => {
           const player = view.players[pid];
           return pid !== you && player && !player.eliminated && !(player.ship || {}).destroyed;
         });
-        if (!enemies.length) { App.toast("No targets left afloat."); return; }
+        if (!enemies.length) {
+          orderTrace("target_options_empty", { card_id: card.id, star_breach: false });
+          App.toast("No targets left afloat.");
+          return;
+        }
         const chosen = await new Promise((resolve) => {
           targetResolver = resolve;
           showPicker("Mark yer target (or click a ship)", enemies.map((pid) => ({
             icon: "☠", label: displayName(pid), value: pid,
           }))).then((value) => { if (targetResolver) { targetResolver = null; resolve(value); } });
         });
-        if (!chosen) return;
+        if (!chosen) {
+          orderTrace("target_cancelled", { card_id: card.id, star_breach: false });
+          return;
+        }
+        orderTrace("target_selected", { card_id: card.id, target: chosen, star_breach: false });
         selection.target_player_id = chosen;
       }
     }
@@ -1259,6 +1552,7 @@
         sub: slot.cards.length ? "stack with " + slot.cards[0].card.name : "empty",
         value: index,
       })));
+      orderTrace(slotIndex === null || slotIndex === undefined ? "slot_cancelled" : "slot_selected", { card_id: card.id, slot_index: slotIndex });
       if (slotIndex === null || slotIndex === undefined) return;
     }
     const slot = draft.slots[slotIndex];
@@ -1271,6 +1565,16 @@
       }
     }
     slot.cards.push(selection);
+    orderTrace("card_placed", {
+      card_id: selection.card_id,
+      face: selection.face,
+      family: selection.family,
+      orientation: selection.orientation,
+      mode: selection.mode,
+      target: selection.target_player_id,
+      slot_index: slotIndex,
+    });
+    saveDraft();
     renderOrdersPanel();
   }
 
@@ -1291,15 +1595,22 @@
         })),
       })),
     };
+    orderTrace("submit_started", {
+      stack_sizes: payload.stacks.map((stack) => stack.cards.length),
+      cards: payload.stacks.flatMap((stack) => stack.cards.map((card) => card.card_id)),
+    });
     els["btn-submit-orders"].disabled = true;
     try {
       const response = await API.submitOrders(gameId, payload);
       draft = emptyDraft();
       armedSlot = null;
+      orderTrace("submit_succeeded");
+      saveDraft();
       Board.clearPreview();
       App.toast("Orders sealed. Fair winds!", true);
       applyPayload(response, false);
     } catch (error) {
+      orderTrace("submit_failed", { message: error.message || String(error), status: error.status || null });
       App.toast(error.message);
       els["btn-submit-orders"].disabled = false;
     }
@@ -1729,6 +2040,7 @@
     animating = true;
     skipReplay = false;
     replayShipStates = buildReplayShipStates(events);
+    replayBossPose = buildReplayBossPose(events);
     replayControls(events.length >= 4);
     try {
       // Every ship sails alive at the start of the tale; the replay itself
@@ -1755,6 +2067,9 @@
       for (const playerId of Object.keys(positions)) {
         const start = positions[playerId];
         Board.placeShip(playerId, start.q, start.r, start.facing);
+      }
+      if (view.star_breach) {
+        Board.renderStarBreach(view.star_breach, { pose: replayBossPose || undefined, preyPos: preyPosition() });
       }
       renderFleet();
       for (let index = 0; index < events.length; index++) {
@@ -1788,8 +2103,23 @@
       animating = false;
       skipReplay = false;
       replayShipStates = null;
+      replayBossPose = null;
       replayControls(false);
     }
+  }
+
+  function buildReplayBossPose(events) {
+    if (!view.star_breach) return null;
+    for (const event of events) {
+      if (event.type !== "boss_phase_resolved") continue;
+      for (const slot of event.slots || []) {
+        const move = slot.movement;
+        if (move && move.moved && move.before) {
+          return { q: move.before.anchor_q, r: move.before.anchor_r, facing: move.before.facing };
+        }
+      }
+    }
+    return { q: view.star_breach.anchor_q, r: view.star_breach.anchor_r, facing: view.star_breach.facing || 0 };
   }
 
   function displayShipFor(playerId) {
@@ -1987,18 +2317,28 @@
         for (const slot of event.slots || []) {
           const move = slot.movement;
           if (!move || !move.moved) continue;
-          Board.renderStarBreach(view.star_breach, {
-            pose: { q: move.after.anchor_q, r: move.after.anchor_r, facing: move.after.facing },
-            preyPos: preyPosition(),
-          });
-          FX.trail(Board.hexToScreen(move.after.anchor_q, move.after.anchor_r), "#a86ad1");
+          const from = move.before;
+          const to = move.after;
+          const frames = 10;
+          for (let frame = 1; frame <= frames; frame++) {
+            const t = frame / frames;
+            replayBossPose = {
+              q: from.anchor_q + (to.anchor_q - from.anchor_q) * t,
+              r: from.anchor_r + (to.anchor_r - from.anchor_r) * t,
+              facing: to.facing,
+            };
+            Board.renderStarBreach(view.star_breach, { pose: replayBossPose, preyPos: preyPosition() });
+            FX.trail(Board.hexToScreen(replayBossPose.q, replayBossPose.r), "#a86ad1");
+            await wait(28);
+          }
+          replayBossPose = { q: to.anchor_q, r: to.anchor_r, facing: to.facing };
           for (const push of move.pushed || []) {
             const pushedPlayer = view.players[push.ship];
             if (pushedPlayer) Board.placeShip(push.ship, push.to[0], push.to[1], pushedPlayer.ship.facing);
           }
-          await wait(340);
+          await wait(90);
         }
-        Board.renderStarBreach(view.star_breach, { preyPos: preyPosition() });
+        Board.renderStarBreach(view.star_breach, { pose: replayBossPose || undefined, preyPos: preyPosition() });
         return;
       }
       case "enemy_volley_resolved": {
@@ -2037,7 +2377,7 @@
           if (event.shields_absorbed) bits.push("SHIELD -" + event.shields_absorbed);
           if (event.hexes_destroyed) bits.push("HULL -" + event.hexes_destroyed);
           if ((event.components_destroyed || []).length) bits.push(event.components_destroyed.join(", ").toUpperCase() + " DESTROYED");
-          if (event.desperation_cards_drawn) bits.push("glancing blow");
+          if (event.desperation_cards_drawn) bits.push("glancing blow: desperate card to deck");
           FX.floatText(to, bits.join(" · ") || "no effect", "#d9a6ff");
         }
         await wait(430);
@@ -2387,7 +2727,12 @@
       }, 150);
     });
     els["btn-submit-orders"].addEventListener("click", submitOrders);
-    els["btn-clear-orders"].addEventListener("click", () => { draft = emptyDraft(); renderOrdersPanel(); });
+    els["btn-clear-orders"].addEventListener("click", () => {
+      orderTrace("draft_cleared");
+      draft = emptyDraft();
+      saveDraft();
+      renderOrdersPanel();
+    });
     document.getElementById("btn-back-lobby").addEventListener("click", () => { leave(); Lobby.enter(); });
     document.getElementById("btn-replay-sofar").addEventListener("click", async () => {
       if (!view || animating) return;

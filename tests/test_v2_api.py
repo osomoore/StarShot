@@ -308,6 +308,23 @@ class AiMatchTests(unittest.TestCase):
         after = chosen.json()["state"]["players"]["starcommand_tester"]
         self.assertIsNotNone(after["captain"])
 
+    def test_star_breach_host_can_choose_ai_prey(self) -> None:
+        client = make_client()
+        register(client, "prey_picker")
+        created = client.post(
+            "/api/v2/matches",
+            json={
+                "ai_types": ["hunter_killer", "blaster"],
+                "open_seats": 0,
+                "active_expansions": ["star_breach"],
+                "star_breach_prey_player_id": "__ai__:1",
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        game_id = created.json()["game_id"]
+        state = client.get(f"/api/v2/games/{game_id}/view").json()["state"]
+        self.assertEqual(state["star_breach"]["prey_player_id"], "ai:blaster:1")
+
 
 class SecurityTests(unittest.TestCase):
     def test_outsiders_cannot_view_or_act(self) -> None:

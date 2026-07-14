@@ -355,6 +355,31 @@ class CreateMatchRequest(BaseModel):
     ai_level: str = Field(default="deck_hand")
     open_seats: int = Field(default=0, ge=0, le=3)
     active_expansions: list[str] = Field(default_factory=list, max_length=4)
+    star_breach_prey_player_id: str | None = Field(default=None, max_length=80)
+
+
+def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> str | None:
+    requested = body.star_breach_prey_player_id
+    if not requested:
+        return None
+    if requested == "__host__":
+        return host_username
+    ai_ids: list[str] = []
+    counts: dict[str, int] = {}
+    for ai_type in body.ai_types:
+        counts[ai_type] = counts.get(ai_type, 0) + 1
+        ai_ids.append(f"ai:{ai_type}:{counts[ai_type]}")
+    if requested.startswith("__ai__:"):
+        try:
+            index = int(requested.split(":", 1)[1])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Unknown StarBreach Prey selection.") from exc
+        if index < 0 or index >= len(ai_ids):
+            raise HTTPException(status_code=400, detail="Unknown StarBreach Prey selection.")
+        return ai_ids[index]
+    if requested == host_username or requested in ai_ids:
+        return requested
+    raise HTTPException(status_code=400, detail="Unknown StarBreach Prey selection.")
 
 
 @router.post("/matches")
@@ -367,6 +392,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     if body.ai_types and body.ai_level not in AI_LEVELS:
         raise HTTPException(status_code=400, detail=f"Unknown AI level: {body.ai_level}")
     active_expansions = _validated_expansions(body.active_expansions)
+    prey_player_id = _resolve_requested_prey_id(body, user["username"]) if "star_breach" in active_expansions else None
     total = 1 + len(body.ai_types) + body.open_seats
     minimum = 1 if "star_breach" in active_expansions else 2
     if total < minimum or total > 4:
@@ -381,6 +407,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         status="open",
         ai_level=body.ai_level,
         active_expansions=active_expansions,
+        star_breach_prey_player_id=prey_player_id,
     )
     store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"])
     counts: dict[str, int] = {}

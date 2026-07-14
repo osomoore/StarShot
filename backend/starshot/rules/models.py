@@ -77,6 +77,7 @@ class GameConfig:
     deck_set_id: str | None = None
     debug_start_with_attack_desperation_card: bool = False
     active_expansions: tuple[str, ...] = ()
+    star_breach_prey_player_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

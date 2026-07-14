@@ -32,6 +32,11 @@
     return (Math.atan2(y, x) * 180) / Math.PI;
   }
 
+  function polar(cx, cy, angleDeg, radius) {
+    const angle = (Math.PI / 180) * angleDeg;
+    return [cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius];
+  }
+
   function hexPoints(cx, cy, size) {
     const pts = [];
     for (let i = 0; i < 6; i++) {
@@ -165,6 +170,7 @@
         const tip = el("title", {}, poly);
         tip.textContent = `StarBreacher (${cell.area}) — click for the damage board. Hull ${Math.round((1 - hullDamage) * 100)}%`;
       }
+      drawBossShieldArcs(group, token, pose, sb.shield_hp || {});
       // Nose chevron pointing along the last movement direction.
       const [nx, ny] = axialToXY(token[0].q, token[0].r);
       const nose = el("g", { transform: `translate(${nx},${ny}) rotate(${facingAngle(pose.facing)})`, "pointer-events": "none" }, group);
@@ -194,6 +200,45 @@
       }, bossLayer);
       el("text", { x, y: y - HEX * 1.2, "text-anchor": "middle", "font-size": 8, fill: "#ff8a7a", "pointer-events": "none" }, bossLayer)
         .textContent = "PREY";
+    }
+  }
+
+  function drawArc(parent, cx, cy, angle, radius, sweep, color, layer) {
+    const start = polar(cx, cy, angle - sweep / 2, radius);
+    const end = polar(cx, cy, angle + sweep / 2, radius);
+    el("path", {
+      d: `M ${start[0]} ${start[1]} A ${radius} ${radius} 0 0 1 ${end[0]} ${end[1]}`,
+      fill: "none",
+      stroke: color,
+      "stroke-width": 1.25,
+      "stroke-linecap": "round",
+      opacity: Math.max(0.45, 0.92 - layer * 0.13),
+      "pointer-events": "none",
+    }, parent);
+  }
+
+  function drawBossShieldArcs(group, token, pose, shieldHp) {
+    const byArea = Object.fromEntries(token.map((cell) => [cell.area, cell]));
+    const rearCenter = byArea.port && byArea.starboard
+      ? {
+          q: (byArea.port.q + byArea.starboard.q) / 2,
+          r: (byArea.port.r + byArea.starboard.r) / 2,
+        }
+      : byArea.port || byArea.starboard || byArea.forward;
+    const specs = [
+      ["forward", byArea.forward, pose.facing, "#9ee7ff", 62],
+      ["port", byArea.port, pose.facing + 2, "#bcb0ff", 70],
+      ["starboard", byArea.starboard, pose.facing - 2, "#9fe8b6", 70],
+      ["rear", rearCenter, pose.facing + 3, "#ffd08a", 76],
+    ];
+    for (const [area, cell, direction, color, sweep] of specs) {
+      const layers = Number(shieldHp[area] || 0);
+      if (!cell || layers <= 0) continue;
+      const [cx, cy] = axialToXY(cell.q, cell.r);
+      const angle = facingAngle(direction);
+      for (let layer = 0; layer < layers; layer++) {
+        drawArc(group, cx, cy, angle, HEX * (1.02 + layer * 0.22), sweep, color, layer);
+      }
     }
   }
 

@@ -178,7 +178,7 @@ def create_initial_state(config: GameConfig) -> GameState:
     if _star_command_enabled(state):
         _initialize_star_command(state)
     if star_breach is not None:
-        star_breach.initialize(state)
+        star_breach.initialize(state, config)
     return state
 
 
@@ -1417,6 +1417,7 @@ def _resolve_cleanup(state: GameState) -> None:
     for player in state.players.values():
         if player.eliminated:
             continue
+        bonus_draws_pending = player.bonus_draws_pending
         draw_result = draw_hand(player, shuffle_cards=lambda cards: _shuffle_cards(state, cards))
         if draw_result.reshuffled_discard or draw_result.moved_overheat_to_discard:
             state.event_log.append(
@@ -1443,6 +1444,7 @@ def _resolve_cleanup(state: GameState) -> None:
                     "deck_count": len(player.deck),
                     "hand_count": len(player.hand),
                     "discard_count": len(player.discard),
+                    "bonus_draws": bonus_draws_pending,
                 }
             )
     state.event_log.append(

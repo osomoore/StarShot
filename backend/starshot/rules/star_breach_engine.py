@@ -18,7 +18,7 @@ from starshot.rules.engine import (
 )
 from starshot.rules.baubles import ship_inside_bauble
 from starshot.rules.decks import card_by_id
-from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
+from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GameConfig, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
 from starshot.rules import star_breach as sb_data
 from starshot.rules.star_breach import EXPANSION_ID
 from starshot.rules.desperation import draw_desperation_card
@@ -39,8 +39,8 @@ def assign_roles(players: dict[str, PlayerState]) -> None:
     _assign_star_breach_roles(players)
 
 
-def initialize(state: GameState) -> None:
-    _initialize_star_breach(state)
+def initialize(state: GameState, config: GameConfig | None = None) -> None:
+    _initialize_star_breach(state, config)
 
 
 def game_result(state: GameState, *, final_round_complete: bool) -> GameResult | None:
@@ -116,7 +116,7 @@ def _assign_star_breach_roles(players: dict[str, PlayerState]) -> None:
             player.ship.shields += 1
 
 
-def _initialize_star_breach(state: GameState) -> None:
+def _initialize_star_breach(state: GameState, config: GameConfig | None = None) -> None:
     nose_q, nose_r = sb_data.BOSS_START
     fleet = [
         FleetCraftState(
@@ -130,7 +130,8 @@ def _initialize_star_breach(state: GameState) -> None:
         )
         for craft_id, kind, color, (offset_q, offset_r) in sb_data.FLEET_SCENARIO
     ]
-    prey_player_id = next(iter(state.players))
+    requested_prey = config.star_breach_prey_player_id if config is not None else None
+    prey_player_id = requested_prey if requested_prey in state.players else next(iter(state.players))
     state.star_breach = StarBreachState(
         scenario_id=sb_data.SCENARIO_ID,
         prey_player_id=prey_player_id,
