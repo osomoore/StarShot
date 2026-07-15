@@ -215,6 +215,7 @@
           repair_component_ids: selection.repair_component_ids || [],
           reconfigure_from_component_ids: selection.reconfigure_from_component_ids || [],
           reconfigure_to_component_ids: selection.reconfigure_to_component_ids || [],
+          ace_lane_preference: selection.ace_lane_preference ?? null,
           family: selection.family,
         })),
       })),
@@ -242,6 +243,7 @@
           repair_component_ids: Array.isArray(selection.repair_component_ids) ? selection.repair_component_ids : [],
           reconfigure_from_component_ids: Array.isArray(selection.reconfigure_from_component_ids) ? selection.reconfigure_from_component_ids : [],
           reconfigure_to_component_ids: Array.isArray(selection.reconfigure_to_component_ids) ? selection.reconfigure_to_component_ids : [],
+          ace_lane_preference: Number.isInteger(selection.ace_lane_preference) ? selection.ace_lane_preference : null,
           card,
           family: selection.family || card.family || card.effect?.family || null,
         });
@@ -421,7 +423,7 @@
       "starfall_take_cover_damage", "captain_cleanup_movement",
       "boss_phase_started", "boss_phase_resolved", "enemy_volley_resolved",
       "boss_volley_resolved", "craft_volley_resolved", "repair_volley_resolved",
-      "boss_progress_advanced", "boss_tiers_activated"].includes(event.type);
+      "boss_progress_advanced", "boss_tiers_activated", "boss_fleet_spawned"].includes(event.type);
   }
 
   function shouldOfferEntryReplay(event) {
@@ -536,7 +538,7 @@
     const sb = view.star_breach;
     if (!sb) {
       if (node) node.remove();
-      document.getElementById("boss-progress-rail")?.remove();
+      document.getElementById("boss-battle-board")?.remove();
       document.getElementById("sb-pause-toggle")?.remove();
       return;
     }
@@ -558,28 +560,134 @@
       · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}
       · <u>damage board</u></span>`;
     node.title = "Click for the StarBreacher's damage board.";
-    renderBossProgressRail();
+    renderBossBattleBoardMini();
     renderPauseToggle();
   }
 
-  function renderBossProgressRail() {
-    const sb = view.star_breach;
-    let rail = document.getElementById("boss-progress-rail");
-    if (!sb) { rail?.remove(); return; }
-    if (!rail) {
-      rail = document.createElement("div");
-      rail.id = "boss-progress-rail";
-      rail.className = "boss-progress-rail";
-      rail.title = "Boss Progress Track — hits on The Prey fill it; tiers power up at the next round's start.";
-      els["board-wrap"].appendChild(rail);
+  // ── boss battle board (mini in the main view, expanded in the modal) ───
+  const STACK_COLORS = { "0.5": "#ff8d6b", "1.5": "#ffd75e", "2.5": "#9dff8a", "3.5": "#59c8ff", starbreach: "#d9a6ff" };
+  const KIND_SYMBOL = { attack: "☄", move: "➤", breacher: "◉", spawn: "▣", ability: "⚡", filler: "·" };
+  const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
+  const COMPONENT_SYMBOL = { firing_computer: "☄", fuel_tank: "➤", shield_generator: "🛡", core: "◉" };
+
+  function stackColor(key) { return STACK_COLORS[key] || "#d9a6ff"; }
+
+  /* Whether a boss action slot currently fires (mirrors the engine). */
+  function bossSlotActive(sb, slot) {
+    if (slot.slot === "base") return true;
+    if (slot.slot === "component") {
+      return !(sb.destroyed_component_ids || []).includes(slot.component_id);
     }
-    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), sb.progress || 0);
-    const ticks = Object.entries(sb.tier_progress || {}).map(([tier, threshold]) => {
-      const active = (sb.active_tiers || []).includes(Number(tier));
-      return `<div class="bpr-tick ${active ? "active" : ""}" style="bottom:${(threshold / maxTrack) * 100}%"></div>`;
+    if (slot.slot === "tier") {
+      if (!(sb.active_tiers || []).includes(slot.tier)) return false;
+      const core = slot.core_hex;
+      if (core && (sb.destroyed_hexes || []).some(([q, r]) => q === core[0] && r === core[1])) return false;
+      return slot.min_round == null || (view.round_number || 1) >= slot.min_round;
+    }
+    return false;
+  }
+
+  function bossComponentById(sb) {
+    const byId = {};
+    for (const component of (sb.boss_layout || {}).components || []) byId[component.id] = component;
+    return byId;
+  }
+
+  /* Short symbol+number label for a slot chip: what powers this action. */
+  function slotChipText(sb, slot, componentById) {
+    if (slot.slot === "base") return "⬢";
+    if (slot.slot === "tier") return "★" + slot.tier;
+    const component = componentById[slot.component_id];
+    return component ? (COMPONENT_SYMBOL[component.type] || "?") + (component.number ?? "") : "?";
+  }
+
+  function slotChipTitle(sb, slot, componentById, active) {
+    const state = active ? "" : " (offline)";
+    if (slot.slot === "base") return "Base action" + state;
+    if (slot.slot === "tier") {
+      const bits = [`Progress Tier ${slot.tier}`];
+      if (slot.min_round != null) bits.push(`round ${slot.min_round}+`);
+      if (slot.core_hex) bits.push("needs its core intact");
+      return bits.join(" · ") + state;
+    }
+    const component = componentById[slot.component_id];
+    return (component ? component.name : slot.component_id) + state;
+  }
+
+  /* Discrete progress-track boxes: one per progress point, filled up to the
+     current progress, thick "major" borders where an ability is gained. */
+  function progressTrackHTML(sb, progressOverride = null) {
+    const progress = progressOverride ?? sb.progress ?? 0;
+    const thresholds = {};
+    for (const [tier, threshold] of Object.entries(sb.tier_progress || {})) {
+      thresholds[threshold] = Number(tier);
+    }
+    const labels = (sb.boss_layout || {}).tier_labels || {};
+    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), progress || 0, 1);
+    let boxes = "";
+    for (let step = 1; step <= maxTrack; step++) {
+      const tier = thresholds[step];
+      const label = tier != null ? labels[String(tier)] : null;
+      const kind = label ? label.kind : (tier != null ? "attack" : null);
+      const classes = ["bmb-box"];
+      if (step <= progress) classes.push("filled");
+      if (tier != null) classes.push("major");
+      if (tier != null && (sb.active_tiers || []).includes(tier)) classes.push("online");
+      const color = label && label.stack ? stackColor(label.stack) : (kind === "spawn" ? "#ff7ad0" : "#d9a6ff");
+      const symbol = tier != null ? (KIND_SYMBOL[kind] || "★") : "";
+      const title = tier != null
+        ? `Space ${step} — Tier ${tier}: ${kind || "ability"}${(sb.active_tiers || []).includes(tier) ? " (online)" : ""}`
+        : `Space ${step}`;
+      boxes += `<span class="${classes.join(" ")}"${tier != null ? ` style="border-color:${color}"` : ""} title="${esc(title)}">${symbol}</span>`;
+    }
+    return `<div class="bmb-track" title="Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.">
+      <span class="bmb-track-label">☄ ${progress}</span>${boxes}</div>`;
+  }
+
+  /* One row of slot chips per boss action phase (+ fleet markers). */
+  function actionRowsHTML(sb) {
+    const layout = sb.boss_layout || {};
+    const componentById = bossComponentById(sb);
+    const phases = layout.phases || [];
+    if (!phases.length) {
+      // Older games without phase data: fall back to plain counts.
+      return Object.entries(sb.expected_actions || {}).map(([key, count]) =>
+        `<div class="bmb-row"><span class="bmb-phase" style="color:${stackColor(key)}">${esc(PHASE_SHORT[key] || key)}</span>
+         <span class="bmb-chip on" style="border-color:${stackColor(key)}">${count}</span></div>`).join("");
+    }
+    const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
+    return phases.map((phase) => {
+      const color = stackColor(phase.key);
+      const chips = (phase.slots || []).map((slot) => {
+        const active = bossSlotActive(sb, slot);
+        const kind = slot.kind || phase.kind;
+        return `<span class="bmb-chip ${active ? "on" : "off"} bmb-kind-${kind}"
+          style="border-color:${color};${active ? `color:${color}` : ""}"
+          title="${esc(slotChipTitle(sb, slot, componentById, active))} — ${esc(kind)}">${slotChipText(sb, slot, componentById)}</span>`;
+      }).join("");
+      const fleetKinds = ((layout.fleet_actions || {})[phase.key]) || [];
+      const fleet = fleetAlive && fleetKinds.length
+        ? fleetKinds.map((kind) => `<span class="bmb-chip fleet on" title="Fleet ×${fleetAlive} — ${esc(kind)}">▣${KIND_SYMBOL[kind] || ""}</span>`).join("")
+        : "";
+      return `<div class="bmb-row">
+        <span class="bmb-phase" style="color:${color}" title="${esc(phase.key === "starbreach" ? "StarBreach phase" : "Boss Action " + phase.key)}">${esc(PHASE_SHORT[phase.key] || phase.key)}${KIND_SYMBOL[phase.kind] || ""}</span>
+        ${chips || '<span class="bmb-none">—</span>'}${fleet}</div>`;
     }).join("");
-    rail.innerHTML = `<div class="bpr-label">☄ ${sb.progress}</div>
-      <div class="bpr-fill" style="height:${Math.min(100, (sb.progress / maxTrack) * 100)}%"></div>${ticks}`;
+  }
+
+  function renderBossBattleBoardMini() {
+    const sb = view.star_breach;
+    let board = document.getElementById("boss-battle-board");
+    if (!sb) { board?.remove(); return; }
+    if (!board) {
+      board = document.createElement("div");
+      board.id = "boss-battle-board";
+      board.className = "boss-mini-board";
+      board.title = "The boss's battle board — click for the full damage board.";
+      board.addEventListener("click", showBossModal);
+      els["board-wrap"].appendChild(board);
+    }
+    board.innerHTML = progressTrackHTML(sb) + `<div class="bmb-rows">${actionRowsHTML(sb)}</div>`;
   }
 
   function pauseAfterActions() {
@@ -745,6 +853,10 @@
       }
       case "boss_tiers_activated":
         return { cls: "hit", text: `☄ Boss Tier ${event.tiers.join(", ")} comes online — more boss actions this round.` };
+      case "boss_fleet_spawned": {
+        const where = { boss_front: "ahead of the boss", bauble: "at the bauble", fang: "at The Fang" }[event.location] || "";
+        return { cls: "hit", text: `☄ Reinforcements! ${(event.craft || []).length} fleet craft warp in ${where} (Tier ${event.tier}).` };
+      }
       case "enemy_volley_resolved": {
         const result = event.shielded ? "shield takes it" : event.hit ? `HIT for ${event.damage_applied || 1}` : "misses";
         return { cls: event.hit ? "hit" : "", text: `${targetLabel(event.attacker)} fires on ${name(event.target_id)} — 🎲${event.roll}${event.aim_bonus ? "+" + event.aim_bonus : ""} vs ${event.defense_threshold}: ${result}${event.target_destroyed ? " — SHIP DESTROYED ☠" : ""}` };
@@ -1073,174 +1185,38 @@
     showBossModal();
   }
 
-  /* The StarBreacher's damage board: internal hull, components, shields,
-     expected actions per boss step, and the progress track. */
-  function showBossModal() {
-    const sb = view.star_breach;
-    if (!sb || !sb.boss_layout) return;
-    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
-    const componentsByHex = {};
-    for (const component of sb.boss_layout.components || []) {
-      componentsByHex[component.q + "," + component.r] = component;
-    }
-    const AREA_FILL = { forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120" };
-    const AREA_STROKE = { forward: "#9ee7ff", port: "#bcb0ff", rear: "#ffd08a", starboard: "#9fe8b6" };
-    // Designed bosses name their areas after shield regions; give them stable
-    // colors by position in the layout's area list.
-    const EXTRA_FILL = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
-    const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
-    const layoutAreas = (sb.boss_layout.areas || []);
-    const areaFill = (area) => AREA_FILL[area] || EXTRA_FILL[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_FILL.length];
-    const areaStroke = (area) => AREA_STROKE[area] || EXTRA_STROKE[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_STROKE.length];
-    const BADGE = { shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉" };
-    const size = 13, sq = Math.sqrt(3);
-    const cells = sb.boss_layout.footprint || [];
-    const xy = (q, r) => [size * 1.5 * q, size * sq * (r + q / 2)];
-    const arcPath = (cx, cy, rx, ry, startDeg, endDeg) => {
-      const point = (deg) => {
-        const a = (Math.PI / 180) * deg;
-        return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
-      };
-      const [sx, sy] = point(startDeg), [ex, ey] = point(endDeg);
-      return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+  // ── boss hull SVG (shared by the damage-board modal and the target picker) ─
+  const AREA_FILL = { forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120" };
+  const AREA_STROKE = { forward: "#9ee7ff", port: "#bcb0ff", rear: "#ffd08a", starboard: "#9fe8b6" };
+  // Designed bosses name their areas after shield regions; give them stable
+  // colors by position in the layout's area list.
+  const EXTRA_FILL = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
+  const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
+  const COMPONENT_BADGE = { shield_generator: "SG", firing_computer: "☄", fuel_tank: "➤", core: "◉" };
+
+  function areaPalette(sb) {
+    const layoutAreas = (sb.boss_layout || {}).areas || [];
+    return {
+      fill: (area) => AREA_FILL[area] || EXTRA_FILL[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_FILL.length],
+      stroke: (area) => AREA_STROKE[area] || EXTRA_STROKE[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_STROKE.length],
     };
-    let svgBody = "";
-    for (const cell of cells) {
-      const x = size * 1.5 * cell.q, y = size * sq * (cell.r + cell.q / 2);
-      const dead = destroyed.has(cell.q + "," + cell.r);
-      const tint = cell.area ? areaFill(cell.area) : "150,150,150";
-      const pts = [];
-      for (let i = 0; i < 6; i++) {
-        const a = (Math.PI / 180) * (60 * i);
-        pts.push(`${(x + (size - 0.8) * Math.cos(a)).toFixed(1)},${(y + (size - 0.8) * Math.sin(a)).toFixed(1)}`);
-      }
-      const component = componentsByHex[cell.q + "," + cell.r];
-      svgBody += `<polygon points="${pts.join(" ")}" fill="${dead ? "rgba(25,25,32,.9)" : `rgba(${tint},.5)`}"
-        stroke="${dead ? "#333" : `rgb(${tint})`}" stroke-width="1"><title>${esc(component ? component.name : `${cell.area} hull`)}${dead ? " (destroyed)" : ""}</title></polygon>`;
-      if (component) {
-        svgBody += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="8.5" font-weight="700"
-          fill="${dead ? "#555" : "#0a0f1e"}" pointer-events="none">${BADGE[component.type] || "?"}</text>`;
-      } else if (dead) {
-        svgBody += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9" fill="#555" pointer-events="none">✕</text>`;
-      }
-    }
-    const qs = cells.map((c) => c.q), rs = cells.map((c) => size * sq * (c.r + c.q / 2));
-    let laneSvg = "";
-    for (const [area, lanes] of Object.entries(sb.boss_layout.damage_lanes || {})) {
-      const color = areaStroke(area);
-      for (const [roll, lane] of Object.entries(lanes || {})) {
-        if (!Array.isArray(lane) || lane.length < 2) continue;
-        const points = lane.map(([q, r]) => xy(q, r).map((n) => n.toFixed(1)).join(",")).join(" ");
-        const [firstQ, firstR] = lane[0];
-        const [secondQ, secondR] = lane[1];
-        const [fx, fy] = xy(firstQ, firstR);
-        const [sx, sy] = xy(secondQ, secondR);
-        const dx = sx - fx, dy = sy - fy;
-        const len = Math.hypot(dx, dy) || 1;
-        const nx = dx / len, ny = dy / len;
-        const labelX = fx - nx * size * 1.8;
-        const labelY = fy - ny * size * 1.8;
-        const tipX = fx - nx * size * 0.82;
-        const tipY = fy - ny * size * 0.82;
-        laneSvg += `<g class="boss-lane-mark"><title>${esc(area)} lane ${esc(roll)}</title>
-          <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.0"
-            stroke-linecap="round" stroke-linejoin="round" opacity=".2"/>
-          <text x="${labelX.toFixed(1)}" y="${(labelY + 4.5).toFixed(1)}" text-anchor="middle"
-            font-size="12" fill="#e8e0cc" font-family="Pirata One">${esc(roll)}</text>
-          <line x1="${(labelX + nx * 8).toFixed(1)}" y1="${(labelY + ny * 8).toFixed(1)}"
-            x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#e8e0cc" stroke-width="1.25"
-            marker-end="url(#bossLaneArrow)"/></g>`;
-      }
-    }
-    // The decorative shield-arc ellipses are tuned to the stock four-arc hull;
-    // designed bosses show their shields in the table instead.
-    const centerByArea = { forward: [0, -2], port: [-5, 2], rear: [0, 3], starboard: [5, -3] };
-    const arcByArea = { forward: [-150, -30], port: [145, 250], rear: [35, 145], starboard: [-70, 35] };
-    let shieldSvg = "";
-    for (const area of layoutAreas) {
-      const hp = sb.shield_hp?.[area] ?? 0;
-      if (!hp || !centerByArea[area]) continue;
-      const center = centerByArea[area];
-      const angles = arcByArea[area];
-      const [cx, cy] = xy(center[0], center[1]);
-      for (let layer = 0; layer < hp; layer++) {
-        shieldSvg += `<path class="boss-detail-shield" d="${arcPath(cx, cy, size * (3.35 + layer * .34), size * (2.55 + layer * .25), angles[0], angles[1])}"
-          stroke="${areaStroke(area)}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
-      }
-    }
-    const minX = Math.min(...qs) * size * 1.5 - size * 5.1, maxX = Math.max(...qs) * size * 1.5 + size * 5.1;
-    const minY = Math.min(...rs) - size * 4.3, maxY = Math.max(...rs) + size * 4.3;
-    const shields = layoutAreas.map((area) => {
-      const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
-      const label = AREA_STROKE[area] ? area : `region ${area}`;
-      return `<td>${esc(label)}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td>`;
-    }).map((row) => `<tr>${row}</tr>`).join("");
-    const PHASE_NAMES = { "0.5": "Action 0.5 (attack)", "1.5": "Action 1.5 (move)", "2.5": "Action 2.5 (move)", "3.5": "Action 3.5 (attack)", starbreach: "StarBreach (attack)" };
-    const expected = Object.entries(sb.expected_actions || {})
-      .map(([phase, count]) => `<tr><td>${esc(PHASE_NAMES[phase] || phase)}</td><td><b>${count}</b> action${count === 1 ? "" : "s"}</td></tr>`)
-      .join("");
-    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), sb.progress || 0);
-    const ticks = Object.entries(sb.tier_progress || {}).map(([tier, threshold]) => {
-      const active = (sb.active_tiers || []).includes(Number(tier));
-      const reached = (sb.tiers_unlocked || []).includes(Number(tier));
-      return `<div class="bt-tick ${active ? "active" : ""}" style="left:${(threshold / maxTrack) * 100}%"
-        title="Tier ${tier} at ${threshold}${active ? " (active)" : reached ? " (powers up next round)" : ""}"></div>`;
-    }).join("");
-    const pendingTiers = (sb.tiers_unlocked || []).filter((tier) => !(sb.active_tiers || []).includes(tier));
-    const overlay = els["picker-overlay"];
-    overlay.innerHTML = "";
-    overlay.classList.remove("hidden");
-    const box = document.createElement("div");
-    box.className = "picker";
-    box.style.maxWidth = "640px";
-    box.innerHTML = `
-      <h3>☄ ${esc(sb.boss_name || "The StarBreacher")} — Damage Board</h3>
-      <div class="boss-modal-grid">
-        <div class="boss-modal-map">
-          <svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" style="width:100%;max-height:300px">
-            <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
-              <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
-            <g class="boss-detail-lanes">${laneSvg}</g>
-            <g class="boss-detail-hull">${svgBody}</g>
-            <g class="boss-detail-shields">${shieldSvg}</g>
-          </svg>
-        </div>
-        <div class="boss-modal-side">
-          <h4>Progress Track — ${sb.progress}</h4>
-          <div class="boss-track">
-            <div class="bt-fill" style="width:${Math.min(100, (sb.progress / maxTrack) * 100)}%"></div>
-            ${ticks}
-          </div>
-          ${pendingTiers.length ? `<div style="margin-top:4px;color:#ff9d8a">Tier ${pendingTiers.join(", ")} powers up next round!</div>` : ""}
-          <h4>Shield Arcs</h4>
-          <table>${shields}</table>
-          <h4>Expected Actions</h4>
-          <table>${expected}</table>
-          <div style="margin-top:6px">SG = Shield Generator · FC = Firing Computer · FT = Fuel Tank.
-            Destroying an FC or FT removes its action; hits on The Prey advance the track.</div>
-        </div>
-      </div>
-      <button class="btn ghost picker-cancel" id="boss-modal-close">Close</button>`;
-    overlay.appendChild(box);
-    box.querySelector("#boss-modal-close").addEventListener("click", hidePicker);
-    overlay.addEventListener("click", function onOverlay(event) {
-      if (event.target === overlay) { hidePicker(); overlay.removeEventListener("click", onOverlay); }
-    });
   }
 
-  /* Co-op target list: intact boss areas, living hunter-killers, and (for
-     the Engineer) crew ships to repair. */
-  function coopTargetOptions() {
+  function areaDisplayName(area) {
+    return /^\d+$/.test(area) ? `region ${area}` : area;
+  }
+
+  /* Areas that can still be damaged (mirrors the engine's area check). */
+  function bossAliveAreas() {
     const sb = view.star_breach;
-    if (!sb) return [];
+    if (!sb) return {};
     const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
     const areaAlive = {};
     for (const cell of (sb.boss_layout || {}).footprint || []) {
       if (cell.area && !destroyed.has(cell.q + "," + cell.r)) areaAlive[cell.area] = true;
     }
     // Designed bosses: an area also lives while any of its damage lanes can
-    // still bite (mirrors the engine's area_hexes check). Stock areas are
-    // exactly their footprint cells, so this only applies to designs.
+    // still bite. Stock areas are exactly their footprint cells.
     const laneBackedAreas = String(sb.scenario_id || "").startsWith("design:");
     for (const [area, lanes] of Object.entries(laneBackedAreas ? (sb.boss_layout || {}).damage_lanes || {} : {})) {
       if (areaAlive[area]) continue;
@@ -1251,15 +1227,348 @@
         }
       }
     }
+    return areaAlive;
+  }
+
+  /* Build the boss hull as SVG markup. Options:
+       lanes: draw damage lanes (laneAreaFilter limits them to one area)
+       shields: draw the stock shield arcs
+       clickableAreas: {area: true} — hexes become buttons with data-area
+       selectedArea: highlight one region */
+  function bossHullParts(sb, opts = {}) {
+    const layout = sb.boss_layout || {};
+    const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
+    const componentsByHex = {};
+    for (const component of layout.components || []) {
+      componentsByHex[component.q + "," + component.r] = component;
+    }
+    const palette = areaPalette(sb);
+    const size = opts.size || 13, sq = Math.sqrt(3);
+    const cells = layout.footprint || [];
+    const xy = (q, r) => [size * 1.5 * q, size * sq * (r + q / 2)];
+    let hullSvg = "";
+    for (const cell of cells) {
+      const [x, y] = xy(cell.q, cell.r);
+      const dead = destroyed.has(cell.q + "," + cell.r);
+      const tint = cell.area ? palette.fill(cell.area) : "150,150,150";
+      const selected = opts.selectedArea && cell.area === opts.selectedArea;
+      const clickable = opts.clickableAreas && cell.area && opts.clickableAreas[cell.area];
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 180) * (60 * i);
+        pts.push(`${(x + (size - 0.8) * Math.cos(a)).toFixed(1)},${(y + (size - 0.8) * Math.sin(a)).toFixed(1)}`);
+      }
+      const component = componentsByHex[cell.q + "," + cell.r];
+      const fillAlpha = selected ? ".78" : ".5";
+      hullSvg += `<polygon points="${pts.join(" ")}"
+        fill="${dead ? "rgba(25,25,32,.9)" : `rgba(${tint},${fillAlpha})`}"
+        stroke="${dead ? "#333" : selected ? "#fff" : `rgb(${tint})`}" stroke-width="${selected ? 1.8 : 1}"
+        ${clickable ? `data-area="${esc(cell.area)}" class="boss-region-cell" cursor="pointer"` : ""}>
+        <title>${esc(component ? component.name : `${areaDisplayName(cell.area)} hull`)}${dead ? " (destroyed)" : ""}</title></polygon>`;
+      if (component) {
+        hullSvg += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="8.5" font-weight="700"
+          fill="${dead ? "#555" : "#0a0f1e"}" pointer-events="none">${COMPONENT_BADGE[component.type] || "?"}${component.number ?? ""}</text>`;
+      } else if (dead) {
+        hullSvg += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9" fill="#555" pointer-events="none">✕</text>`;
+      }
+    }
+    let laneSvg = "";
+    if (opts.lanes) {
+      for (const [area, lanes] of Object.entries(layout.damage_lanes || {})) {
+        if (opts.laneAreaFilter && area !== opts.laneAreaFilter) continue;
+        const color = palette.stroke(area);
+        for (const [roll, lane] of Object.entries(lanes || {})) {
+          if (!Array.isArray(lane) || lane.length < 1) continue;
+          const points = lane.map(([q, r]) => xy(q, r).map((n) => n.toFixed(1)).join(",")).join(" ");
+          const [fx, fy] = xy(lane[0][0], lane[0][1]);
+          let nx = 0, ny = -1;
+          if (lane.length > 1) {
+            const [sx, sy] = xy(lane[1][0], lane[1][1]);
+            const len = Math.hypot(sx - fx, sy - fy) || 1;
+            nx = (sx - fx) / len; ny = (sy - fy) / len;
+          }
+          const labelX = fx - nx * size * 1.8;
+          const labelY = fy - ny * size * 1.8;
+          const tipX = fx - nx * size * 0.82;
+          const tipY = fy - ny * size * 0.82;
+          const highlight = opts.highlightLane != null && String(opts.highlightLane) === String(roll)
+            && (!opts.laneAreaFilter || area === opts.laneAreaFilter);
+          laneSvg += `<g class="boss-lane-mark"${opts.laneClickable ? ` data-lane="${esc(roll)}" cursor="pointer"` : ""}><title>${esc(areaDisplayName(area))} lane ${esc(roll)}</title>
+            <polyline points="${points}" fill="none" stroke="${highlight ? "#fff" : color}" stroke-width="${highlight ? 2 : 1.0}"
+              stroke-linecap="round" stroke-linejoin="round" opacity="${highlight ? ".75" : ".2"}"/>
+            <text x="${labelX.toFixed(1)}" y="${(labelY + 4.5).toFixed(1)}" text-anchor="middle"
+              font-size="12" fill="${highlight ? "#ffd76a" : "#e8e0cc"}" font-family="Pirata One">${esc(roll)}</text>
+            <line x1="${(labelX + nx * 8).toFixed(1)}" y1="${(labelY + ny * 8).toFixed(1)}"
+              x2="${tipX.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#e8e0cc" stroke-width="1.25"
+              marker-end="url(#bossLaneArrow)"/></g>`;
+        }
+      }
+    }
+    // The decorative shield-arc ellipses are tuned to the stock four-arc hull;
+    // designed bosses show their shields in the table instead.
+    let shieldSvg = "";
+    if (opts.shields) {
+      const arcPath = (cx, cy, rx, ry, startDeg, endDeg) => {
+        const point = (deg) => {
+          const a = (Math.PI / 180) * deg;
+          return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
+        };
+        const [sx, sy] = point(startDeg), [ex, ey] = point(endDeg);
+        return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
+      };
+      const centerByArea = { forward: [0, -2], port: [-5, 2], rear: [0, 3], starboard: [5, -3] };
+      const arcByArea = { forward: [-150, -30], port: [145, 250], rear: [35, 145], starboard: [-70, 35] };
+      for (const area of layout.areas || []) {
+        const hp = sb.shield_hp?.[area] ?? 0;
+        if (!hp || !centerByArea[area]) continue;
+        const center = centerByArea[area];
+        const angles = arcByArea[area];
+        const [cx, cy] = xy(center[0], center[1]);
+        for (let layer = 0; layer < hp; layer++) {
+          shieldSvg += `<path class="boss-detail-shield" d="${arcPath(cx, cy, size * (3.35 + layer * .34), size * (2.55 + layer * .25), angles[0], angles[1])}"
+            stroke="${palette.stroke(area)}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
+        }
+      }
+    }
+    const xs = cells.map((c) => size * 1.5 * c.q), ys = cells.map((c) => size * sq * (c.r + c.q / 2));
+    return {
+      hullSvg, laneSvg, shieldSvg, xy, size, palette, componentsByHex,
+      minX: Math.min(...xs, 0) - size * 5.1,
+      maxX: Math.max(...xs, 0) + size * 5.1,
+      minY: Math.min(...ys, 0) - size * 4.3,
+      maxY: Math.max(...ys, 0) + size * 4.3,
+    };
+  }
+
+  /* Circuit-board battle board: action rows to the right of the hull, with
+     traces linking each component hex to the action slot it powers. */
+  function battleBoardCircuitSVG(sb, parts) {
+    const layout = sb.boss_layout || {};
+    const phases = layout.phases || [];
+    if (!phases.length) return { svg: "", maxX: parts.maxX };
+    const componentById = bossComponentById(sb);
+    const rowH = 34, chipW = 24, chipH = 20, chipGap = 6;
+    const labelW = 34;
+    const rowsX = parts.maxX + 42;
+    const totalH = phases.length * rowH;
+    const rowsTop = (parts.minY + parts.maxY) / 2 - totalH / 2 + rowH / 2;
+    let svg = "";
+    let busIndex = 0;
+    let maxChipX = rowsX;
+    phases.forEach((phase, phaseIndex) => {
+      const rowY = rowsTop + phaseIndex * rowH;
+      const color = stackColor(phase.key);
+      svg += `<text x="${rowsX}" y="${rowY + 4}" text-anchor="end" font-size="12" font-family="Pirata One"
+        fill="${color}">${esc(PHASE_SHORT[phase.key] || phase.key)} ${KIND_SYMBOL[phase.kind] || ""}</text>`;
+      let chipX = rowsX + 10;
+      for (const slot of phase.slots || []) {
+        const active = bossSlotActive(sb, slot);
+        const kind = slot.kind || phase.kind;
+        const text = slotChipText(sb, slot, componentById);
+        // Circuit trace from the powering component hex to this chip.
+        if (slot.slot === "component") {
+          const component = componentById[slot.component_id];
+          if (component) {
+            const [hx, hy] = parts.xy(component.q, component.r);
+            const busX = parts.maxX - 28 + (busIndex++ % 10) * 5.5;
+            const stroke = active ? color : "#4a4a55";
+            svg += `<g pointer-events="none">
+              <path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
+                fill="none" stroke="${stroke}" stroke-width="1.2" opacity="${active ? ".75" : ".45"}"
+                ${active ? "" : 'stroke-dasharray="3 3"'} stroke-linejoin="round"/>
+              <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}" opacity=".9"/>
+              <circle cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}" opacity=".9"/></g>`;
+          }
+        }
+        const title = `${slotChipTitle(sb, slot, componentById, active)} — ${kind}`;
+        svg += `<g><title>${esc(title)}</title>
+          <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="4"
+            fill="${active ? `${color}22` : "rgba(30,30,38,.9)"}" stroke="${active ? color : "#4a4a55"}"
+            stroke-width="${active ? 1.4 : 1}" ${active ? "" : 'stroke-dasharray="3 2"'}/>
+          <text x="${chipX + chipW / 2}" y="${rowY + 3.6}" text-anchor="middle" font-size="9.5" font-weight="700"
+            fill="${active ? color : "#555"}">${esc(text)}</text>
+          ${active ? "" : `<line x1="${chipX + 3}" y1="${rowY - chipH / 2 + 3}" x2="${chipX + chipW - 3}" y2="${rowY + chipH / 2 - 3}" stroke="#883333" stroke-width="1.2"/>`}
+        </g>`;
+        chipX += chipW + chipGap;
+      }
+      // Fleet markers at the row's end.
+      const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
+      for (const kind of ((layout.fleet_actions || {})[phase.key]) || []) {
+        if (!fleetAlive) break;
+        svg += `<g><title>Fleet ×${fleetAlive} — ${esc(kind)}</title>
+          <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="10"
+            fill="rgba(160,160,180,.12)" stroke="#9aa3b8" stroke-width="1"/>
+          <text x="${chipX + chipW / 2}" y="${rowY + 3.6}" text-anchor="middle" font-size="9"
+            fill="#9aa3b8">▣${KIND_SYMBOL[kind] || ""}</text></g>`;
+        chipX += chipW + chipGap;
+      }
+      maxChipX = Math.max(maxChipX, chipX);
+    });
+    return { svg, maxX: maxChipX + 8 };
+  }
+
+  /* The StarBreacher's battle board: internal hull, components, shields,
+     circuit-linked action rows, and the discrete progress track. */
+  function showBossModal() {
+    const sb = view.star_breach;
+    if (!sb || !sb.boss_layout) return;
+    const parts = bossHullParts(sb, { lanes: true, shields: true });
+    const circuit = battleBoardCircuitSVG(sb, parts);
+    const palette = parts.palette;
+    const shields = (sb.boss_layout.areas || []).map((area) => {
+      const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
+      return `<tr><td><span class="bmb-swatch" style="background:${palette.stroke(area)}"></span>${esc(areaDisplayName(area))}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td></tr>`;
+    }).join("");
+    const pendingTiers = (sb.tiers_unlocked || []).filter((tier) => !(sb.active_tiers || []).includes(tier));
+    const spawnNotes = Object.entries((sb.boss_layout || {}).tier_spawns || {})
+      .map(([tier, spawn]) => `Tier ${tier}: spawns ${spawn.count} craft (${String(spawn.location || "").replace("_", " ")})`)
+      .join(" · ");
+    const overlay = els["picker-overlay"];
+    overlay.innerHTML = "";
+    overlay.classList.remove("hidden");
+    const box = document.createElement("div");
+    box.className = "picker boss-board-modal";
+    box.innerHTML = `
+      <h3>☄ ${esc(sb.boss_name || "The StarBreacher")} — Battle Board</h3>
+      <div class="boss-modal-map">
+        <svg viewBox="${parts.minX} ${parts.minY} ${circuit.maxX - parts.minX} ${parts.maxY - parts.minY}" style="width:100%;max-height:340px">
+          <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
+            <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
+          <g class="boss-detail-lanes">${parts.laneSvg}</g>
+          <g class="boss-detail-hull">${parts.hullSvg}</g>
+          <g class="boss-detail-shields">${parts.shieldSvg}</g>
+          <g class="boss-battle-circuit">${circuit.svg}</g>
+        </svg>
+      </div>
+      ${progressTrackHTML(sb)}
+      ${pendingTiers.length ? `<div style="margin-top:4px;color:#ff9d8a">Tier ${pendingTiers.join(", ")} powers up next round!</div>` : ""}
+      ${spawnNotes ? `<div class="opt-sub">${esc(spawnNotes)}</div>` : ""}
+      <div class="boss-modal-grid">
+        <div class="boss-modal-side">
+          <h4>Shield Regions</h4>
+          <table>${shields}</table>
+        </div>
+        <div class="boss-modal-side">
+          <h4>Legend</h4>
+          <div class="bmb-legend">
+            <span>☄ attack</span><span>➤ move</span><span>⬢ base</span>
+            <span>★n tier n</span><span>▣ fleet</span><span>🛡 shield gen</span><span>◉ core</span>
+          </div>
+          <div style="margin-top:6px">Traces link each hull component to the action it powers —
+            destroy the component and the action goes dark. Boss progress fills the track;
+            marked boxes grant new abilities at the next round's start.</div>
+        </div>
+      </div>
+      <button class="btn ghost picker-cancel" id="boss-modal-close">Close</button>`;
+    overlay.appendChild(box);
+    box.querySelector("#boss-modal-close").addEventListener("click", hidePicker);
+    overlay.addEventListener("click", function onOverlay(event) {
+      if (event.target === overlay) { hidePicker(); overlay.removeEventListener("click", onOverlay); }
+    });
+  }
+
+  /* Pick a shield region on the boss hull (with confirm), and — for the
+     Fighting Ace — optionally call a preferred damage lane in that region.
+     Resolves {target: "boss:<area>", lane: <2-8>|null} or null. */
+  function showBossRegionPicker({ preselect = null } = {}) {
+    return new Promise((resolve) => {
+      const sb = view.star_breach;
+      if (!sb || !sb.boss_layout) return resolve(null);
+      const alive = bossAliveAreas();
+      const isAce = myRoles().includes("fighting_ace");
+      let selected = preselect && alive[preselect] ? preselect : null;
+      let lanePref = null;
+      const overlay = els["picker-overlay"];
+      overlay.innerHTML = "";
+      overlay.classList.remove("hidden");
+      const box = document.createElement("div");
+      box.className = "picker boss-region-picker";
+      overlay.appendChild(box);
+      const finish = (value) => { hidePicker(); resolve(value); };
+      const render = () => {
+        const parts = bossHullParts(sb, {
+          lanes: !!selected,
+          laneAreaFilter: selected,
+          laneClickable: isAce && !!selected,
+          highlightLane: lanePref,
+          shields: true,
+          clickableAreas: alive,
+          selectedArea: selected,
+        });
+        const palette = parts.palette;
+        const regionChips = (sb.boss_layout.areas || []).filter((area) => alive[area]).map((area) => {
+          const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
+          return `<button type="button" class="brp-region ${selected === area ? "picked" : ""}" data-area="${esc(area)}"
+            style="border-color:${palette.stroke(area)};${selected === area ? `background:${palette.stroke(area)}33` : ""}">
+            <span class="bmb-swatch" style="background:${palette.stroke(area)}"></span>${esc(areaDisplayName(area))} 🛡${hp}/${max}</button>`;
+        }).join("");
+        const lanes = selected ? Object.keys((sb.boss_layout.damage_lanes || {})[selected] || {}).sort((a, b) => a - b) : [];
+        const aceRow = isAce && selected ? `
+          <div class="brp-lanes">
+            <span class="opt-sub">Fighting Ace — preferred damage lane (the ±1 shift steers toward it):</span>
+            <button type="button" class="brp-lane ${lanePref == null ? "picked" : ""}" data-lane="">auto</button>
+            ${lanes.map((roll) => `<button type="button" class="brp-lane ${String(lanePref) === String(roll) ? "picked" : ""}" data-lane="${esc(roll)}">${esc(roll)}</button>`).join("")}
+          </div>` : "";
+        box.innerHTML = `
+          <h3>☄ Target the ${esc(sb.boss_name || "StarBreacher")}</h3>
+          <div class="opt-sub">Click a shield region on the hull (or a button), then confirm.</div>
+          <div class="boss-region-map">
+            <svg viewBox="${parts.minX} ${parts.minY} ${parts.maxX - parts.minX} ${parts.maxY - parts.minY}" style="width:100%;max-height:300px">
+              <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
+                <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
+              <g class="boss-detail-lanes">${parts.laneSvg}</g>
+              <g class="boss-detail-hull">${parts.hullSvg}</g>
+              <g class="boss-detail-shields">${parts.shieldSvg}</g>
+            </svg>
+          </div>
+          <div class="brp-regions">${regionChips}</div>
+          ${aceRow}
+          <div class="brp-actions">
+            <button class="btn ghost" id="brp-cancel">Belay that</button>
+            <button class="btn gold" id="brp-confirm" ${selected ? "" : "disabled"}>
+              ${selected ? `⚔ Fire on ${esc(areaDisplayName(selected))}${lanePref != null ? ` (lane ${lanePref})` : ""}` : "Pick a region"}
+            </button>
+          </div>`;
+        box.querySelectorAll("[data-area]").forEach((node) => {
+          node.addEventListener("click", () => {
+            const area = node.dataset.area;
+            if (!alive[area]) return;
+            if (selected !== area) { selected = area; lanePref = null; }
+            render();
+          });
+        });
+        box.querySelectorAll("[data-lane]").forEach((node) => {
+          node.addEventListener("click", () => {
+            const value = node.dataset.lane;
+            lanePref = value === "" || String(lanePref) === String(value) ? null : parseInt(value, 10);
+            render();
+          });
+        });
+        box.querySelector("#brp-cancel").addEventListener("click", () => finish(null));
+        box.querySelector("#brp-confirm").addEventListener("click", () => {
+          if (selected) finish({ target: "boss:" + selected, lane: lanePref });
+        });
+      };
+      render();
+    });
+  }
+
+  /* Co-op target list: the boss (region picked on its hull board), living
+     hunter-killers, and (for the Engineer) crew ships to repair. */
+  function coopTargetOptions() {
+    const sb = view.star_breach;
+    if (!sb) return [];
     const options = [];
-    const bossLabel = sb.boss_name || "StarBreacher";
-    for (const area of (sb.boss_layout || {}).areas || []) {
-      if (!areaAlive[area]) continue;
-      const areaLabel = /^\d+$/.test(area) ? `region ${area}` : area;
+    const areaAlive = bossAliveAreas();
+    if (Object.keys(areaAlive).length) {
+      const shields = (sb.boss_layout?.areas || [])
+        .filter((area) => areaAlive[area])
+        .map((area) => `${sb.shield_hp?.[area] ?? 0}`)
+        .join("/");
       options.push({
-        icon: "☄", value: "boss:" + area,
-        label: `${bossLabel} — ${areaLabel}`,
-        sub: `shield ${sb.shield_hp?.[area] ?? 0}/${sb.shield_max?.[area] ?? 3}`,
+        icon: "☄", value: "__boss__",
+        label: sb.boss_name || "The StarBreacher",
+        sub: `pick a shield region · shields ${shields}`,
       });
     }
     for (const craft of sb.fleet || []) {
@@ -1391,6 +1700,7 @@
       repair_component_ids: [],
       reconfigure_from_component_ids: [],
       reconfigure_to_component_ids: [],
+      ace_lane_preference: null,
       card,
       family: null,
     };
@@ -1522,16 +1832,28 @@
           App.toast("Nothing left to shoot at.");
           return;
         }
-        const chosen = await new Promise((resolve) => {
+        let chosen = await new Promise((resolve) => {
           targetResolver = resolve;
           showPicker("Mark yer target (or click the boss)", options)
             .then((value) => { if (targetResolver) { targetResolver = null; resolve(value); } });
         });
+        if (chosen === "__boss__" || (chosen && chosen.startsWith && chosen.startsWith("boss:"))) {
+          // Second step: pick (or confirm) the shield region on the hull board.
+          const pick = await showBossRegionPicker({
+            preselect: chosen === "__boss__" ? null : chosen.split(":")[1],
+          });
+          if (!pick) {
+            orderTrace("target_cancelled", { card_id: card.id, star_breach: true, stage: "region" });
+            return;
+          }
+          chosen = pick.target;
+          selection.ace_lane_preference = pick.lane ?? null;
+        }
         if (!chosen) {
           orderTrace("target_cancelled", { card_id: card.id, star_breach: true });
           return;
         }
-        orderTrace("target_selected", { card_id: card.id, target: chosen, star_breach: true });
+        orderTrace("target_selected", { card_id: card.id, target: chosen, star_breach: true, ace_lane: selection.ace_lane_preference ?? null });
         selection.target_player_id = chosen;
       } else if (needsTarget) {
         const enemies = seatOrder().filter((pid) => {
@@ -1618,6 +1940,7 @@
           repair_component_ids: selection.repair_component_ids || [],
           reconfigure_from_component_ids: selection.reconfigure_from_component_ids || [],
           reconfigure_to_component_ids: selection.reconfigure_to_component_ids || [],
+          ace_lane_preference: selection.ace_lane_preference ?? null,
         })),
       })),
     };
@@ -2038,13 +2361,10 @@
 
   function updateProgressRail(progress) {
     const sb = view.star_breach;
-    const rail = document.getElementById("boss-progress-rail");
-    if (!sb || !rail) return;
-    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), progress || 0);
-    const fill = rail.querySelector(".bpr-fill");
-    const label = rail.querySelector(".bpr-label");
-    if (fill) fill.style.height = Math.min(100, (progress / maxTrack) * 100) + "%";
-    if (label) label.textContent = "☄ " + progress;
+    const board = document.getElementById("boss-battle-board");
+    if (!sb || !board) return;
+    const track = board.querySelector(".bmb-track");
+    if (track) track.outerHTML = progressTrackHTML(sb, progress);
   }
 
   /* "Pause after each player action": wait for the captain to click on. */
@@ -2078,14 +2398,23 @@
     const sb = view.star_breach;
     if (!sb || !(sb.fleet || []).length) return null;
     const destroyedDuring = new Set();
+    const spawnedDuring = new Set();
     for (const event of events) {
       if (event.type === "craft_volley_resolved" && event.craft_destroyed) {
         destroyedDuring.add(String(event.target_id || "").replace("craft:", ""));
       }
+      if (event.type === "boss_fleet_spawned") {
+        for (const craft of event.craft || []) spawnedDuring.add(craft.id);
+      }
     }
     const pose = {};
     for (const craft of sb.fleet) {
-      pose[craft.id] = { q: craft.q, r: craft.r, destroyed: craft.destroyed && !destroyedDuring.has(craft.id) };
+      // Craft spawned during this batch stay hidden until the spawn plays.
+      pose[craft.id] = {
+        q: craft.q,
+        r: craft.r,
+        destroyed: spawnedDuring.has(craft.id) || (craft.destroyed && !destroyedDuring.has(craft.id)),
+      };
     }
     const seen = new Set();
     const seed = (id, q, r) => {
@@ -2517,6 +2846,18 @@
       case "boss_tiers_activated": {
         callout(`☄ Boss Tier ${event.tiers.join(", ")} online!`, true);
         await wait(700);
+        return;
+      }
+      case "boss_fleet_spawned": {
+        callout(`☄ Reinforcements warp in!`, true);
+        for (const craft of event.craft || []) {
+          if (replayFleetPose && replayFleetPose[craft.id]) {
+            replayFleetPose[craft.id] = { q: craft.q, r: craft.r, destroyed: false };
+          }
+          FX.warp(Board.hexToScreen(craft.q, craft.r));
+        }
+        Board.renderStarBreach(view.star_breach, bossRenderOptions());
+        await wait(800);
         return;
       }
       case "starfall_take_cover_damage": {

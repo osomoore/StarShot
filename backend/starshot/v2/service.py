@@ -275,6 +275,17 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
     return state
 
 
+def parse_boss_design_ref(design_id: str) -> tuple[int | None, str]:
+    """Split a boss design reference into (owner_id, design_id). Global
+    library ids have no prefix; player-owned ones look like `user:<uid>:<id>`."""
+    if design_id.startswith("user:"):
+        parts = design_id.split(":", 2)
+        if len(parts) != 3 or not parts[1].isdigit():
+            raise ValueError(f"Malformed boss design reference: {design_id}")
+        return int(parts[1]), parts[2]
+    return None, design_id
+
+
 def _load_playable_boss_design(design_id: str | None) -> dict | None:
     """Resolve a boss design id chosen at match creation. Only validated
     (problem-free) designs may enter a game."""
@@ -282,7 +293,8 @@ def _load_playable_boss_design(design_id: str | None) -> dict | None:
         return None
     from starshot.v2 import boss_designs
 
-    design = boss_designs.load_design(design_id)
+    owner_id, bare_id = parse_boss_design_ref(design_id)
+    design = boss_designs.load_design(bare_id, owner_id)
     if design is None:
         raise ValueError(f"Boss design '{design_id}' no longer exists.")
     problems = boss_designs.validate_design(design)

@@ -396,9 +396,12 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     prey_player_id = _resolve_requested_prey_id(body, user["username"]) if "star_breach" in active_expansions else None
     boss_design_id = body.star_breach_boss_design_id if "star_breach" in active_expansions else None
     if boss_design_id:
-        from starshot.v2.service import _load_playable_boss_design
+        from starshot.v2.service import _load_playable_boss_design, parse_boss_design_ref
 
         try:
+            owner_id, _bare = parse_boss_design_ref(boss_design_id)
+            if owner_id is not None and owner_id != user["id"]:
+                raise ValueError("You can only launch battles against your own boss designs.")
             _load_playable_boss_design(boss_design_id)  # fail fast at creation
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -15,38 +15,55 @@ from starshot.v2.admin import _admin_user
 
 boss_designer_router = APIRouter(prefix="/api/v2/admin/boss-designs", tags=["v2-admin"])
 
+# Admin browsing/cloning of player-made designs (separate prefix so paths
+# never collide with the /{design_id} routes above).
+player_library_admin_router = APIRouter(prefix="/api/v2/admin/player-boss-designs", tags=["v2-admin"])
+
 # Non-admin surface: lets the lobby offer playable designs as StarBreach foes.
 boss_designs_public_router = APIRouter(prefix="/api/v2/boss-designs", tags=["v2"])
+
+# Player-owned boss designer (any signed-in user, capped library).
+my_boss_designs_router = APIRouter(prefix="/api/v2/my/boss-designs", tags=["v2"])
+
+
+def _designer_meta() -> dict:
+    return {
+        "grid_radius": boss_designs.GRID_RADIUS,
+        "tile_types": list(boss_designs.TILE_TYPES),
+        "action_stacks": list(boss_designs.ACTION_STACKS),
+        "lane_rolls": list(boss_designs.LANE_ROLLS),
+        "step_kinds": list(boss_designs.STEP_KINDS),
+        "trigger_types": list(boss_designs.TRIGGER_TYPES),
+        "spawn_locations": list(boss_designs.SPAWN_LOCATIONS),
+        "spawn_max_count": boss_designs.SPAWN_MAX_COUNT,
+        "player_design_limit": boss_designs.PLAYER_DESIGN_LIMIT,
+    }
 
 
 @boss_designs_public_router.get("")
 def list_playable_boss_designs(request: Request) -> dict:
+    """Bosses this user may fight: the shared library, plus their own designs
+    (playable only by their creator, ids prefixed `user:<uid>:`)."""
     from starshot.v2.router import _current_user
 
-    _current_user(request)
-    return {
-        "designs": [
-            {"id": entry["id"], "name": entry["name"]}
-            for entry in boss_designs.list_designs()
-            if entry["valid"]
-        ]
-    }
+    user = _current_user(request)
+    designs = [
+        {"id": entry["id"], "name": entry["name"]}
+        for entry in boss_designs.list_designs()
+        if entry["valid"]
+    ]
+    designs.extend(
+        {"id": f"user:{user['id']}:{entry['id']}", "name": f"{entry['name']} (yours)"}
+        for entry in boss_designs.list_designs(user["id"])
+        if entry["valid"]
+    )
+    return {"designs": designs}
 
 
 @boss_designer_router.get("")
 def list_boss_designs(request: Request) -> dict:
     _admin_user(request)
-    return {
-        "designs": boss_designs.list_designs(),
-        "meta": {
-            "grid_radius": boss_designs.GRID_RADIUS,
-            "tile_types": list(boss_designs.TILE_TYPES),
-            "action_stacks": list(boss_designs.ACTION_STACKS),
-            "lane_rolls": list(boss_designs.LANE_ROLLS),
-            "step_kinds": list(boss_designs.STEP_KINDS),
-            "trigger_types": list(boss_designs.TRIGGER_TYPES),
-        },
-    }
+    return {"designs": boss_designs.list_designs(), "meta": _designer_meta()}
 
 
 @boss_designer_router.get("/{design_id}")
@@ -129,3 +146,87 @@ def delete_boss_design(design_id: str, request: Request) -> dict:
     if not removed:
         raise HTTPException(status_code=404, detail="No boss design with that id.")
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Player-owned boss designs (any signed-in user; play against your own)
+# --------------------------------------------------------------------------
+
+
+def _my_user(request: Request) -> dict:
+    from starshot.v2.router import _current_user
+
+    return _current_user(request)
+
+
+@my_boss_designs_router.get("")
+def list_my_boss_designs(request: Request) -> dict:
+    user = _my_user(request)
+    return {"designs": boss_designs.list_designs(user["id"]), "meta": _designer_meta()}
+
+
+@my_boss_designs_router.get("/{design_id}")
+def get_my_boss_design(design_id: str, request: Request) -> dict:
+    user = _my_user(request)
+    try:
+        design = boss_designs.load_design(design_id, user["id"])
+    except boss_designs.BossDesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if design is None:
+        raise HTTPException(status_code=404, detail="No boss design with that id.")
+    return {"design": design, "problems": boss_designs.validate_design(design)}
+
+
+@my_boss_designs_router.put("")
+async def put_my_boss_design(request: Request) -> dict:
+    user = _my_user(request)
+    try:
+        design, problems = boss_designs.save_design(await request.json(), user["id"])
+    except boss_designs.BossDesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
+    return {"ok": True, "design": design, "problems": problems}
+
+
+@my_boss_designs_router.delete("/{design_id}")
+def delete_my_boss_design(design_id: str, request: Request) -> dict:
+    user = _my_user(request)
+    try:
+        removed = boss_designs.delete_design(design_id, user["id"])
+    except boss_designs.BossDesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not removed:
+        raise HTTPException(status_code=404, detail="No boss design with that id.")
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Admin: browse player designs and clone them into the shared library
+# --------------------------------------------------------------------------
+
+
+@player_library_admin_router.get("")
+def list_player_boss_designs(request: Request) -> dict:
+    _admin_user(request)
+    from starshot.v2.store import get_v2_store
+
+    store = get_v2_store()
+    entries = []
+    for owner_id in boss_designs.list_player_owner_ids():
+        owner = store.get_user(owner_id)
+        owner_name = owner["username"] if owner else f"user #{owner_id}"
+        for entry in boss_designs.list_designs(owner_id):
+            entries.append({**entry, "owner_id": owner_id, "owner_name": owner_name})
+    return {"designs": entries}
+
+
+@player_library_admin_router.post("/{owner_id}/{design_id}/clone")
+def clone_player_boss_design(owner_id: int, design_id: str, request: Request) -> dict:
+    """Copy a player's design into the global library so everyone can fight it."""
+    _admin_user(request)
+    try:
+        design, problems = boss_designs.clone_design_to_global(owner_id, design_id)
+    except boss_designs.BossDesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "design": design, "problems": problems}

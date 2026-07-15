@@ -92,6 +92,17 @@ def default_spec() -> dict:
         ],
         "fleet_actions": {"0.5": ["attack"], "1.5": ["move"], "2.5": ["move"], "3.5": ["attack"], "starbreach": []},
         "tier_progress": {str(tier): threshold for tier, threshold in sb_data.TIER_PROGRESS.items()},
+        # What each tier grants (for the battle-board UI).
+        "tier_labels": {
+            "1": {"kind": "attack", "stack": "0.5"},
+            "2": {"kind": "move", "stack": "1.5"},
+            "3": {"kind": "move", "stack": "2.5"},
+            "4": {"kind": "attack", "stack": "3.5"},
+            "5": {"kind": "breacher", "stack": "starbreach"},
+            "6": {"kind": "breacher", "stack": "starbreach"},
+        },
+        # Tier -> fleet craft spawned when it powers up (designed bosses only).
+        "tier_spawns": {},
         # None = built-in progress rules (prey hit +1, prey kill +3 total).
         "progress_triggers": None,
         "fleet": [
@@ -171,20 +182,27 @@ def spec_from_design(design: dict) -> dict:
         area_hexes[area] = covered
 
     components = []
+    # Auto-number components per type in tile order so the UI can say
+    # "Cannon 2" / "Engine 1" instead of raw coordinates.
+    type_counts: dict[str, int] = {}
     for tile in tiles:
         if tile["type"] == "generic":
             continue
+        type_counts[tile["type"]] = type_counts.get(tile["type"], 0) + 1
+        sequence = type_counts[tile["type"]]
         component = {
             "id": _design_component_id(tile),
             "name": tile["type"].replace("_", " ").title(),
             "type": {"shield_gen": "shield_generator"}.get(tile["type"], tile["type"]),
             "q": tile["q"],
             "r": tile["r"],
+            "number": sequence,
             "shield_arcs": [],
             "linked_phase": tile.get("stack"),
         }
         if tile["type"] == "shield_gen":
             component["name"] = f"Shield Generator {tile['number']}"
+            component["number"] = tile["number"]
             component["shield_arcs"] = [
                 area for area, gen in generator_hex.items() if gen == [tile["q"], tile["r"]]
             ]
@@ -192,9 +210,9 @@ def spec_from_design(design: dict) -> dict:
             component["name"] = f"Core {tile['number']}"
             component["number"] = tile["number"]
         elif tile["type"] == "firing_computer":
-            component["name"] = f"Firing Computer ({tile['stack']})"
+            component["name"] = f"Cannon {sequence}"
         elif tile["type"] == "fuel_tank":
-            component["name"] = f"Fuel Tank ({tile['stack']})"
+            component["name"] = f"Engine {sequence}"
         components.append(component)
 
     core_hex_by_number = {
@@ -214,12 +232,15 @@ def spec_from_design(design: dict) -> dict:
                 {"slot": "component", "component_id": _design_component_id(tile), "kind": "move"}
             )
     steps = design["progression"]["steps"]
+    fleet_config = design["behavior"]["fleet"]
+    tier_labels: dict[str, dict] = {}
+    tier_spawns: dict[str, dict] = {}
     for index, step in enumerate(steps):
         tier = index + 1
         if step["kind"] == "action_link":
-            phase_slots[step["stack"]].append(
-                {"slot": "tier", "tier": tier, "kind": "attack" if step["action"] == "shoot" else "move"}
-            )
+            kind = "attack" if step["action"] == "shoot" else "move"
+            phase_slots[step["stack"]].append({"slot": "tier", "tier": tier, "kind": kind})
+            tier_labels[str(tier)] = {"kind": kind, "stack": step["stack"]}
         elif step["kind"] == "breacher_link":
             slot = {"slot": "tier", "tier": tier, "kind": "attack"}
             core_number = step.get("core")
@@ -231,6 +252,19 @@ def spec_from_design(design: dict) -> dict:
             if step.get("round") is not None:
                 slot["min_round"] = step["round"]
             phase_slots["starbreach"].append(slot)
+            tier_labels[str(tier)] = {"kind": "breacher", "stack": "starbreach"}
+        elif step["kind"] == "spawn_fleet":
+            tier_spawns[str(tier)] = {
+                "count": step["count"],
+                "location": step["location"],
+                "kind": fleet_config["kind"],
+                "hp": fleet_config["hp"],
+            }
+            tier_labels[str(tier)] = {"kind": "spawn", "stack": None}
+        elif step["kind"] == "ability_trigger":
+            tier_labels[str(tier)] = {"kind": "ability", "stack": None}
+        else:
+            tier_labels[str(tier)] = {"kind": "filler", "stack": None}
 
     phases = []
     for key in _STACK_KEYS:
@@ -239,7 +273,6 @@ def spec_from_design(design: dict) -> dict:
         kind = "attack" if "attack" in kinds else ("move" if kinds else _DEFAULT_STACK_KIND[key])
         phases.append({"key": key, "kind": kind, "slots": slots})
 
-    fleet_config = design["behavior"]["fleet"]
     fleet = [
         {
             "id": f"fleet_{index + 1}",
@@ -270,6 +303,8 @@ def spec_from_design(design: dict) -> dict:
         "phases": phases,
         "fleet_actions": fleet_actions,
         "tier_progress": {str(index + 1): index + 1 for index in range(len(steps))},
+        "tier_labels": tier_labels,
+        "tier_spawns": tier_spawns,
         "progress_triggers": list(design["progression"]["triggers"]),
         "fleet": fleet,
         "fleet_move": sb_data.HUNTER_KILLER_MOVE,
@@ -417,6 +452,14 @@ def expected_phase_actions(
     }
 
 
+def tier_spawns(spec: dict) -> dict[int, dict]:
+    return {int(tier): dict(entry) for tier, entry in (spec.get("tier_spawns") or {}).items()}
+
+
+def tier_labels(spec: dict) -> dict[str, dict]:
+    return {str(tier): dict(entry) for tier, entry in (spec.get("tier_labels") or {}).items()}
+
+
 def boss_layout_to_dict(spec: dict) -> dict:
     """The client-facing layout document (same shape the UI already renders)."""
     return {
@@ -431,6 +474,15 @@ def boss_layout_to_dict(spec: dict) -> dict:
             area: {roll: [list(hex_) for hex_ in lane] for roll, lane in lanes.items()}
             for area, lanes in spec["damage_lanes"].items()
         },
+        # Battle board data: every phase's slots (with component links), what
+        # each progression tier grants, and any tier fleet spawns.
+        "phases": [
+            {"key": phase["key"], "kind": phase["kind"], "slots": [dict(slot) for slot in phase["slots"]]}
+            for phase in spec["phases"]
+        ],
+        "fleet_actions": {key: list(kinds) for key, kinds in spec.get("fleet_actions", {}).items()},
+        "tier_labels": tier_labels(spec),
+        "tier_spawns": {str(tier): dict(entry) for tier, entry in (spec.get("tier_spawns") or {}).items()},
     }
 
 

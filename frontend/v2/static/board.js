@@ -129,7 +129,10 @@
   const AREA_TINT = {
     forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120",
   };
-  const CRAFT_COLORS = { blue: "#4f86d1", green: "#3ea86b", yellow: "#d4c748" };
+  const CRAFT_COLORS = {
+    blue: "#4f86d1", green: "#3ea86b", yellow: "#d4c748",
+    red: "#d15252", purple: "#a86ad1", orange: "#d18b3e",
+  };
 
   function bossTokenHexes(noseQ, noseR, facing) {
     const left = DIRECTIONS[((facing + 2) % 6 + 6) % 6];

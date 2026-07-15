@@ -117,6 +117,8 @@ class OrderCardSelection:
     repair_component_ids: tuple[str, ...] = ()
     reconfigure_from_component_ids: tuple[str, ...] = ()
     reconfigure_to_component_ids: tuple[str, ...] = ()
+    # StarBreach Fighting Ace: preferred boss damage lane (2-8) for this shot.
+    ace_lane_preference: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

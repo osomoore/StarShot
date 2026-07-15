@@ -215,6 +215,89 @@ def _activate_star_breach_tiers(state: GameState) -> None:
             "progress": sb.progress,
         }
     )
+    spawns = sb_spec.tier_spawns(sb_spec.spec_for(sb))
+    for tier in newly_active:
+        spawn = spawns.get(tier)
+        if spawn:
+            _spawn_fleet_craft(state, tier, spawn)
+
+
+_SPAWN_COLORS = ("red", "purple", "orange", "blue", "green", "yellow")
+
+
+def _spawn_anchor_hex(state: GameState, location: str) -> tuple[int, int]:
+    """Board hex a spawn clusters around: directly in front of the boss nose,
+    the current round's bauble, or The Fang."""
+    sb = state.star_breach
+    assert sb is not None
+    if location == "bauble":
+        for bauble in state.baubles:
+            if not bauble.is_fang and bauble.number == min(state.round_number, 5):
+                return (bauble.q, bauble.r)
+    elif location == "fang":
+        fang = _fang(state)
+        if fang is not None:
+            return (fang.q, fang.r)
+    dq, dr = DIRECTIONS[sb.facing % 6]
+    return (sb.anchor_q + dq, sb.anchor_r + dr)
+
+
+def _nearest_free_hexes(state: GameState, center: tuple[int, int], count: int) -> list[tuple[int, int]]:
+    """The `count` on-board unoccupied hexes nearest to `center` (spiral out)."""
+    sb = state.star_breach
+    assert sb is not None
+    occupied = _occupied_ship_hexes(state) | set(_boss_token_hexes(sb))
+    found: list[tuple[int, int]] = []
+    for radius in range(0, BOARD_RADIUS * 2 + 1):
+        ring: list[tuple[int, int]] = []
+        cq, cr = center
+        if radius == 0:
+            ring = [(cq, cr)]
+        else:
+            q, r = cq + DIRECTIONS[4][0] * radius, cr + DIRECTIONS[4][1] * radius
+            for direction in range(6):
+                for _ in range(radius):
+                    ring.append((q, r))
+                    q, r = q + DIRECTIONS[direction][0], r + DIRECTIONS[direction][1]
+        for q, r in ring:
+            if is_within_board(q, r) and (q, r) not in occupied and (q, r) not in found:
+                found.append((q, r))
+                if len(found) >= count:
+                    return found
+    return found
+
+
+def _spawn_fleet_craft(state: GameState, tier: int, spawn: dict) -> None:
+    """A spawn_fleet progression step: new craft join the boss's fleet."""
+    sb = state.star_breach
+    assert sb is not None
+    center = _spawn_anchor_hex(state, spawn.get("location", "boss_front"))
+    positions = _nearest_free_hexes(state, center, int(spawn.get("count", 1)))
+    spawned = []
+    for index, (q, r) in enumerate(positions):
+        color = _SPAWN_COLORS[(len(sb.fleet) + index) % len(_SPAWN_COLORS)]
+        craft = FleetCraftState(
+            id=f"spawn_t{tier}_{index + 1}",
+            kind=spawn.get("kind", "hunter_killer"),
+            color=color,
+            q=q,
+            r=r,
+            hp=int(spawn.get("hp", sb_data.HUNTER_KILLER_HP)),
+            max_hp=int(spawn.get("hp", sb_data.HUNTER_KILLER_HP)),
+        )
+        sb.fleet.append(craft)
+        spawned.append(
+            {"id": craft.id, "kind": craft.kind, "color": craft.color, "q": craft.q, "r": craft.r, "hp": craft.hp}
+        )
+    state.event_log.append(
+        {
+            "type": "boss_fleet_spawned",
+            "round": state.round_number,
+            "tier": tier,
+            "location": spawn.get("location", "boss_front"),
+            "craft": spawned,
+        }
+    )
 
 
 def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
@@ -871,6 +954,16 @@ def _resolve_volley_vs_boss(
     natural_auto_hit = roll >= (18 if _active_starfall(state, "clear_skies") else 12)
     hit = in_range and (profile["always_hits"] or natural_auto_hit or roll_total >= threshold)
     is_ace = "fighting_ace" in attacker.roles
+    # The Ace may pre-commit a preferred damage lane; the ±1 shift steers
+    # toward it when the roll lands adjacent.
+    ace_preference = next(
+        (
+            selection.ace_lane_preference
+            for _card, selection in attack_cards
+            if selection.ace_lane_preference is not None
+        ),
+        None,
+    )
 
     shots: list[dict] = []
     shields_absorbed = 0
@@ -898,7 +991,11 @@ def _resolve_volley_vs_boss(
             ):
                 lane_roll = _roll_d8(state)
                 rerolls += 1
-            adjusted_roll, ace_shift = _fighting_ace_lane_choice(sb, area, lane_roll) if is_ace else (lane_roll, 0)
+            adjusted_roll, ace_shift = (
+                _fighting_ace_lane_choice(sb, area, lane_roll, preferred=ace_preference)
+                if is_ace
+                else (lane_roll, 0)
+            )
             reroll_note = {"rerolls": rerolls} if rerolls else {}
             if adjusted_roll == sb_data.GLANCING_BLOW_ROLL:
                 rng = _make_rng(state)
@@ -970,11 +1067,22 @@ def _shield_generator_intact(sb: StarBreachState, area: str) -> bool:
     return sb_spec.shield_generator_intact(sb_spec.spec_for(sb), area, sb.destroyed_hexes)
 
 
-def _fighting_ace_lane_choice(sb: StarBreachState, area: str, lane_roll: int) -> tuple[int, int]:
+def _fighting_ace_lane_choice(
+    sb: StarBreachState, area: str, lane_roll: int, preferred: int | None = None
+) -> tuple[int, int]:
     """Deterministic Fighting Ace policy: shift the lane roll by ±1 when that
-    turns a Glancing Blow into a strike or steers the hit onto a component."""
+    turns a Glancing Blow into a strike or steers the hit onto a component.
+    A player-chosen preferred lane wins whenever it is within ±1 of the roll
+    and would still strike intact hull."""
 
     spec = sb_spec.spec_for(sb)
+    if (
+        preferred is not None
+        and abs(preferred - lane_roll) <= 1
+        and preferred != sb_data.GLANCING_BLOW_ROLL
+        and sb_spec.first_intact_lane_hex(spec, area, preferred, sb.destroyed_hexes) is not None
+    ):
+        return preferred, preferred - lane_roll
 
     def lane_score(roll: int) -> float:
         if roll < 1 or roll > 8:

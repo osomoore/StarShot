@@ -465,7 +465,16 @@ def selection_to_dict(selection: OrderCardSelection) -> dict:
         "repair_component_ids": list(selection.repair_component_ids),
         "reconfigure_from_component_ids": list(selection.reconfigure_from_component_ids),
         "reconfigure_to_component_ids": list(selection.reconfigure_to_component_ids),
+        "ace_lane_preference": selection.ace_lane_preference,
     }
+
+
+def _lane_preference(value) -> int | None:
+    try:
+        lane = int(value)
+    except (TypeError, ValueError):
+        return None
+    return lane if 2 <= lane <= 8 else None
 
 
 def selection_from_dict(data: dict) -> OrderCardSelection:
@@ -478,6 +487,7 @@ def selection_from_dict(data: dict) -> OrderCardSelection:
         repair_component_ids=tuple(data.get("repair_component_ids", ())),
         reconfigure_from_component_ids=tuple(data.get("reconfigure_from_component_ids", ())),
         reconfigure_to_component_ids=tuple(data.get("reconfigure_to_component_ids", ())),
+        ace_lane_preference=_lane_preference(data.get("ace_lane_preference")),
     )
 
 

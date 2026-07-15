@@ -1,18 +1,26 @@
-/* Boss Ship Designer admin tab.
+/* Boss Ship Designer.
  *
- * Self-contained: builds its own DOM inside #tab-bossdesign, talks only to
- * /api/v2/admin/boss-designs, and shares nothing with admin.js beyond the
- * generic tab-switching markup. Three edit modes over one SVG hex board:
+ * Self-contained: builds its own DOM inside a host element and talks only to
+ * its design API. Two instances exist:
+ *   - admin  (admin page tab #tab-bossdesign, /api/v2/admin/boss-designs),
+ *     which also gets a player-design browse/clone bar
+ *   - player (full-screen overlay on the main app, /api/v2/my/boss-designs,
+ *     capped library — players may fight their own creations)
+ * Edit modes over one SVG hex board:
  *   structure     — paint hull tiles (generic / shield gen / firing computer /
  *                   fuel tank / core)
  *   shields+lanes — per shield region: protected hexes, powering generator,
  *                   and the seven d8 damage lanes (rolls 2-8)
  *   progression   — progression triggers and the step track
+ *   stacks        — the battle-board organizer with a mini ship view
  */
 (function () {
   "use strict";
 
-  const API = "/api/v2/admin/boss-designs";
+  function createBossDesigner(config) {
+  const API = config.apiBase;
+  const isAdmin = !!config.isAdmin;
+  const root = config.root;
   const SQ = Math.sqrt(3);
   const SIZE = 17; // hex circumradius in svg units
   const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -26,6 +34,9 @@
       "bauble_pickup_boss", "bauble_pickup_fleet",
       "prey_hull_damage_boss", "prey_hull_damage_fleet", "player_kill",
     ],
+    spawn_locations: ["boss_front", "bauble", "fang"],
+    spawn_max_count: 3,
+    player_design_limit: 10,
   };
 
   const TILE_TOOLS = [
@@ -88,7 +99,6 @@
     return payload;
   }
 
-  const root = () => document.getElementById("tab-bossdesign");
   const el = (id) => root().querySelector("#" + id);
 
   function setStatus(message, ok) {
@@ -105,6 +115,26 @@
   // ── design geometry helpers ──────────────────────────────────────────────
   const footprintSet = () => new Set(design.tiles.map((t) => key(t.q, t.r)));
   const tileAt = (q, r) => design.tiles.find((t) => t.q === q && t.r === r) || null;
+
+  /* Components auto-number per type in placement order (matches the game
+     engine), so the organizer can say "Engine 1" instead of coordinates. */
+  const COMPONENT_LABEL = { firing_computer: "Cannon", fuel_tank: "Engine", shield_gen: "Shield Gen", core: "Core" };
+  function componentNumbers() {
+    const counts = {};
+    const map = {};
+    for (const tile of design.tiles) {
+      if (tile.type === "generic") continue;
+      counts[tile.type] = (counts[tile.type] || 0) + 1;
+      map[key(tile.q, tile.r)] = counts[tile.type];
+    }
+    return map;
+  }
+  function componentLabel(tile, numbers = null) {
+    const n = tile.type === "shield_gen" || tile.type === "core"
+      ? tile.number
+      : (numbers || componentNumbers())[key(tile.q, tile.r)];
+    return `${COMPONENT_LABEL[tile.type] || tile.type} ${n ?? ""}`.trim();
+  }
   const regionByNumber = (number) =>
     design.shield_regions.find((region) => region.number === number) || null;
   const regionColor = (number) => REGION_COLORS[(number - 1) % REGION_COLORS.length];
@@ -153,16 +183,18 @@
     return cells;
   }
 
-  function tileBadge(tile) {
+  function tileBadge(tile, numbers = null) {
     if (tile.type === "shield_gen") return "SG" + tile.number;
     if (tile.type === "core") return "◉" + tile.number;
-    if (tile.type === "firing_computer") return "FC " + (STACK_SHORT[tile.stack] || tile.stack);
-    if (tile.type === "fuel_tank") return "FT " + (STACK_SHORT[tile.stack] || tile.stack);
+    const n = (numbers || componentNumbers())[key(tile.q, tile.r)] || "";
+    if (tile.type === "firing_computer") return "C" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
+    if (tile.type === "fuel_tank") return "E" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
     return "";
   }
 
   function renderBoard() {
     const footprint = footprintSet();
+    const numbers = componentNumbers();
     const regionHexes = {}; // "q,r" -> region number (for shield mode tinting)
     for (const region of design.shield_regions) {
       for (const [q, r] of region.hexes) regionHexes[key(q, r)] = region.number;
@@ -197,10 +229,10 @@
         active.generator[0] === q && active.generator[1] === r;
       cellsSvg += `<g class="bd-cell" data-q="${q}" data-r="${r}">
         <polygon points="${hexPoints(x, y, SIZE - 0.9)}" fill="${fill}" stroke="${stroke}" stroke-width="1.1">
-          <title>(${q},${r})${tile ? " — " + tile.type.replace("_", " ") : ""}</title></polygon>
+          <title>(${q},${r})${tile && tile.type !== "generic" ? " — " + componentLabel(tile, numbers) : ""}</title></polygon>
         ${extra}
-        ${tile && tileBadge(tile) ? `<text x="${x}" y="${y + 3.6}" text-anchor="middle" class="bd-badge"
-          fill="${isGen ? "#fff" : "#0a0f1e"}">${esc(tileBadge(tile))}</text>` : ""}
+        ${tile && tileBadge(tile, numbers) ? `<text x="${x}" y="${y + 3.6}" text-anchor="middle" class="bd-badge"
+          fill="${isGen ? "#fff" : "#0a0f1e"}">${esc(tileBadge(tile, numbers))}</text>` : ""}
         ${isGen ? `<polygon points="${hexPoints(x, y, SIZE - 1.8)}" fill="none" stroke="#fff"
           stroke-width="1.6" stroke-dasharray="3 3" pointer-events="none"/>` : ""}
       </g>`;
@@ -441,6 +473,10 @@
       return `Breacher link${bits.length ? " (" + bits.join(", ") + ")" : ""}`;
     }
     if (step.kind === "ability_trigger") return `⚡ ${step.name || "Ability"}`;
+    if (step.kind === "spawn_fleet") {
+      const where = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" }[step.location] || step.location;
+      return `▣ Spawn ${step.count || 1} fleet craft — ${where}`;
+    }
     return "Filler";
   }
 
@@ -518,7 +554,7 @@
         renderBoard();
       });
 
-      const addItem = (label, sub, payload, extraClass) => {
+      const addItem = (label, sub, payload, extraClass, hoverHex) => {
         const item = document.createElement("div");
         item.className = "bd-stack-item" + (extraClass ? " " + extraClass : "");
         item.innerHTML = `<div>${label}</div>${sub ? `<div class="bd-item-sub">${sub}</div>` : ""}`;
@@ -527,15 +563,21 @@
           item.addEventListener("dragstart", () => { dragPayload = payload; });
           item.addEventListener("dragend", () => { dragPayload = null; });
         }
+        if (hoverHex) {
+          // Mousing over a card lights up its component in the mini ship view.
+          item.addEventListener("mouseenter", () => highlightMiniHex(hoverHex[0], hoverHex[1], true));
+          item.addEventListener("mouseleave", () => highlightMiniHex(hoverHex[0], hoverHex[1], false));
+        }
         col.appendChild(item);
       };
 
+      const numbers = componentNumbers();
       for (const tile of design.tiles) {
         if (tile.stack !== stack) continue;
         if (tile.type === "firing_computer") {
-          addItem(`FC (${tile.q},${tile.r})`, "component · attack", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack");
+          addItem(esc(componentLabel(tile, numbers)), "component · attack", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack", [tile.q, tile.r]);
         } else if (tile.type === "fuel_tank") {
-          addItem(`FT (${tile.q},${tile.r})`, "component · move", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move");
+          addItem(esc(componentLabel(tile, numbers)), "component · move", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move", [tile.q, tile.r]);
         }
       }
       design.progression.steps.forEach((step, index) => {

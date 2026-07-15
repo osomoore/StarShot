@@ -34,8 +34,15 @@ ACTION_STACKS = ("0.5", "1.5", "2.5", "3.5", "starbreach")
 # d8 rolls that hit a damage lane (1 is a miss).
 LANE_ROLLS = tuple(range(2, 9))
 
-STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger")
+STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger", "spawn_fleet")
 ACTION_TYPES = ("move", "shoot")
+
+# Where spawn_fleet steps place their craft.
+SPAWN_LOCATIONS = ("boss_front", "bauble", "fang")
+SPAWN_MAX_COUNT = 3
+
+# Player-owned designs are capped so the library stays browsable.
+PLAYER_DESIGN_LIMIT = 10
 
 # Behavior options (single choices for now; enums so the schema can grow).
 BOSS_AIS = ("hunter_killer",)
@@ -260,6 +267,15 @@ def _normalize_step(raw, index: int) -> dict:
             raise BossDesignError(f"{label}.name must not be empty.")
         step["name"] = name[:80]
         step["notes"] = str(raw.get("notes", ""))[:400]
+    elif kind == "spawn_fleet":
+        count = _as_int(raw.get("count", 1), f"{label}.count")
+        if not 1 <= count <= SPAWN_MAX_COUNT:
+            raise BossDesignError(f"{label}.count must be 1-{SPAWN_MAX_COUNT}.")
+        location = raw.get("location", "boss_front")
+        if location not in SPAWN_LOCATIONS:
+            raise BossDesignError(f"{label}.location must be one of {', '.join(SPAWN_LOCATIONS)}.")
+        step["count"] = count
+        step["location"] = location
     return step
 
 
@@ -441,16 +457,28 @@ def is_design_valid(design: dict) -> bool:
 
 
 # ── storage ─────────────────────────────────────────────────────────────────
+# Global (admin) designs live directly in resources/boss_designs; per-player
+# designs live under resources/boss_designs/players/<user_id>/. Every storage
+# function takes an optional owner_id: None = the shared global library.
+
+PLAYERS_SUBDIR = "players"
 
 
-def _design_path(design_id: str) -> Path:
-    return DESIGNS_DIR / f"{safe_design_id(design_id)}.json"
+def _design_dir(owner_id: int | None = None) -> Path:
+    if owner_id is None:
+        return DESIGNS_DIR
+    return DESIGNS_DIR / PLAYERS_SUBDIR / str(int(owner_id))
 
 
-def list_designs() -> list[dict]:
+def _design_path(design_id: str, owner_id: int | None = None) -> Path:
+    return _design_dir(owner_id) / f"{safe_design_id(design_id)}.json"
+
+
+def list_designs(owner_id: int | None = None) -> list[dict]:
     entries = []
-    if DESIGNS_DIR.exists():
-        for path in sorted(DESIGNS_DIR.glob("*.json")):
+    directory = _design_dir(owner_id)
+    if directory.exists():
+        for path in sorted(directory.glob("*.json")):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
@@ -472,26 +500,67 @@ def list_designs() -> list[dict]:
     return entries
 
 
-def load_design(design_id: str) -> dict | None:
-    path = _design_path(design_id)
+def list_player_owner_ids() -> list[int]:
+    """User ids that have at least one saved boss design."""
+    players_dir = DESIGNS_DIR / PLAYERS_SUBDIR
+    owners = []
+    if players_dir.exists():
+        for child in sorted(players_dir.iterdir()):
+            if child.is_dir() and child.name.isdigit() and any(child.glob("*.json")):
+                owners.append(int(child.name))
+    return owners
+
+
+def load_design(design_id: str, owner_id: int | None = None) -> dict | None:
+    path = _design_path(design_id, owner_id)
     if not path.exists():
         return None
     return normalize_design(json.loads(path.read_text(encoding="utf-8")))
 
 
-def save_design(raw: dict) -> tuple[dict, list[str]]:
-    """Normalize, persist, and return (design, problems)."""
+def save_design(raw: dict, owner_id: int | None = None) -> tuple[dict, list[str]]:
+    """Normalize, persist, and return (design, problems). Player saves are
+    capped at PLAYER_DESIGN_LIMIT designs (updating an existing one is fine)."""
     design = normalize_design(raw)
-    DESIGNS_DIR.mkdir(parents=True, exist_ok=True)
-    _design_path(design["id"]).write_text(
+    directory = _design_dir(owner_id)
+    if owner_id is not None and not _design_path(design["id"], owner_id).exists():
+        if len(list(directory.glob("*.json")) if directory.exists() else []) >= PLAYER_DESIGN_LIMIT:
+            raise BossDesignError(
+                f"You already have {PLAYER_DESIGN_LIMIT} boss designs — delete one to make room."
+            )
+    directory.mkdir(parents=True, exist_ok=True)
+    _design_path(design["id"], owner_id).write_text(
         json.dumps(design, indent=2), encoding="utf-8"
     )
     return design, validate_design(design)
 
 
-def delete_design(design_id: str) -> bool:
-    path = _design_path(design_id)
+def delete_design(design_id: str, owner_id: int | None = None) -> bool:
+    path = _design_path(design_id, owner_id)
     if not path.exists():
         return False
     path.unlink()
     return True
+
+
+def unique_design_id(base_id: str, owner_id: int | None = None) -> str:
+    """`base_id`, or `base_id_2`, `base_id_3`, ... — first id free in the
+    target library."""
+    existing = {entry["id"] for entry in list_designs(owner_id)}
+    candidate = safe_design_id(base_id)
+    suffix = 2
+    while candidate in existing:
+        candidate = f"{safe_design_id(base_id)}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def clone_design_to_global(owner_id: int, design_id: str, new_name: str | None = None) -> tuple[dict, list[str]]:
+    """Copy a player's design into the shared global library (admin action)."""
+    design = load_design(design_id, owner_id)
+    if design is None:
+        raise BossDesignError("No such player boss design.")
+    design["id"] = unique_design_id(design["id"], None)
+    if new_name:
+        design["name"] = str(new_name).strip()[:80] or design["name"]
+    return save_design(design, None)
