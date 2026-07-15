@@ -78,8 +78,9 @@
       width="${pixelWidth}" xmlns="http://www.w3.org/2000/svg">${rings}${cells}</svg>`;
   }
 
-  /* Full ship board with the 12 damage lanes marked around the rim. */
-  function fullShipSVG(ship) {
+  /* Full ship board. The 12 damage-lane markers around the rim are hidden by
+     default — pass {lanes: true} in contexts where lanes are being assigned. */
+  function fullShipSVG(ship, opts = {}) {
     const components = ship.component_layout || [];
     if (!components.length) return "";
     const size = 30;
@@ -113,7 +114,7 @@
     // just outside the entry hex, opposite the direction of travel, with the
     // arrow showing how the shot bores in (matches the printed ship board).
     let laneMarks = "";
-    for (const roll of Object.keys(lanes)) {
+    for (const roll of opts.lanes ? Object.keys(lanes) : []) {
       const path = lanes[roll];
       const first = byId[path[0]];
       const second = byId[path[1]];

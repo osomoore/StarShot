@@ -129,6 +129,23 @@
   const AREA_TINT = {
     forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120",
   };
+  // Designed bosses name areas after shield regions ("1", "2", …); give them
+  // stable colors by position in the layout's area list (mirrors game.js).
+  const AREA_STROKE = { forward: "#9ee7ff", port: "#bcb0ff", rear: "#ffd08a", starboard: "#9fe8b6" };
+  const EXTRA_TINT = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
+  const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
+
+  function areaTint(area, layoutAreas) {
+    if (AREA_TINT[area]) return AREA_TINT[area];
+    const index = Math.max(0, (layoutAreas || []).indexOf(area));
+    return EXTRA_TINT[index % EXTRA_TINT.length];
+  }
+
+  function areaStroke(area, layoutAreas) {
+    if (AREA_STROKE[area]) return AREA_STROKE[area];
+    const index = Math.max(0, (layoutAreas || []).indexOf(area));
+    return EXTRA_STROKE[index % EXTRA_STROKE.length];
+  }
   const CRAFT_COLORS = {
     blue: "#4f86d1", green: "#3ea86b", yellow: "#d4c748",
     red: "#d15252", purple: "#a86ad1", orange: "#d18b3e",
@@ -157,9 +174,10 @@
         ? sb.board_hexes
         : bossTokenHexes(pose.q, pose.r, pose.facing);
       const group = el("g", { class: "boss-token" }, bossLayer);
+      const layoutAreas = (sb.boss_layout || {}).areas || [];
       for (const cell of token) {
         const [x, y] = axialToXY(cell.q, cell.r);
-        const tint = AREA_TINT[cell.area] || "168,106,209";
+        const tint = cell.area ? areaTint(cell.area, layoutAreas) : "168,106,209";
         const poly = el("polygon", {
           points: hexPoints(x, y, HEX - 1.0),
           fill: `rgba(60,20,80,${0.92 - hullDamage * 0.4})`,
@@ -173,7 +191,7 @@
         const tip = el("title", {}, poly);
         tip.textContent = `StarBreacher (${cell.area}) — click for the damage board. Hull ${Math.round((1 - hullDamage) * 100)}%`;
       }
-      drawBossShieldArcs(group, token, pose, sb.shield_hp || {});
+      drawBossShieldArcs(group, token, pose, sb.shield_hp || {}, layoutAreas);
       // Nose chevron pointing along the last movement direction.
       const [nx, ny] = axialToXY(token[0].q, token[0].r);
       const nose = el("g", { transform: `translate(${nx},${ny}) rotate(${facingAngle(pose.facing)})`, "pointer-events": "none" }, group);
@@ -223,29 +241,50 @@
     }, parent);
   }
 
-  function drawBossShieldArcs(group, token, pose, shieldHp) {
+  function drawBossShieldArcs(group, token, pose, shieldHp, layoutAreas) {
     const byArea = Object.fromEntries(token.map((cell) => [cell.area, cell]));
-    const rearCenter = byArea.port && byArea.starboard
-      ? {
-          q: (byArea.port.q + byArea.starboard.q) / 2,
-          r: (byArea.port.r + byArea.starboard.r) / 2,
+    const stockToken = token.every((cell) => AREA_STROKE[cell.area]);
+    if (stockToken) {
+      const rearCenter = byArea.port && byArea.starboard
+        ? {
+            q: (byArea.port.q + byArea.starboard.q) / 2,
+            r: (byArea.port.r + byArea.starboard.r) / 2,
+          }
+        : byArea.port || byArea.starboard || byArea.forward;
+      const specs = [
+        ["forward", byArea.forward, pose.facing, "#9ee7ff", 62],
+        ["port", byArea.port, pose.facing + 2, "#bcb0ff", 70],
+        ["starboard", byArea.starboard, pose.facing - 2, "#9fe8b6", 70],
+        ["rear", rearCenter, pose.facing + 3, "#ffd08a", 76],
+      ];
+      for (const [area, cell, direction, color, sweep] of specs) {
+        const layers = Number(shieldHp[area] || 0);
+        if (!cell || layers <= 0) continue;
+        const [cx, cy] = axialToXY(cell.q, cell.r);
+        const angle = facingAngle(direction);
+        for (let layer = 0; layer < layers; layer++) {
+          drawArc(group, cx, cy, angle, HEX * (1.02 + layer * 0.22), sweep, color, layer);
         }
-      : byArea.port || byArea.starboard || byArea.forward;
-    const specs = [
-      ["forward", byArea.forward, pose.facing, "#9ee7ff", 62],
-      ["port", byArea.port, pose.facing + 2, "#bcb0ff", 70],
-      ["starboard", byArea.starboard, pose.facing - 2, "#9fe8b6", 70],
-      ["rear", rearCenter, pose.facing + 3, "#ffd08a", 76],
-    ];
-    for (const [area, cell, direction, color, sweep] of specs) {
-      const layers = Number(shieldHp[area] || 0);
-      if (!cell || layers <= 0) continue;
-      const [cx, cy] = axialToXY(cell.q, cell.r);
-      const angle = facingAngle(direction);
-      for (let layer = 0; layer < layers; layer++) {
-        drawArc(group, cx, cy, angle, HEX * (1.02 + layer * 0.22), sweep, color, layer);
       }
+      return;
     }
+    // Designed bosses: every token hex carries its shield region — arc over
+    // each hex, facing away from the token's center, one layer per charge.
+    const points = token.map((cell) => axialToXY(cell.q, cell.r));
+    const centerX = points.reduce((sum, [x]) => sum + x, 0) / (points.length || 1);
+    const centerY = points.reduce((sum, [, y]) => sum + y, 0) / (points.length || 1);
+    token.forEach((cell, index) => {
+      const layers = Number(shieldHp[cell.area] || 0);
+      if (!cell.area || layers <= 0) return;
+      const color = areaStroke(cell.area, layoutAreas);
+      const [cx, cy] = points[index];
+      const angle = (cx === centerX && cy === centerY)
+        ? facingAngle(pose.facing)
+        : (Math.atan2(cy - centerY, cx - centerX) * 180) / Math.PI;
+      for (let layer = 0; layer < Math.min(layers, 4); layer++) {
+        drawArc(group, cx, cy, angle, HEX * (1.02 + layer * 0.22), 110, color, layer);
+      }
+    });
   }
 
   function shipMarkup(color) {

@@ -14,6 +14,9 @@
   let replayShipStates = null;
   let replayBossPose = null;
   let replayFleetPose = null; // craft_id -> {q, r, destroyed} while replaying
+  let replayBossState = null; // rewound boss board state, rolled forward per event
+  let replayOrders = null;    // your submitted stacks for the round being replayed
+  let replayOrdersByRound = null;
   let endgameShown = false;
   let draft = null;
   let pendingFetch = false;
@@ -478,7 +481,7 @@
     restoreDraftIfAvailable();
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
     Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
-    Board.renderStarBreach(view.star_breach, { preyPos: preyPosition() });
+    Board.renderStarBreach(effectiveStarBreach(), { preyPos: preyPosition() });
     Board.renderShips(view.players, seatOrder(), you);
     renderStarfallStatus();
     renderCaptainStatus();
@@ -537,10 +540,11 @@
 
   function renderStarBreachStatus() {
     let node = document.getElementById("starbreach-status");
-    const sb = view.star_breach;
+    const sb = effectiveStarBreach();
     if (!sb) {
       clearScenarioStatus("starbreach", node);
       document.getElementById("boss-battle-board")?.remove();
+      document.getElementById("boss-progress-rail")?.remove();
       document.getElementById("sb-pause-toggle")?.remove();
       return;
     }
@@ -592,10 +596,40 @@
   // ── boss battle board (mini in the main view, expanded in the modal) ───
   const STACK_COLORS = { "0.5": "#ff8d6b", "1.5": "#ffd75e", "2.5": "#9dff8a", "3.5": "#59c8ff", starbreach: "#d9a6ff" };
   const KIND_SYMBOL = { attack: "☄", move: "➤", breacher: "◉", spawn: "▣", ability: "⚡", filler: "·" };
+  const KIND_COLORS = { attack: "#ff8d6b", move: "#9dff8a", breacher: "#d9a6ff", spawn: "#ff7ad0", ability: "#ffd75e", filler: "#9aa3b8" };
   const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
+  const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
   const COMPONENT_SYMBOL = { firing_computer: "☄", fuel_tank: "➤", shield_generator: "🛡", core: "◉" };
+  // Which boss phase has already resolved by the time the player is acting.
+  const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_baubles: "3.5" };
 
   function stackColor(key) { return STACK_COLORS[key] || "#d9a6ff"; }
+  function kindColor(kind) { return KIND_COLORS[kind] || "#d9a6ff"; }
+
+  /* The star-breach state to draw: the latest view state, overridden with the
+     rewound/rolling replay state while a replay is animating, so the boss
+     boards show the moment being replayed rather than the end of the game. */
+  function effectiveStarBreach() {
+    const sb = view && view.star_breach;
+    if (!sb) return null;
+    if (!replayBossState) return sb;
+    return {
+      ...sb,
+      progress: replayBossState.progress,
+      active_tiers: replayBossState.active_tiers,
+      destroyed_hexes: replayBossState.destroyed_hexes,
+      destroyed_component_ids: replayBossState.destroyed_component_ids,
+      shield_hp: replayBossState.shield_hp,
+    };
+  }
+
+  /* Where the boss stands inside the current turn's action stacks. */
+  function bossPhaseCursor() {
+    if (replayBossState) {
+      return { done: replayBossState.phaseCursor, resolving: replayBossState.phaseResolving };
+    }
+    return { done: BOSS_PHASE_DONE_BY_VIEW[view.phase] || null, resolving: null };
+  }
 
   /* Whether a boss action slot currently fires (mirrors the engine). */
   function bossSlotActive(sb, slot) {
@@ -641,8 +675,7 @@
 
   /* Discrete progress-track boxes: one per progress point, filled up to the
      current progress, thick "major" borders where an ability is gained. */
-  function progressTrackHTML(sb, progressOverride = null) {
-    const progress = progressOverride ?? sb.progress ?? 0;
+  function progressBoxesHTML(sb, progress) {
     const thresholds = {};
     for (const [tier, threshold] of Object.entries(sb.tier_progress || {})) {
       thresholds[threshold] = Number(tier);
@@ -665,45 +698,68 @@
         : `Space ${step}`;
       boxes += `<span class="${classes.join(" ")}"${tier != null ? ` style="border-color:${color}"` : ""} title="${esc(title)}">${symbol}</span>`;
     }
-    return `<div class="bmb-track" title="Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.">
-      <span class="bmb-track-label">☄ ${progress}</span>${boxes}</div>`;
+    return boxes;
   }
 
-  /* One row of slot chips per boss action phase (+ fleet markers). */
+  function progressTrackHTML(sb, progressOverride = null) {
+    const progress = progressOverride ?? sb.progress ?? 0;
+    return `<div class="bmb-track" title="Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.">
+      <span class="bmb-track-label">☄ ${progress}</span>${progressBoxesHTML(sb, progress)}</div>`;
+  }
+
+  /* One row of slot chips per boss action phase (+ fleet markers). Chips are
+     color-coded by what the action does (attack/move/breacher…), rows that
+     already resolved this turn dim, and a gold "we are here" marker sits
+     between the resolved actions and the ones still to come. */
   function actionRowsHTML(sb) {
     const layout = sb.boss_layout || {};
     const componentById = bossComponentById(sb);
+    const cursor = bossPhaseCursor();
+    const marker = `<div class="bmb-now" title="The turn stands here — actions above have resolved; the rest are still to come."><span>▶</span></div>`;
+    const rowClasses = (index, doneIndex, key) => "bmb-row"
+      + (doneIndex >= 0 && index <= doneIndex ? " done" : "")
+      + (cursor.resolving === key ? " resolving" : "");
     const phases = layout.phases || [];
     if (!phases.length) {
       // Older games without phase data: fall back to plain counts.
-      return Object.entries(sb.expected_actions || {}).map(([key, count]) =>
-        `<div class="bmb-row"><span class="bmb-phase" style="color:${stackColor(key)}">${esc(PHASE_SHORT[key] || key)}</span>
-         <span class="bmb-chip on" style="border-color:${stackColor(key)}">${count}</span></div>`).join("");
+      const entries = Object.entries(sb.expected_actions || {});
+      const doneIndex = entries.findIndex(([key]) => key === cursor.done);
+      return entries.map(([key, count], index) => {
+        const kind = DEFAULT_PHASE_KIND[key] || "attack";
+        const color = kindColor(kind);
+        return `<div class="${rowClasses(index, doneIndex, key)}"><span class="bmb-phase" style="color:${stackColor(key)}">${esc(PHASE_SHORT[key] || key)}${KIND_SYMBOL[kind] || ""}</span>
+         <span class="bmb-chip on" style="border-color:${color};color:${color}" title="${esc(kind)} ×${count}">${KIND_SYMBOL[kind] || ""}${count}</span></div>`
+          + (index === doneIndex ? marker : "");
+      }).join("");
     }
     const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
-    return phases.map((phase) => {
+    const doneIndex = phases.findIndex((phase) => phase.key === cursor.done);
+    return phases.map((phase, index) => {
       const color = stackColor(phase.key);
       const chips = (phase.slots || []).map((slot) => {
         const active = bossSlotActive(sb, slot);
         const kind = slot.kind || phase.kind;
+        const chipColor = kindColor(kind);
         return `<span class="bmb-chip ${active ? "on" : "off"} bmb-kind-${kind}"
-          style="border-color:${color};${active ? `color:${color}` : ""}"
+          style="border-color:${chipColor};${active ? `color:${chipColor}` : ""}"
           title="${esc(slotChipTitle(sb, slot, componentById, active))} — ${esc(kind)}">${slotChipText(sb, slot, componentById)}</span>`;
       }).join("");
       const fleetKinds = ((layout.fleet_actions || {})[phase.key]) || [];
       const fleet = fleetAlive && fleetKinds.length
         ? fleetKinds.map((kind) => `<span class="bmb-chip fleet on" title="Fleet ×${fleetAlive} — ${esc(kind)}">▣${KIND_SYMBOL[kind] || ""}</span>`).join("")
         : "";
-      return `<div class="bmb-row">
+      return `<div class="${rowClasses(index, doneIndex, phase.key)}">
         <span class="bmb-phase" style="color:${color}" title="${esc(phase.key === "starbreach" ? "StarBreach phase" : "Boss Action " + phase.key)}">${esc(PHASE_SHORT[phase.key] || phase.key)}${KIND_SYMBOL[phase.kind] || ""}</span>
-        ${chips || '<span class="bmb-none">—</span>'}${fleet}</div>`;
+        ${chips || '<span class="bmb-none">—</span>'}${fleet}</div>`
+        + (index === doneIndex ? marker : "");
     }).join("");
   }
 
   function renderBossBattleBoardMini() {
-    const sb = view.star_breach;
+    const sb = effectiveStarBreach();
     let board = document.getElementById("boss-battle-board");
-    if (!sb) { board?.remove(); return; }
+    let rail = document.getElementById("boss-progress-rail");
+    if (!sb) { board?.remove(); rail?.remove(); return; }
     if (!board) {
       board = document.createElement("div");
       board.id = "boss-battle-board";
@@ -712,7 +768,17 @@
       board.addEventListener("click", showBossModal);
       els["board-wrap"].appendChild(board);
     }
-    board.innerHTML = progressTrackHTML(sb) + `<div class="bmb-rows">${actionRowsHTML(sb)}</div>`;
+    board.innerHTML = `<div class="bmb-rows">${actionRowsHTML(sb)}</div>`;
+    // The progress track runs vertically down the side of the space board.
+    if (!rail) {
+      rail = document.createElement("div");
+      rail.id = "boss-progress-rail";
+      rail.className = "boss-progress-rail";
+      rail.title = "Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.";
+      rail.addEventListener("click", showBossModal);
+      els["board-wrap"].appendChild(rail);
+    }
+    rail.innerHTML = `<span class="bmb-track-label">☄ ${sb.progress ?? 0}</span>${progressBoxesHTML(sb, sb.progress ?? 0)}`;
   }
 
   function pauseAfterActions() {
@@ -785,7 +851,7 @@
             ${submitted}
           </div>
         </div>`;
-      card.title = "Click for the full ship board and damage lanes";
+      card.title = "Click for the full ship board";
       card.addEventListener("click", () => showShipModal(playerId));
       container.appendChild(card);
     }
@@ -949,6 +1015,13 @@
     els["deck-count"].textContent = me ? me.deck_count : 0;
     els["discard-count"].textContent = me ? (me.discard || []).length : 0;
 
+    // While the round replays, keep the captain's submitted orders on the
+    // table and highlight each stack as it plays out.
+    if (animating && replayOrders) {
+      renderReplayOrders(slotsArea, handArea);
+      return;
+    }
+
     const ordering = view.phase === "give_orders" && me && !me.has_submitted_orders && !me.eliminated && !(me.ship || {}).destroyed;
     const needsCaptain = ordering && me.captain_options && me.captain_options.length && !me.captain;
     els["btn-submit-orders"].disabled = !ordering || needsCaptain;
@@ -1020,6 +1093,62 @@
         : "Click or drag a card onto an action — or click an action slot first, then pick cards for it.")
       : "All hands assigned. Seal yer orders!";
     computePreview();
+  }
+
+  /* Read-only view of the submitted stacks while the round replays. */
+  function renderReplayOrders(slotsArea, handArea) {
+    els["btn-submit-orders"].disabled = true;
+    els["btn-clear-orders"].disabled = true;
+    const me = myPlayer();
+    const cardById = new Map();
+    for (const pile of [me?.hand, me?.discard, me?.overheat]) {
+      for (const card of pile || []) cardById.set(card.id, card);
+    }
+    slotsArea.innerHTML = "";
+    replayOrders.slots.forEach((stack, index) => {
+      const node = document.createElement("div");
+      node.className = "order-slot replaying"
+        + (replayOrders.active === index ? " playing" : "")
+        + (replayOrders.active !== null && index < replayOrders.active ? " played" : "");
+      node.dataset.slot = index;
+      const label = document.createElement("div");
+      label.className = "slot-label";
+      label.textContent = `Action ${index + 1}` + (replayOrders.active === index ? " ⚔" : "");
+      node.appendChild(label);
+      const cardsBox = document.createElement("div");
+      cardsBox.className = "slot-cards";
+      for (const selection of (stack && stack.cards) || []) {
+        const card = cardById.get(selection.card_id) || { id: selection.card_id, name: "Card", effect: {} };
+        const family = selection.mode
+          || (selection.face === "desperate" ? (card.desperate_face || {}).family : (card.effect || {}).family || card.family)
+          || null;
+        const target = selection.target_player_id;
+        const tag = family === "attack"
+          ? "→ " + (!target ? "ahead"
+            : String(target).startsWith("boss:") ? `Boss ${areaDisplayName(String(target).split(":")[1])}`
+            : String(target).startsWith("craft:") ? "Hunter" : Board.shortName(target))
+          : Cards.orientationLabel(selection.orientation || "forward").split(" ")[0];
+        cardsBox.appendChild(Cards.cardEl(card, { inSlot: true, faceUsed: selection.face, useTag: tag }));
+      }
+      if (!stack || !(stack.cards || []).length) {
+        const hint = document.createElement("span");
+        hint.style.cssText = "color:var(--ink-dim);font-size:11px;font-style:italic";
+        hint.textContent = "empty — ship coasts";
+        cardsBox.appendChild(hint);
+      }
+      node.appendChild(cardsBox);
+      const seal = document.createElement("div");
+      seal.className = "replay-seal" + (stack && stack.seal === "overdrive" ? " overdrive" : "");
+      seal.textContent = stack && stack.seal === "overdrive" ? "🔥 OVERDRIVE" : "☠ sealed";
+      node.appendChild(seal);
+      slotsArea.appendChild(node);
+    });
+    handArea.innerHTML = "";
+    const note = document.createElement("div");
+    note.className = "hand-note";
+    note.textContent = `⚔ Round ${replayOrders.round} — yer orders play out. Watch the board!`;
+    handArea.appendChild(note);
+    els["orders-hint"].textContent = "";
   }
 
   async function chooseCaptain(captainId) {
@@ -1329,29 +1458,36 @@
         }
       }
     }
-    // The decorative shield-arc ellipses are tuned to the stock four-arc hull;
-    // designed bosses show their shields in the table instead.
+    // Shield arcs the way the boss designer draws them: layered lines hugging
+    // the outer edge of every shielded area's hull hexes — one layer per
+    // remaining shield charge. Works for stock and designed bosses alike.
     let shieldSvg = "";
     if (opts.shields) {
-      const arcPath = (cx, cy, rx, ry, startDeg, endDeg) => {
-        const point = (deg) => {
-          const a = (Math.PI / 180) * deg;
-          return [cx + Math.cos(a) * rx, cy + Math.sin(a) * ry];
-        };
-        const [sx, sy] = point(startDeg), [ex, ey] = point(endDeg);
-        return `M ${sx.toFixed(1)} ${sy.toFixed(1)} A ${rx.toFixed(1)} ${ry.toFixed(1)} 0 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)}`;
-      };
-      const centerByArea = { forward: [0, -2], port: [-5, 2], rear: [0, 3], starboard: [5, -3] };
-      const arcByArea = { forward: [-150, -30], port: [145, 250], rear: [35, 145], starboard: [-70, 35] };
-      for (const area of layout.areas || []) {
-        const hp = sb.shield_hp?.[area] ?? 0;
-        if (!hp || !centerByArea[area]) continue;
-        const center = centerByArea[area];
-        const angles = arcByArea[area];
-        const [cx, cy] = xy(center[0], center[1]);
-        for (let layer = 0; layer < hp; layer++) {
-          shieldSvg += `<path class="boss-detail-shield" d="${arcPath(cx, cy, size * (3.35 + layer * .34), size * (2.55 + layer * .25), angles[0], angles[1])}"
-            stroke="${palette.stroke(area)}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
+      const footprint = new Set(cells.map((cell) => cell.q + "," + cell.r));
+      for (const cell of cells) {
+        if (!cell.area) continue;
+        const hp = sb.shield_hp?.[cell.area] ?? 0;
+        if (hp <= 0) continue;
+        const layers = Math.min(hp, 4);
+        const color = palette.stroke(cell.area);
+        const [cx, cy] = xy(cell.q, cell.r);
+        for (let facing = 0; facing < 6; facing++) {
+          const [dq, dr] = Board.DIRECTIONS[facing];
+          if (footprint.has((cell.q + dq) + "," + (cell.r + dr))) continue;
+          const [ex, ey] = xy(cell.q + dq, cell.r + dr);
+          let ux = ex - cx, uy = ey - cy;
+          const len = Math.hypot(ux, uy) || 1;
+          ux /= len; uy /= len;
+          const px = -uy, py = ux, half = size / 2;
+          for (let layer = 0; layer < layers; layer++) {
+            const mx = cx + ux * (len / 2 + size * (0.30 + layer * 0.18));
+            const my = cy + uy * (len / 2 + size * (0.30 + layer * 0.18));
+            shieldSvg += `<line class="boss-detail-shield"
+              x1="${(mx + px * half).toFixed(1)}" y1="${(my + py * half).toFixed(1)}"
+              x2="${(mx - px * half).toFixed(1)}" y2="${(my - py * half).toFixed(1)}"
+              stroke="${color}" opacity="${Math.max(0.35, 0.9 - layer * 0.14).toFixed(2)}">
+              <title>${esc(areaDisplayName(cell.area))} shield — ${hp} charge${hp === 1 ? "" : "s"}</title></line>`;
+          }
         }
       }
     }
@@ -1386,24 +1522,27 @@
       svg += `<text x="${rowsX}" y="${rowY + 4}" text-anchor="end" font-size="12" font-family="Pirata One"
         fill="${color}">${esc(PHASE_SHORT[phase.key] || phase.key)} ${KIND_SYMBOL[phase.kind] || ""}</text>`;
       let chipX = rowsX + 10;
+      // Circuit trace from a powering hull hex to the chip at chipX.
+      const trace = (hx, hy, active) => {
+        const busX = parts.maxX - 28 + (busIndex++ % 10) * 5.5;
+        const stroke = active ? color : "#4a4a55";
+        svg += `<g pointer-events="none">
+          <path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
+            fill="none" stroke="${stroke}" stroke-width="1.2" opacity="${active ? ".75" : ".45"}"
+            ${active ? "" : 'stroke-dasharray="3 3"'} stroke-linejoin="round"/>
+          <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}" opacity=".9"/>
+          <circle cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}" opacity=".9"/></g>`;
+      };
       for (const slot of phase.slots || []) {
         const active = bossSlotActive(sb, slot);
         const kind = slot.kind || phase.kind;
         const text = slotChipText(sb, slot, componentById);
-        // Circuit trace from the powering component hex to this chip.
         if (slot.slot === "component") {
           const component = componentById[slot.component_id];
-          if (component) {
-            const [hx, hy] = parts.xy(component.q, component.r);
-            const busX = parts.maxX - 28 + (busIndex++ % 10) * 5.5;
-            const stroke = active ? color : "#4a4a55";
-            svg += `<g pointer-events="none">
-              <path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
-                fill="none" stroke="${stroke}" stroke-width="1.2" opacity="${active ? ".75" : ".45"}"
-                ${active ? "" : 'stroke-dasharray="3 3"'} stroke-linejoin="round"/>
-              <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}" opacity=".9"/>
-              <circle cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}" opacity=".9"/></g>`;
-          }
+          if (component) trace(...parts.xy(component.q, component.r), active);
+        } else if (slot.slot === "tier" && slot.core_hex) {
+          // Breacher abilities anchored to a core: trace from that core hex.
+          trace(...parts.xy(slot.core_hex[0], slot.core_hex[1]), active);
         }
         const title = `${slotChipTitle(sb, slot, componentById, active)} — ${kind}`;
         svg += `<g><title>${esc(title)}</title>
@@ -1435,9 +1574,11 @@
   /* The StarBreacher's battle board: internal hull, components, shields,
      circuit-linked action rows, and the discrete progress track. */
   function showBossModal() {
-    const sb = view.star_breach;
+    const sb = effectiveStarBreach();
     if (!sb || !sb.boss_layout) return;
-    const parts = bossHullParts(sb, { lanes: true, shields: true });
+    // Damage lanes stay hidden here — they only show while assigning a lane
+    // (the target picker). Shields render as arcs hugging the shielded hull.
+    const parts = bossHullParts(sb, { shields: true });
     const circuit = battleBoardCircuitSVG(sb, parts);
     const palette = parts.palette;
     const shields = (sb.boss_layout.areas || []).map((area) => {
@@ -1480,7 +1621,8 @@
             <span>★n tier n</span><span>▣ fleet</span><span>🛡 shield gen</span><span>◉ core</span>
           </div>
           <div style="margin-top:6px">Traces link each hull component to the action it powers —
-            destroy the component and the action goes dark. Boss progress fills the track;
+            destroy the component and the action goes dark. Shield arcs hug the shielded hull
+            sections; each layer is a remaining charge. Boss progress fills the track;
             marked boxes grant new abilities at the next round's start.</div>
         </div>
       </div>
@@ -2385,14 +2527,6 @@
     node.remove();
   }
 
-  function updateProgressRail(progress) {
-    const sb = view.star_breach;
-    const board = document.getElementById("boss-battle-board");
-    if (!sb || !board) return;
-    const track = board.querySelector(".bmb-track");
-    if (track) track.outerHTML = progressTrackHTML(sb, progress);
-  }
-
   /* "Pause after each player action": wait for the captain to click on. */
   function continueGate() {
     return new Promise((resolve) => {
@@ -2462,12 +2596,96 @@
     return pose;
   }
 
+  /* Rewind the boss battle-board state (progress, tiers, hull damage, shields)
+     to the moment this batch of events began; playEvent rolls it forward so
+     the progression board mirrors the replay instead of the final state. */
+  function buildReplayBossState(events) {
+    const sb = view.star_breach;
+    if (!sb) return null;
+    const state = {
+      progress: sb.progress || 0,
+      active_tiers: [...(sb.active_tiers || [])],
+      destroyed_hexes: (sb.destroyed_hexes || []).map((hex) => [...hex]),
+      destroyed_component_ids: [...(sb.destroyed_component_ids || [])],
+      shield_hp: { ...(sb.shield_hp || {}) },
+      phaseCursor: null,
+      phaseResolving: null,
+    };
+    for (const event of events) {
+      if (event.type === "boss_progress_advanced") {
+        state.progress = Math.max(0, Math.min(state.progress, (event.progress || 0) - (event.amount || 0)));
+      } else if (event.type === "boss_tiers_activated") {
+        state.active_tiers = state.active_tiers.filter((tier) => !(event.tiers || []).includes(tier));
+      } else if (event.type === "boss_volley_resolved" && event.hit) {
+        const area = String(event.target_id || "").replace("boss:", "");
+        if (event.shields_absorbed) {
+          const max = sb.shield_max?.[area];
+          state.shield_hp[area] = (state.shield_hp[area] || 0) + event.shields_absorbed;
+          if (max != null) state.shield_hp[area] = Math.min(max, state.shield_hp[area]);
+        }
+        for (const shot of event.shots || []) {
+          if (shot.result !== "hull_destroyed") continue;
+          if (shot.hex) {
+            state.destroyed_hexes = state.destroyed_hexes.filter(([q, r]) => !(q === shot.hex[0] && r === shot.hex[1]));
+          }
+          if (shot.component_id) {
+            state.destroyed_component_ids = state.destroyed_component_ids.filter((id) => id !== shot.component_id);
+          }
+        }
+      }
+    }
+    return state;
+  }
+
+  /* Roll the boss board forward as a boss volley lands during the replay. */
+  function applyReplayBossVolley(event) {
+    if (!replayBossState || !event.hit) return;
+    const area = String(event.target_id || "").replace("boss:", "");
+    if (event.shields_absorbed) {
+      replayBossState.shield_hp[area] = Math.max(0, (replayBossState.shield_hp[area] || 0) - event.shields_absorbed);
+    }
+    for (const shot of event.shots || []) {
+      if (shot.result !== "hull_destroyed") continue;
+      if (shot.hex) replayBossState.destroyed_hexes.push([shot.hex[0], shot.hex[1]]);
+      if (shot.component_id && !replayBossState.destroyed_component_ids.includes(shot.component_id)) {
+        replayBossState.destroyed_component_ids.push(shot.component_id);
+      }
+    }
+    refreshBossWidgets();
+  }
+
+  function refreshBossWidgets() {
+    if (view.star_breach) renderBossBattleBoardMini();
+  }
+
+  /* Your revealed order stacks per round, rebuilt from the event log so the
+     panel can keep showing them (and highlight them) while they play out. */
+  function buildReplayOrdersByRound(events) {
+    const byRound = {};
+    for (const event of events) {
+      if (event.type !== "action_revealed" || event.player_id !== you) continue;
+      const round = event.round || view.round_number;
+      if (!byRound[round]) byRound[round] = { round, active: null, slots: [null, null, null] };
+      byRound[round].slots[(event.action_number || 1) - 1] = {
+        seal: event.seal_mode === "overdrive" ? "overdrive" : "sealed",
+        cards: event.cards || [],
+      };
+    }
+    return byRound;
+  }
+
   async function playEvents(events) {
     animating = true;
     skipReplay = false;
     replayShipStates = buildReplayShipStates(events);
     replayBossPose = buildReplayBossPose(events);
     replayFleetPose = buildReplayFleetPose(events);
+    replayBossState = buildReplayBossState(events);
+    replayOrdersByRound = buildReplayOrdersByRound(events);
+    const orderRounds = Object.keys(replayOrdersByRound).map(Number).sort((a, b) => a - b);
+    replayOrders = orderRounds.length ? replayOrdersByRound[orderRounds[0]] : null;
+    refreshBossWidgets();
+    renderOrdersPanel();
     replayControls(events.length >= 4);
     try {
       // Every ship sails alive at the start of the tale; the replay itself
@@ -2497,7 +2715,7 @@
         Board.placeShip(playerId, start.q, start.r, start.facing);
       }
       if (view.star_breach) {
-        Board.renderStarBreach(view.star_breach, bossRenderOptions());
+        Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
       }
       renderFleet();
       for (let index = 0; index < events.length; index++) {
@@ -2533,6 +2751,9 @@
       replayShipStates = null;
       replayBossPose = null;
       replayFleetPose = null;
+      replayBossState = null;
+      replayOrders = null;
+      replayOrdersByRound = null;
       replayControls(false);
     }
   }
@@ -2707,13 +2928,36 @@
         if (event.phase === "action_1") callout("⚔ Battle Stations!");
         else if (event.phase === "action_2") callout("Action II");
         else if (event.phase === "action_3") callout("Action III");
-        else if (event.phase === "award_baubles") callout("✦ Claim the Loot");
+        else if (event.phase === "award_baubles") {
+          callout("✦ Claim the Loot");
+          if (replayOrders && replayOrders.active !== null) {
+            replayOrders.active = null;
+            renderOrdersPanel();
+          }
+        }
         return;
       case "round_advanced":
         callout(`Round ${event.round}`);
+        if (replayOrdersByRound) {
+          replayOrders = replayOrdersByRound[event.round] || null;
+          if (replayOrders) replayOrders.active = null;
+          renderOrdersPanel();
+        }
+        if (replayBossState) {
+          replayBossState.phaseCursor = null;
+          replayBossState.phaseResolving = null;
+          refreshBossWidgets();
+        }
         await wait(700);
         return;
       case "action_revealed":
+        if (event.player_id === you && replayOrdersByRound) {
+          replayOrders = replayOrdersByRound[event.round] || replayOrders;
+          if (replayOrders) {
+            replayOrders.active = (event.action_number || 1) - 1;
+            renderOrdersPanel();
+          }
+        }
         if (event.seal_mode === "overdrive") {
           callout(`🔥 ${Board.shortName(event.player_id)} OVERDRIVES!`, true);
           await wait(500);
@@ -2738,10 +2982,19 @@
         return;
       }
       case "boss_phase_started": {
+        if (replayBossState) {
+          replayBossState.phaseResolving = event.boss_phase;
+          refreshBossWidgets();
+        }
         await showBossPhaseCallout(event);
         return;
       }
       case "boss_phase_resolved": {
+        if (replayBossState) {
+          replayBossState.phaseCursor = event.boss_phase;
+          replayBossState.phaseResolving = null;
+          refreshBossWidgets();
+        }
         // Designed bosses can mix moves and attacks in one stack, so always
         // animate whatever movement the slots and fleet actually recorded.
         for (const slot of event.slots || []) {
@@ -2757,7 +3010,7 @@
               r: from.anchor_r + (to.anchor_r - from.anchor_r) * t,
               facing: to.facing,
             };
-            Board.renderStarBreach(view.star_breach, bossRenderOptions());
+            Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
             FX.trail(Board.hexToScreen(replayBossPose.q, replayBossPose.r), "#a86ad1");
             await wait(28);
           }
@@ -2777,11 +3030,11 @@
             const t = frame / frames;
             pose.q = entry.before[0] + (entry.after[0] - entry.before[0]) * t;
             pose.r = entry.before[1] + (entry.after[1] - entry.before[1]) * t;
-            Board.renderStarBreach(view.star_breach, bossRenderOptions());
+            Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
             await wait(26);
           }
         }
-        Board.renderStarBreach(view.star_breach, bossRenderOptions());
+        Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
         return;
       }
       case "enemy_volley_resolved": {
@@ -2822,6 +3075,8 @@
           if ((event.components_destroyed || []).length) bits.push(event.components_destroyed.join(", ").toUpperCase() + " DESTROYED");
           if (event.desperation_cards_drawn) bits.push("glancing blow: desperate card to deck");
           FX.floatText(to, bits.join(" · ") || "no effect", "#d9a6ff");
+          applyReplayBossVolley(event);
+          Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
         }
         await wait(430);
         return;
@@ -2838,7 +3093,7 @@
             const craftId = String(event.target_id || "").replace("craft:", "");
             if (replayFleetPose[craftId]) {
               replayFleetPose[craftId].destroyed = true;
-              Board.renderStarBreach(view.star_breach, bossRenderOptions());
+              Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
             }
           }
         } else {
@@ -2866,10 +3121,19 @@
         return;
       }
       case "boss_progress_advanced": {
-        updateProgressRail(event.progress);
+        if (replayBossState) {
+          replayBossState.progress = event.progress ?? replayBossState.progress;
+          refreshBossWidgets();
+        }
         return;
       }
       case "boss_tiers_activated": {
+        if (replayBossState) {
+          for (const tier of event.tiers || []) {
+            if (!replayBossState.active_tiers.includes(tier)) replayBossState.active_tiers.push(tier);
+          }
+          refreshBossWidgets();
+        }
         callout(`☄ Boss Tier ${event.tiers.join(", ")} online!`, true);
         await wait(700);
         return;
@@ -2882,7 +3146,7 @@
           }
           FX.warp(Board.hexToScreen(craft.q, craft.r));
         }
-        Board.renderStarBreach(view.star_breach, bossRenderOptions());
+        Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
         await wait(800);
         return;
       }

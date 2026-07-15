@@ -499,6 +499,24 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 .bmb-chip.fleet { border-color: #9aa3b8; color: #9aa3b8; border-radius: 8px; }
 .bmb-none { color: var(--ink-dim); font-size: 10px; }
+/* Turn progression through the boss's action stacks */
+.bmb-row.done { opacity: .45; }
+.bmb-row.resolving { outline: 1px solid rgba(212,167,72,.55); outline-offset: 2px; border-radius: 4px; }
+.bmb-row.resolving .bmb-phase { text-shadow: 0 0 8px currentColor; }
+.bmb-now { display: flex; align-items: center; gap: 4px; margin: 1px 0; height: 7px; }
+.bmb-now span { color: var(--gold-bright); font-size: 8px; line-height: 1; }
+.bmb-now::after { content: ""; flex: 1; height: 2px; border-radius: 1px; background: linear-gradient(90deg, var(--gold-bright), rgba(212,167,72,0)); }
+/* Vertical boss progress rail on the side of the space board */
+.boss-progress-rail {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 6px; cursor: pointer;
+  border: 1px solid rgba(168,106,209,.55); border-radius: 10px;
+  background: rgba(9,14,27,.88);
+  max-height: calc(100% - 150px); overflow-y: auto;
+}
+.boss-progress-rail:hover { border-color: rgba(217,166,255,.9); }
+.boss-progress-rail .bmb-track-label { margin: 0 0 3px; }
 .bmb-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .bmb-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; }
 .boss-board-modal { max-width: 720px; }
@@ -612,6 +630,17 @@ h1, h2, .brand, .poster-title, .banner-text {
   border-style: solid; border-color: var(--gold-bright);
   box-shadow: 0 0 18px rgba(212,167,72,.5), inset 0 0 24px rgba(212,167,72,.08);
 }
+/* Submitted orders shown read-only while the round replays */
+.order-slot.replaying { min-height: 170px; grid-template-rows: auto minmax(110px, 1fr) auto; }
+.order-slot.replaying .slot-cards { min-height: 110px; }
+.order-slot.playing {
+  border-style: solid; border-color: var(--gold-bright);
+  box-shadow: 0 0 18px rgba(212,167,72,.6), inset 0 0 24px rgba(212,167,72,.12);
+}
+.order-slot.playing .slot-label { color: var(--gold-bright); text-shadow: 0 0 10px rgba(212,167,72,.7); }
+.order-slot.played { opacity: .55; }
+.replay-seal { font-size: 11px; color: var(--ink-dim); letter-spacing: .5px; }
+.replay-seal.overdrive { color: #ff8d6b; }
 .order-slot .slot-label { font-family: "Pirata One", serif; font-size: 18px; color: var(--gold); text-align: center; line-height: 1; }
 .order-slot .slot-cards { display: flex; gap: 7px; min-height: 138px; align-items: center; justify-content: center; flex-wrap: wrap; width: 100%; }
 .seal-toggle {

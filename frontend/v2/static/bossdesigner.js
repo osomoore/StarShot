@@ -256,12 +256,15 @@
       }
     }
 
-    // Damage lanes: number outside the entry face, arrow in, faint ray through the hull.
+    // Damage lanes: number outside the entry face, arrow in, faint ray through
+    // the hull. Only drawn while actually assigning lanes (Shields & Lanes →
+    // Damage Lanes); everywhere else they just add clutter.
     let lanesSvg = "";
-    for (const region of design.shield_regions) {
+    const showLanes = mode === "shields" && shieldSub === "lanes";
+    for (const region of showLanes ? design.shield_regions : []) {
       const color = regionColor(region.number);
-      const isActive = mode === "shields" && region.number === currentRegion;
-      const opacity = mode === "shields" ? (isActive ? 1 : 0.25) : 0.7;
+      const isActive = region.number === currentRegion;
+      const opacity = isActive ? 1 : 0.25;
       for (const lane of region.lanes) {
         const [cx, cy] = xy(lane.q, lane.r);
         const [odq, odr] = DIRS[lane.facing];
@@ -1163,6 +1166,7 @@
       button.addEventListener("click", () => {
         shieldSub = button.dataset.sub;
         renderShieldPanel();
+        renderBoard(); // lanes only draw while assigning them
       });
     });
     el("bd-lane-stack").addEventListener("change", (event) => {
