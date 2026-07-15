@@ -115,11 +115,23 @@ class ValidateTests(unittest.TestCase):
         problems = self._problems(raw)
         self.assertTrue(any("not fully connected" in p for p in problems))
 
-    def test_missing_lanes_flagged(self):
+    def test_fewer_lanes_allowed_but_zero_lanes_flagged(self):
+        # Unassigned rolls reroll in play, so a partial lane set is fine...
         raw = make_design()
         raw["shield_regions"][0]["lanes"] = raw["shield_regions"][0]["lanes"][:3]
+        self.assertEqual(self._problems(raw), [])
+        # ...but a region with no lanes at all could never be damaged.
+        raw["shield_regions"][0]["lanes"] = []
         problems = self._problems(raw)
-        self.assertTrue(any("missing damage lanes" in p for p in problems))
+        self.assertTrue(any("has no damage lanes" in p for p in problems))
+
+    def test_two_lanes_may_share_a_hex(self):
+        raw = make_design()
+        raw["shield_regions"][0]["lanes"] = [
+            {"roll": 2, "q": 1, "r": -1, "facing": 0},
+            {"roll": 3, "q": 1, "r": -1, "facing": 1},
+        ]
+        self.assertEqual(self._problems(raw), [])
 
     def test_duplicate_lane_roll_flagged(self):
         raw = make_design()

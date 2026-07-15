@@ -23,7 +23,7 @@ from starshot.rules import star_breach as sb_data
 from starshot.rules import star_breach_spec as sb_spec
 from starshot.rules.star_breach import EXPANSION_ID
 from starshot.rules.desperation import draw_desperation_card
-from starshot.rules.hex import BOARD_RADIUS, DIRECTIONS, START_INSET_FROM_CORNER, clamp_to_board, hex_distance, is_within_board, move_forward
+from starshot.rules.hex import BOARD_RADIUS, DIRECTIONS, START_INSET_FROM_CORNER, hex_distance, is_within_board, move_forward
 from starshot.rules.ship_layout import BASE_SHIP_COMPONENTS, is_ship_destroyed
 
 # This module owns StarBreach behavior that plugs into the base StarShot engine.
@@ -424,19 +424,19 @@ def _occupied_ship_hexes(state: GameState, *, ignore_craft_id: str | None = None
 
 def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
     """Move the boss token toward The Prey. The nose leads: facing becomes the
-    direction of the last hex moved."""
+    direction of the last hex moved. The boss token can share a hex with
+    other ships; it does not push them."""
     sb = state.star_breach
     assert sb is not None
     prey = state.players.get(sb.prey_player_id)
     before = {"anchor_q": sb.anchor_q, "anchor_r": sb.anchor_r, "facing": sb.facing}
     moved = 0
-    pushed: list[dict] = []
     if prey is None or prey.eliminated or prey.ship.destroyed:
         target = _enemy_pick_target(state, lambda player: _boss_distance_to(sb, player.ship.q, player.ship.r))
     else:
         target = prey
     if target is None:
-        return {"before": before, "after": dict(before), "moved": 0, "pushed": pushed}
+        return {"before": before, "after": dict(before), "moved": 0}
 
     for _ in range(steps):
         current = _boss_distance_to(sb, target.ship.q, target.ship.r)
@@ -464,50 +464,12 @@ def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
         sb.facing = best_direction
         moved += 1
         sb.boss_movement_this_action += 1
-        pushed.extend(_push_ships_out_of_boss(state, best_direction))
         _collect_enemy_baubles(state, "boss", _boss_token_hexes(sb), label="starbreacher")
     return {
         "before": before,
         "after": {"anchor_q": sb.anchor_q, "anchor_r": sb.anchor_r, "facing": sb.facing},
         "moved": moved,
-        "pushed": pushed,
     }
-
-
-def _push_ships_out_of_boss(state: GameState, direction: int) -> list[dict]:
-    """Ships caught under the advancing hull are shoved along its heading."""
-    sb = state.star_breach
-    assert sb is not None
-    footprint = set(_boss_token_hexes(sb))
-    moves: list[dict] = []
-
-    def push(q: int, r: int, occupied: set[tuple[int, int]]) -> tuple[int, int]:
-        for _ in range(40):
-            if (q, r) not in footprint and (q, r) not in occupied and is_within_board(q, r):
-                break
-            q, r = move_forward(q, r, direction, 1)
-            if not is_within_board(q, r):
-                q, r = clamp_to_board(q, r)
-                break
-        return q, r
-
-    for player in state.players.values():
-        if player.eliminated or player.ship.destroyed:
-            continue
-        if (player.ship.q, player.ship.r) in footprint:
-            occupied = _occupied_ship_hexes(state) - {(player.ship.q, player.ship.r)}
-            new_q, new_r = push(player.ship.q, player.ship.r, occupied)
-            moves.append({"ship": player.id, "from": [player.ship.q, player.ship.r], "to": [new_q, new_r]})
-            player.ship.q, player.ship.r = new_q, new_r
-    for craft in sb.fleet:
-        if craft.destroyed:
-            continue
-        if (craft.q, craft.r) in footprint:
-            occupied = _occupied_ship_hexes(state, ignore_craft_id=craft.id)
-            new_q, new_r = push(craft.q, craft.r, occupied)
-            moves.append({"ship": craft.id, "from": [craft.q, craft.r], "to": [new_q, new_r]})
-            craft.q, craft.r = new_q, new_r
-    return moves
 
 
 def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
@@ -924,17 +886,30 @@ def _resolve_volley_vs_boss(
                 shots.append({"result": "shield_absorbed", "shield_hp_left": sb.shield_hp[area]})
                 continue
             lane_roll = _roll_d8(state)
+            # Regions may define fewer than seven lanes; an unassigned roll is
+            # rerolled (a glancing blow always stands). The stock boss defines
+            # every lane, so this never triggers there.
+            defined_lanes = spec["damage_lanes"].get(area, {})
+            rerolls = 0
+            while (
+                lane_roll != sb_data.GLANCING_BLOW_ROLL
+                and str(lane_roll) not in defined_lanes
+                and rerolls < 16
+            ):
+                lane_roll = _roll_d8(state)
+                rerolls += 1
             adjusted_roll, ace_shift = _fighting_ace_lane_choice(sb, area, lane_roll) if is_ace else (lane_roll, 0)
+            reroll_note = {"rerolls": rerolls} if rerolls else {}
             if adjusted_roll == sb_data.GLANCING_BLOW_ROLL:
                 rng = _make_rng(state)
                 drawn = draw_desperation_card(state.desperation_deck, rng)
                 attacker.deck.insert(0, drawn)
                 desperation_cards_drawn += 1
-                shots.append({"result": "glancing_blow", "roll": lane_roll, "ace_shift": ace_shift, "desperation_card_id": drawn.id})
+                shots.append({"result": "glancing_blow", "roll": lane_roll, "ace_shift": ace_shift, "desperation_card_id": drawn.id, **reroll_note})
                 continue
             local = sb_spec.first_intact_lane_hex(spec, area, adjusted_roll, sb.destroyed_hexes)
             if local is None:
-                shots.append({"result": "overpenetration", "roll": lane_roll, "ace_shift": ace_shift, "lane": adjusted_roll})
+                shots.append({"result": "overpenetration", "roll": lane_roll, "ace_shift": ace_shift, "lane": adjusted_roll, **reroll_note})
                 continue
             sb.destroyed_hexes.add(local)
             hexes_destroyed += 1
@@ -944,6 +919,7 @@ def _resolve_volley_vs_boss(
                 "ace_shift": ace_shift,
                 "lane": adjusted_roll,
                 "hex": [local[0], local[1]],
+                **reroll_note,
             }
             component = sb_spec.component_by_hex(spec, local[0], local[1])
             if component is not None:

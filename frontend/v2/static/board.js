@@ -181,8 +181,11 @@
         .textContent = "☄ StarBreacher";
     }
     for (const craft of sb.fleet || []) {
-      if (craft.destroyed) continue;
-      const [x, y] = axialToXY(craft.q, craft.r);
+      // During replays the game supplies live craft positions/liveness so the
+      // sprites match the moment being animated, not the end-of-round state.
+      const override = options.fleetPose && options.fleetPose[craft.id];
+      if (override ? override.destroyed : craft.destroyed) continue;
+      const [x, y] = axialToXY(override ? override.q : craft.q, override ? override.r : craft.r);
       const color = CRAFT_COLORS[craft.color] || "#999";
       const group = el("g", { transform: `translate(${x},${y})` }, bossLayer);
       el("rect", { x: -7, y: -7, width: 14, height: 14, rx: 3, fill: color, stroke: "#0a0f1e", "stroke-width": 1.4 }, group);

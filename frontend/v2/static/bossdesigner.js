@@ -61,6 +61,7 @@
   let tool = { type: "generic", number: 1, stack: "0.5" };
   let currentRegion = null; // shield region number being edited
   let shieldSub = "hexes";  // hexes | lanes
+  let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
 
   // ── tiny helpers ─────────────────────────────────────────────────────────
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -353,7 +354,9 @@
   }
 
   /* Click an unassigned region hex: next free roll enters from its first edge
-     face. Click again: same roll, next edge face. Past the last face: unassign. */
+     face. Click again: same roll, next edge face. Past the last face: unassign.
+     With "second lane" ticked, clicking a laned hex stacks another lane on it
+     (a different roll) instead of cycling the existing one. */
   function laneClick(region, q, r) {
     if (!region.hexes.some(([hq, hr]) => hq === q && hr === r)) {
       setStatus("That hex is not in this shield region — add it in Protected Hexes first.", false);
@@ -364,13 +367,14 @@
       setStatus("That hex has no ship-edge face; lanes must enter from outside.", false);
       return;
     }
-    const existing = region.lanes.find((lane) => lane.q === q && lane.r === r);
-    if (existing) {
-      const at = facings.indexOf(existing.facing);
+    const hexLanes = region.lanes.filter((lane) => lane.q === q && lane.r === r);
+    if (hexLanes.length && !stackLanes) {
+      const lane = hexLanes[hexLanes.length - 1];
+      const at = facings.indexOf(lane.facing);
       if (at >= 0 && at < facings.length - 1) {
-        existing.facing = facings[at + 1];
+        lane.facing = facings[at + 1];
       } else {
-        region.lanes = region.lanes.filter((lane) => lane !== existing);
+        region.lanes = region.lanes.filter((entry) => entry !== lane);
       }
       return;
     }
@@ -380,7 +384,30 @@
       setStatus("All seven lanes (2-8) are assigned — click an assigned hex to adjust or clear it.", false);
       return;
     }
-    region.lanes.push({ roll: next, q, r, facing: facings[0] });
+    // A stacked lane defaults to an entry face the hex isn't using yet.
+    const takenFacings = new Set(hexLanes.map((lane) => lane.facing));
+    const facing = facings.find((candidate) => !takenFacings.has(candidate)) ?? facings[0];
+    region.lanes.push({ roll: next, q, r, facing });
+  }
+
+  /* Reassign rolls 2..8 to this region's lanes ordered by where their number
+     labels sit on the board, left-to-right (top-to-bottom breaks ties). */
+  function renumberLanes(region) {
+    const labelPos = (lane) => {
+      const [cx, cy] = xy(lane.q, lane.r);
+      const [dq, dr] = DIRS[lane.facing];
+      const [ox, oy] = xy(lane.q + dq, lane.r + dr);
+      const len = Math.hypot(ox - cx, oy - cy) || 1;
+      return [cx + ((ox - cx) / len) * SIZE * 1.9, cy + ((oy - cy) / len) * SIZE * 1.9];
+    };
+    const ordered = [...region.lanes].sort((a, b) => {
+      const [ax, ay] = labelPos(a);
+      const [bx, by] = labelPos(b);
+      return ax - bx || ay - by;
+    });
+    ordered.forEach((lane, index) => {
+      lane.roll = META.lane_rolls[index % META.lane_rolls.length];
+    });
   }
 
   // ── panels ───────────────────────────────────────────────────────────────
@@ -388,13 +415,158 @@
     el("bd-panel-structure").classList.toggle("hidden", mode !== "structure");
     el("bd-panel-shields").classList.toggle("hidden", mode !== "shields");
     el("bd-panel-progression").classList.toggle("hidden", mode !== "progression");
+    el("bd-panel-stacks").classList.toggle("hidden", mode !== "stacks");
     el("bd-panel-behavior").classList.toggle("hidden", mode !== "behavior");
+    // The stacks view takes over the board area; every other mode shows the hex board.
+    el("bd-board").classList.toggle("hidden", mode === "stacks");
+    el("bd-stacks").classList.toggle("hidden", mode !== "stacks");
     root().querySelectorAll(".bd-mode").forEach((button) =>
       button.classList.toggle("active", button.dataset.mode === mode));
     if (mode === "shields") renderShieldPanel();
     if (mode === "progression") renderProgressionPanel();
     if (mode === "structure") renderStructurePanel();
     if (mode === "behavior") renderBehaviorPanel();
+    if (mode === "stacks") renderStacksView();
+  }
+
+  // ── action stacks view (drag components/steps between boss stacks) ───────
+  let dragPayload = null; // {type: "tile"|"step"|"chip", ...}
+
+  function stepLabel(step) {
+    if (step.kind === "action_link") return `Action link — ${step.action} @ ${step.stack}`;
+    if (step.kind === "breacher_link") {
+      const bits = [];
+      if (step.core !== undefined) bits.push(`core ${step.core}`);
+      if (step.round !== undefined) bits.push(`round ≥ ${step.round}`);
+      return `Breacher link${bits.length ? " (" + bits.join(", ") + ")" : ""}`;
+    }
+    if (step.kind === "ability_trigger") return `⚡ ${step.name || "Ability"}`;
+    return "Filler";
+  }
+
+  function moveStep(fromIndex, toIndex) {
+    const steps = design.progression.steps;
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= steps.length) return;
+    const [step] = steps.splice(fromIndex, 1);
+    steps.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, step);
+    markDirty();
+  }
+
+  function renderStacksView() {
+    const container = el("bd-stacks");
+    container.innerHTML = "";
+
+    // Progression strip: the track in order; drag a chip onto another to reorder.
+    const strip = document.createElement("div");
+    strip.className = "bd-prog-strip";
+    const stripLabel = document.createElement("span");
+    stripLabel.className = "bd-strip-label";
+    stripLabel.textContent = "Progression track:";
+    strip.appendChild(stripLabel);
+    design.progression.steps.forEach((step, index) => {
+      const chip = document.createElement("div");
+      chip.className = "bd-prog-chip bd-kind-" + step.kind;
+      chip.draggable = true;
+      chip.innerHTML = `<b>${index + 1}</b> ${esc(stepLabel(step))}`;
+      chip.addEventListener("dragstart", () => { dragPayload = { type: "chip", index }; });
+      chip.addEventListener("dragover", (event) => {
+        if (dragPayload && dragPayload.type === "chip") event.preventDefault();
+      });
+      chip.addEventListener("drop", (event) => {
+        event.preventDefault();
+        if (!dragPayload || dragPayload.type !== "chip") return;
+        moveStep(dragPayload.index, index);
+        dragPayload = null;
+        renderStacksView();
+      });
+      strip.appendChild(chip);
+    });
+    if (!design.progression.steps.length) {
+      const empty = document.createElement("span");
+      empty.className = "admin-note";
+      empty.textContent = "no steps yet (add them in Progression)";
+      strip.appendChild(empty);
+    }
+    container.appendChild(strip);
+
+    const cols = document.createElement("div");
+    cols.className = "bd-stack-cols";
+    for (const stack of META.action_stacks) {
+      const col = document.createElement("div");
+      col.className = "bd-stack-col";
+      col.innerHTML = `<div class="bd-stack-head">${stack === "starbreach" ? "StarBreach" : "Action " + stack}</div>`;
+      col.addEventListener("dragover", (event) => {
+        if (!dragPayload || dragPayload.type === "chip") return;
+        event.preventDefault();
+        col.classList.add("drop-hover");
+      });
+      col.addEventListener("dragleave", () => col.classList.remove("drop-hover"));
+      col.addEventListener("drop", (event) => {
+        event.preventDefault();
+        col.classList.remove("drop-hover");
+        if (!dragPayload) return;
+        if (dragPayload.type === "tile") {
+          const tile = tileAt(dragPayload.q, dragPayload.r);
+          if (tile) tile.stack = stack;
+        } else if (dragPayload.type === "step") {
+          const step = design.progression.steps[dragPayload.index];
+          if (step && step.kind === "action_link") step.stack = stack;
+        }
+        dragPayload = null;
+        markDirty();
+        renderStacksView();
+        renderBoard();
+      });
+
+      const addItem = (label, sub, payload, extraClass) => {
+        const item = document.createElement("div");
+        item.className = "bd-stack-item" + (extraClass ? " " + extraClass : "");
+        item.innerHTML = `<div>${label}</div>${sub ? `<div class="bd-item-sub">${sub}</div>` : ""}`;
+        if (payload) {
+          item.draggable = true;
+          item.addEventListener("dragstart", () => { dragPayload = payload; });
+          item.addEventListener("dragend", () => { dragPayload = null; });
+        }
+        col.appendChild(item);
+      };
+
+      for (const tile of design.tiles) {
+        if (tile.stack !== stack) continue;
+        if (tile.type === "firing_computer") {
+          addItem(`FC (${tile.q},${tile.r})`, "component · attack", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack");
+        } else if (tile.type === "fuel_tank") {
+          addItem(`FT (${tile.q},${tile.r})`, "component · move", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move");
+        }
+      }
+      design.progression.steps.forEach((step, index) => {
+        if (step.kind === "action_link" && step.stack === stack) {
+          addItem(
+            `Step ${index + 1} — ${step.action}`,
+            `progression · unlocks at ${index + 1}`,
+            { type: "step", index },
+            step.action === "shoot" ? "bd-item-attack" : "bd-item-move"
+          );
+        } else if (step.kind === "breacher_link" && stack === "starbreach") {
+          const bits = [];
+          if (step.core !== undefined) bits.push(`core ${step.core}`);
+          if (step.round !== undefined) bits.push(`round ≥ ${step.round}`);
+          addItem(
+            `Step ${index + 1} — Breacher`,
+            `progression · unlocks at ${index + 1}${bits.length ? " · " + bits.join(" · ") : ""}`,
+            null,
+            "bd-item-breacher"
+          );
+        }
+      });
+      const fleetKinds = (design.behavior.fleet.actions || [])
+        .filter((entry) => entry.stack === stack)
+        .map((entry) => entry.action);
+      if (design.behavior.fleet.count > 0 && fleetKinds.length) {
+        addItem(`Fleet ×${design.behavior.fleet.count}`, "fleet · " + fleetKinds.join(" + "), null, "bd-item-fleet");
+      }
+      cols.appendChild(col);
+    }
+    container.appendChild(cols);
   }
 
   function renderBehaviorPanel() {
@@ -449,6 +621,8 @@
     }
     root().querySelectorAll(".bd-shieldsub").forEach((button) =>
       button.classList.toggle("active", button.dataset.sub === shieldSub));
+    el("bd-lane-tools").classList.toggle("hidden", shieldSub !== "lanes");
+    el("bd-lane-stack").checked = stackLanes;
 
     const region = regionByNumber(currentRegion);
     const info = el("bd-region-info");
@@ -468,10 +642,10 @@
         <label>Start charges <input id="bd-region-charges" type="number" min="0" max="9" value="${region.charges ?? 3}"></label>
         <label>Max charges <input id="bd-region-maxcharges" type="number" min="0" max="9" value="${region.max_charges ?? 3}"></label>
       </div>
-      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · missing: ${missing.join(", ")}` : " · complete"}</div>
+      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · unassigned (rerolled in play): ${missing.join(", ")}` : " · all seven"}</div>
       <div class="admin-note">${shieldSub === "hexes"
         ? "Click hull hexes to add/remove them from this region; click a Shield Gen tile to set the power source."
-        : "Click a region hex to assign the next lane (2-8). Click again to rotate its entry face; past the last face, the lane is cleared."}</div>`;
+        : "Click a region hex to assign the next lane (2-8). Click again to rotate its entry face; past the last face, the lane is cleared. Fewer than seven lanes is fine — unassigned numbers reroll. Tick the box to stack a second lane on a laned hex."}</div>`;
     const chargesInput = info.querySelector("#bd-region-charges");
     const maxInput = info.querySelector("#bd-region-maxcharges");
     const applyCharges = () => {
@@ -541,6 +715,7 @@
     }
 
     row.innerHTML = `
+      <span class="bd-step-drag" draggable="true" title="Drag to reorder">⠿</span>
       <span class="bd-step-index">${index + 1}</span>
       <select data-f="kind">
         <option value="filler" ${step.kind === "filler" ? "selected" : ""}>Filler</option>
@@ -555,6 +730,19 @@
         <button class="btn ghost small" data-a="del">✕</button>
       </span>`;
 
+    row.querySelector(".bd-step-drag").addEventListener("dragstart", () => {
+      dragPayload = { type: "steprow", index };
+    });
+    row.addEventListener("dragover", (event) => {
+      if (dragPayload && dragPayload.type === "steprow") event.preventDefault();
+    });
+    row.addEventListener("drop", (event) => {
+      event.preventDefault();
+      if (!dragPayload || dragPayload.type !== "steprow") return;
+      moveStep(dragPayload.index, index);
+      dragPayload = null;
+      renderProgressionPanel();
+    });
     row.querySelector('[data-f="kind"]').addEventListener("change", (event) => {
       design.progression.steps[index] = defaultStep(event.target.value);
       markDirty();
@@ -700,12 +888,16 @@
             <button class="btn ghost bd-mode active" data-mode="structure">⬡ Structure</button>
             <button class="btn ghost bd-mode" data-mode="shields">🛡 Shields &amp; Lanes</button>
             <button class="btn ghost bd-mode" data-mode="progression">📈 Progression</button>
+            <button class="btn ghost bd-mode" data-mode="stacks">🗂 Action Stacks</button>
             <button class="btn ghost bd-mode" data-mode="behavior">⚙ Behavior</button>
           </div>
           <button class="btn gold" id="bd-save">💾 Save design</button>
         </div>
         <div class="bd-grid">
-          <div class="bd-board-wrap"><div id="bd-board" class="bd-board"></div></div>
+          <div class="bd-board-wrap">
+            <div id="bd-board" class="bd-board"></div>
+            <div id="bd-stacks" class="bd-stacks hidden"></div>
+          </div>
           <div class="bd-side">
             <div id="bd-panel-structure">
               <h3 class="panel-sub">Tile palette</h3>
@@ -735,7 +927,21 @@
                 <button class="btn ghost small bd-shieldsub active" data-sub="hexes">Protected Hexes</button>
                 <button class="btn ghost small bd-shieldsub" data-sub="lanes">Damage Lanes</button>
               </div>
+              <div id="bd-lane-tools" class="bd-lane-tools hidden">
+                <label><input type="checkbox" id="bd-lane-stack"> Allow a second lane on a laned hex</label>
+                <button class="btn ghost small" id="bd-lane-renumber">⇢ Renumber lanes left-to-right</button>
+              </div>
               <div id="bd-region-info" class="bd-region-info"></div>
+            </div>
+            <div id="bd-panel-stacks" class="hidden">
+              <h3 class="panel-sub">Action stacks</h3>
+              <p class="admin-note">Each column is a boss action stack. Firing Computers,
+                Fuel Tanks, and progression action links appear in the stack they feed —
+                drag a card to another column to reassign it. Breacher links live in the
+                StarBreach stack. The progression strip up top shows the track in order;
+                drag a step onto another to reorder the track.</p>
+              <p class="admin-note">Fleet actions (Behavior tab) are shown per column for
+                reference.</p>
             </div>
             <div id="bd-panel-behavior" class="hidden">
               <h3 class="panel-sub">Boss behavior</h3>
@@ -854,6 +1060,18 @@
         shieldSub = button.dataset.sub;
         renderShieldPanel();
       });
+    });
+    el("bd-lane-stack").addEventListener("change", (event) => {
+      stackLanes = !!event.target.checked;
+    });
+    el("bd-lane-renumber").addEventListener("click", () => {
+      const region = regionByNumber(currentRegion);
+      if (!region || !region.lanes.length) { setStatus("No lanes to renumber in this region.", false); return; }
+      renumberLanes(region);
+      markDirty();
+      renderBoard();
+      renderShieldPanel();
+      setStatus("Lanes renumbered left-to-right.", true);
     });
 
     el("bd-boss-ai").addEventListener("change", (event) => {

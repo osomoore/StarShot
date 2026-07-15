@@ -410,9 +410,9 @@ def validate_design(design: dict) -> list[str]:
         rolls = [lane["roll"] for lane in region["lanes"]]
         for roll in sorted(set(r for r in rolls if rolls.count(r) > 1)):
             problems.append(f"{tag} assigns lane {roll} more than once.")
-        missing_rolls = [str(roll) for roll in LANE_ROLLS if roll not in rolls]
-        if missing_rolls and hexes:
-            problems.append(f"{tag} is missing damage lanes {', '.join(missing_rolls)}.")
+        # Fewer than seven lanes is allowed: unassigned rolls reroll in play.
+        if not rolls and hexes:
+            problems.append(f"{tag} has no damage lanes — hits could never damage it.")
         for lane in region["lanes"]:
             spot = (lane["q"], lane["r"])
             if spot not in hexes:

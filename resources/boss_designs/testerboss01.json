@@ -65,7 +65,7 @@
       "q": -1,
       "r": -4,
       "type": "firing_computer",
-      "stack": "0.5"
+      "stack": "2.5"
     },
     {
       "q": 3,
@@ -83,7 +83,7 @@
       "q": -3,
       "r": 1,
       "type": "fuel_tank",
-      "stack": "1.5"
+      "stack": "2.5"
     },
     {
       "q": -2,
@@ -365,8 +365,21 @@
     }
   ],
   "progression": {
-    "triggers": [],
-    "steps": []
+    "triggers": [
+      "prey_hull_damage_boss",
+      "prey_hull_damage_fleet",
+      "player_kill"
+    ],
+    "steps": [
+      {
+        "kind": "filler"
+      },
+      {
+        "kind": "action_link",
+        "stack": "0.5",
+        "action": "move"
+      }
+    ]
   },
   "behavior": {
     "boss_ai": "hunter_killer",

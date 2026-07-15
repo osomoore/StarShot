@@ -129,6 +129,14 @@ class DesignSpecTests(unittest.TestCase):
         lane = spec["damage_lanes"]["1"]["3"]
         self.assertEqual(lane, [[1, 0], [0, 0], [-1, 0]])
 
+    def test_partial_lane_set_is_valid_and_compiles(self):
+        raw = make_design()
+        raw["shield_regions"][0]["lanes"] = raw["shield_regions"][0]["lanes"][:2]
+        design = normalize_design(raw)
+        self.assertEqual(validate_design(design), [])
+        spec = sb_spec.spec_from_design(design)
+        self.assertEqual(sorted(spec["damage_lanes"]["1"].keys()), ["2", "3"])
+
     def test_fleet_and_actions(self):
         spec = sb_spec.spec_from_design(playable_design())
         self.assertEqual(len(spec["fleet"]), 2)

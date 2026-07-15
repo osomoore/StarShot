@@ -112,7 +112,16 @@ Admin tools:
   `backend/starshot/v2/boss_designs.py` (no FastAPI), routes in
   `backend/starshot/v2/boss_designer_api.py`, UI in
   `frontend/v2/static/bossdesigner.js` + `bossdesigner.css`; tests in
-  `tests/test_boss_designer.py`.
+  `tests/test_boss_designer.py`. Lane assignment supports a "Renumber lanes
+  left-to-right" button, an "allow a second lane on a laned hex" tick box
+  (two lanes may share a hex with different rolls/faces), and partial lane
+  sets: regions need at least one lane, and unassigned d8 numbers are
+  rerolled at runtime (see the reroll loop in `_resolve_volley_vs_boss`).
+  An "Action Stacks" mode shows one column per boss stack (0.5-3.5 +
+  StarBreach) with draggable cards for Firing Computers / Fuel Tanks /
+  action-link steps (drop on a column to reassign the stack) plus a
+  draggable progression strip; progression rows also drag-reorder via the
+  ⠿ handle.
 - Designed bosses are playable: `backend/starshot/rules/star_breach_spec.py`
   compiles a design into a JSON "boss spec" (hull, areas = shield regions,
   damage-lane rays, phases from firing computers / fuel tanks / progression
@@ -158,4 +167,9 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 225 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 227 tests passing as of last session (2 API test modules require `fastapi` installed).
+- Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
+  `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
+  where units actually stood at that moment.
+- The boss token does not push other ships out of its way when it moves; it
+  can share a hex with player ships and fleet craft.

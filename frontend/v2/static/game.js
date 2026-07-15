@@ -13,6 +13,7 @@
   let animating = false;
   let replayShipStates = null;
   let replayBossPose = null;
+  let replayFleetPose = null; // craft_id -> {q, r, destroyed} while replaying
   let endgameShown = false;
   let draft = null;
   let pendingFetch = false;
@@ -2061,11 +2062,57 @@
     });
   }
 
+  function bossRenderOptions() {
+    return {
+      pose: replayBossPose || undefined,
+      preyPos: preyPosition(),
+      fleetPose: replayFleetPose || undefined,
+    };
+  }
+
+  /* Rewind fleet craft to where they stood when this batch of events began,
+     using the first recorded position per craft (move `before`, boss-push
+     `from`, or a recorded attack position). Craft destroyed during the batch
+     start alive so the replay can sink them at the recorded moment. */
+  function buildReplayFleetPose(events) {
+    const sb = view.star_breach;
+    if (!sb || !(sb.fleet || []).length) return null;
+    const destroyedDuring = new Set();
+    for (const event of events) {
+      if (event.type === "craft_volley_resolved" && event.craft_destroyed) {
+        destroyedDuring.add(String(event.target_id || "").replace("craft:", ""));
+      }
+    }
+    const pose = {};
+    for (const craft of sb.fleet) {
+      pose[craft.id] = { q: craft.q, r: craft.r, destroyed: craft.destroyed && !destroyedDuring.has(craft.id) };
+    }
+    const seen = new Set();
+    const seed = (id, q, r) => {
+      if (!id || seen.has(id) || !(id in pose) || q === undefined || r === undefined) return;
+      seen.add(id);
+      pose[id].q = q;
+      pose[id].r = r;
+    };
+    for (const event of events) {
+      if (event.type === "boss_phase_resolved") {
+        for (const entry of event.fleet || []) {
+          if (entry.before) seed(entry.craft_id, entry.before[0], entry.before[1]);
+          else if (entry.attacker_position) seed(entry.craft_id, entry.attacker_position.q, entry.attacker_position.r);
+        }
+      } else if (event.type === "craft_volley_resolved" && event.target_position) {
+        seed(String(event.target_id || "").replace("craft:", ""), event.target_position.q, event.target_position.r);
+      }
+    }
+    return pose;
+  }
+
   async function playEvents(events) {
     animating = true;
     skipReplay = false;
     replayShipStates = buildReplayShipStates(events);
     replayBossPose = buildReplayBossPose(events);
+    replayFleetPose = buildReplayFleetPose(events);
     replayControls(events.length >= 4);
     try {
       // Every ship sails alive at the start of the tale; the replay itself
@@ -2083,6 +2130,7 @@
         Board.setShipDead(playerId, finallyDead && !destroyedDuring.has(playerId)
           && !events.some((e) => e.type === "player_forfeited" && e.player_id === playerId));
       }
+      // Rewind each player ship to its first recorded move in this batch.
       const positions = {};
       for (const event of events) {
         if (event.type === "movement_resolved" && event.steps && event.steps.length && !(event.player_id in positions)) {
@@ -2094,7 +2142,7 @@
         Board.placeShip(playerId, start.q, start.r, start.facing);
       }
       if (view.star_breach) {
-        Board.renderStarBreach(view.star_breach, { pose: replayBossPose || undefined, preyPos: preyPosition() });
+        Board.renderStarBreach(view.star_breach, bossRenderOptions());
       }
       renderFleet();
       for (let index = 0; index < events.length; index++) {
@@ -2129,6 +2177,7 @@
       skipReplay = false;
       replayShipStates = null;
       replayBossPose = null;
+      replayFleetPose = null;
       replayControls(false);
     }
   }
@@ -2338,7 +2387,8 @@
         return;
       }
       case "boss_phase_resolved": {
-        if (event.kind !== "move") return;
+        // Designed bosses can mix moves and attacks in one stack, so always
+        // animate whatever movement the slots and fleet actually recorded.
         for (const slot of event.slots || []) {
           const move = slot.movement;
           if (!move || !move.moved) continue;
@@ -2352,18 +2402,31 @@
               r: from.anchor_r + (to.anchor_r - from.anchor_r) * t,
               facing: to.facing,
             };
-            Board.renderStarBreach(view.star_breach, { pose: replayBossPose, preyPos: preyPosition() });
+            Board.renderStarBreach(view.star_breach, bossRenderOptions());
             FX.trail(Board.hexToScreen(replayBossPose.q, replayBossPose.r), "#a86ad1");
             await wait(28);
           }
           replayBossPose = { q: to.anchor_q, r: to.anchor_r, facing: to.facing };
-          for (const push of move.pushed || []) {
-            const pushedPlayer = view.players[push.ship];
-            if (pushedPlayer) Board.placeShip(push.ship, push.to[0], push.to[1], pushedPlayer.ship.facing);
-          }
           await wait(90);
         }
-        Board.renderStarBreach(view.star_breach, { pose: replayBossPose || undefined, preyPos: preyPosition() });
+        for (const entry of event.fleet || []) {
+          const pose = replayFleetPose && replayFleetPose[entry.craft_id];
+          if (!pose || !entry.before || !entry.after) continue;
+          if (!entry.moved) {
+            pose.q = entry.after[0];
+            pose.r = entry.after[1];
+            continue;
+          }
+          const frames = 7;
+          for (let frame = 1; frame <= frames; frame++) {
+            const t = frame / frames;
+            pose.q = entry.before[0] + (entry.after[0] - entry.before[0]) * t;
+            pose.r = entry.before[1] + (entry.after[1] - entry.before[1]) * t;
+            Board.renderStarBreach(view.star_breach, bossRenderOptions());
+            await wait(26);
+          }
+        }
+        Board.renderStarBreach(view.star_breach, bossRenderOptions());
         return;
       }
       case "enemy_volley_resolved": {
@@ -2416,6 +2479,13 @@
         if (event.hit) {
           FX.impact(to, event.craft_destroyed);
           FX.floatText(to, event.craft_destroyed ? "HUNTER DESTROYED ☠" : `HIT — ${event.craft_hp_left} HP left`, "#ffb27a");
+          if (event.craft_destroyed && replayFleetPose) {
+            const craftId = String(event.target_id || "").replace("craft:", "");
+            if (replayFleetPose[craftId]) {
+              replayFleetPose[craftId].destroyed = true;
+              Board.renderStarBreach(view.star_breach, bossRenderOptions());
+            }
+          }
         } else {
           FX.floatText(to, `🎲 ${event.roll} vs ${event.defense_threshold} — miss`, "#8fa3bd");
         }
