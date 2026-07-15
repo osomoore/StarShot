@@ -332,6 +332,11 @@ h1, h2, .brand, .poster-title, .banner-text {
 .expansion-toggle input { accent-color: var(--gold); }
 .tutorial-steps { display: grid; gap: 10px; text-align: left; color: var(--ink-dim); font-size: 13px; line-height: 1.4; }
 
+.log-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
 .action-log { flex: 1 1 auto; overflow-y: auto; font-size: 12px; line-height: 1.55; color: var(--ink-dim); min-height: 0; }
 .action-log .log-entry { padding: 3px 4px; border-bottom: 1px solid rgba(42,53,84,.35); }
 .action-log .log-entry.hit { color: #f0b0a0; }
@@ -349,7 +354,20 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 #board { width: 100%; height: 100%; display: block; }
 #fx { position: absolute; inset: 0; pointer-events: none; }
-.board-controls { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.board-controls { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.zoom-controls {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(42,53,84,.7);
+  border-radius: 8px;
+  background: rgba(6,10,20,.58);
+}
+.zoom-controls .btn {
+  min-width: 30px;
+  padding: 4px 7px;
+  text-align: center;
+}
 .board-callout {
   position: absolute; left: 50%; top: 14%; transform: translateX(-50%);
   font-family: "Pirata One", serif; font-size: 34px; color: var(--gold-bright);
@@ -361,7 +379,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .board-status-stack {
   position: absolute; left: 14px; top: 12px; z-index: 4;
   max-width: min(420px, calc(100% - 110px));
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
 }
 .starfall-status,
 .captain-status {
@@ -372,6 +390,51 @@ h1, h2, .brand, .poster-title, .banner-text {
   box-shadow: 0 6px 20px rgba(0,0,0,.35);
 }
 .captain-status { border-color: rgba(126,216,255,.55); }
+.scenario-status {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  max-width: 34px;
+  min-height: 34px;
+  overflow: hidden;
+  padding: 5px;
+  transition: max-width 180ms ease, padding 180ms ease, border-color 180ms ease;
+  width: max-content;
+}
+.scenario-status::before {
+  align-self: center;
+  color: var(--gold-bright);
+  content: attr(data-icon);
+  font-family: "Pirata One", serif;
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+.scenario-status b,
+.scenario-status span {
+  grid-column: 2;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-6px);
+  transition: opacity 130ms ease, transform 130ms ease;
+  width: min(360px, calc(100vw - 70px));
+}
+.scenario-status:hover,
+.scenario-status:focus-within,
+.scenario-status.status-expanded {
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 8px 10px;
+}
+.scenario-status:hover b,
+.scenario-status:hover span,
+.scenario-status:focus-within b,
+.scenario-status:focus-within span,
+.scenario-status.status-expanded b,
+.scenario-status.status-expanded span {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
 .starfall-status b,
 .captain-status b { display: block; color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 18px; line-height: 1; }
 .captain-status b { color: #9ee7ff; }
@@ -469,6 +532,8 @@ h1, h2, .brand, .poster-title, .banner-text {
 .sb-continue {
   position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 8;
 }
+.sb-continue:hover { transform: translateX(-50%) translateY(-1px); }
+.sb-continue:active { transform: translateX(-50%) translateY(1px); }
 .boss-modal-map { width: 100%; overflow: auto; }
 .boss-lane-mark text { paint-order: stroke; stroke: #10182b; stroke-width: 3px; }
 .boss-detail-shield { fill: none; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(126,216,255,.45)); }
@@ -943,12 +1008,6 @@ h1, h2, .brand, .poster-title, .banner-text {
     min-height: 34px;
     min-width: 38px;
     padding: 5px 8px;
-  }
-
-  :root[data-device="phone"] #zoom-in,
-  :root[data-device="phone"] #zoom-out,
-  :root[data-device="phone"] #btn-export-log {
-    display: none;
   }
 
   :root[data-device="phone"] .board-status-stack {

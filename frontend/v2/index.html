@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=27">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=28">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=4">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
 </head>
@@ -115,6 +115,7 @@
         <div id="fleet-list"></div>
       </div>
       <div id="fleet-tab-panel-log" class="side-tab-panel" role="tabpanel" aria-labelledby="fleet-tab-log">
+        <div class="log-actions"></div>
         <div id="action-log" class="action-log"></div>
       </div>
     </aside>
@@ -123,9 +124,11 @@
       <canvas id="fx"></canvas>
       <div id="board-callout" class="board-callout hidden"></div>
       <div class="board-controls">
-        <button id="zoom-in" class="btn ghost small">＋</button>
-        <button id="zoom-out" class="btn ghost small">－</button>
-        <button id="zoom-fit" class="btn ghost small">Center</button>
+        <div class="zoom-controls" aria-label="Board zoom controls">
+          <button id="zoom-in" class="btn ghost small" title="Zoom in">＋</button>
+          <button id="zoom-fit" class="btn ghost small" title="Center board">(())</button>
+          <button id="zoom-out" class="btn ghost small" title="Zoom out">－</button>
+        </div>
         <button id="btn-replay-sofar" class="btn ghost small" title="Replay the battle so far">▶</button>
       </div>
     </main>
@@ -161,7 +164,7 @@
 <script src="/v2/static/tutorial.js?v=7"></script>
 <script src="/v2/static/bossdesigner.js?v=5"></script>
 <script src="/v2/static/lobby.js?v=20"></script>
-<script src="/v2/static/game.js?v=39"></script>
+<script src="/v2/static/game.js?v=40"></script>
 <script src="/v2/static/app.js?v=7"></script>
 </body>
 </html>

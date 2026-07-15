@@ -18,6 +18,8 @@
   let draft = null;
   let pendingFetch = false;
   let sideTab = "registry";
+  const scenarioStatusSignatures = new Map();
+  const scenarioStatusTimers = new Map();
 
   const els = {};
   function grab() {
@@ -491,17 +493,17 @@
   function renderStarfallStatus() {
     let node = document.getElementById("starfall-status");
     if (!view.active_starfall) {
-      if (node) node.remove();
+      clearScenarioStatus("starfall", node);
       return;
     }
     if (!node) {
       node = document.createElement("div");
       node.id = "starfall-status";
-      node.className = "starfall-status";
+      node.className = "starfall-status scenario-status";
       statusStack().appendChild(node);
     }
     const sf = view.active_starfall;
-    node.innerHTML = `<b>${esc(sf.name)}</b><span>${esc(sf.text)}</span>`;
+    setScenarioStatus(node, "starfall", "☄", `<b>${esc(sf.name)}</b><span>${esc(sf.text)}</span>`);
   }
 
   function renderCaptainStatus() {
@@ -509,16 +511,16 @@
     const me = view.players[you];
     const captain = me && me.captain;
     if (!captain) {
-      if (node) node.remove();
+      clearScenarioStatus("captain", node);
       return;
     }
     if (!node) {
       node = document.createElement("div");
       node.id = "captain-status";
-      node.className = "captain-status";
+      node.className = "captain-status scenario-status";
       statusStack().appendChild(node);
     }
-    node.innerHTML = `<b>${esc(captain.callsign || captain.name)}</b><span>${esc(captain.text)}</span>`;
+    setScenarioStatus(node, "captain", "⚓", `<b>${esc(captain.callsign || captain.name)}</b><span>${esc(captain.text)}</span>`);
   }
 
   function preyPosition() {
@@ -537,7 +539,7 @@
     let node = document.getElementById("starbreach-status");
     const sb = view.star_breach;
     if (!sb) {
-      if (node) node.remove();
+      clearScenarioStatus("starbreach", node);
       document.getElementById("boss-battle-board")?.remove();
       document.getElementById("sb-pause-toggle")?.remove();
       return;
@@ -545,7 +547,7 @@
     if (!node) {
       node = document.createElement("div");
       node.id = "starbreach-status";
-      node.className = "starfall-status";
+      node.className = "starfall-status scenario-status";
       node.style.cursor = "pointer";
       node.addEventListener("click", showBossModal);
       statusStack().appendChild(node);
@@ -555,13 +557,36 @@
       .join(" ");
     const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
     const roleNames = myRoles().map((role) => (sb.roles && sb.roles[role] ? sb.roles[role].name : role)).join(" + ");
-    node.innerHTML = `<b>☄ StarBreacher</b>
+    setScenarioStatus(node, "starbreach", "◎", `<b>☄ StarBreacher</b>
       <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}
       · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}
-      · <u>damage board</u></span>`;
+      · <u>damage board</u></span>`);
     node.title = "Click for the StarBreacher's damage board.";
     renderBossBattleBoardMini();
     renderPauseToggle();
+  }
+
+  function setScenarioStatus(node, key, icon, html) {
+    node.classList.add("scenario-status");
+    node.dataset.icon = icon;
+    node.innerHTML = html;
+    if (scenarioStatusSignatures.get(key) === html) return;
+    scenarioStatusSignatures.set(key, html);
+    node.classList.add("status-expanded");
+    const prior = scenarioStatusTimers.get(key);
+    if (prior) clearTimeout(prior);
+    scenarioStatusTimers.set(key, window.setTimeout(() => {
+      node.classList.remove("status-expanded");
+      scenarioStatusTimers.delete(key);
+    }, 5200));
+  }
+
+  function clearScenarioStatus(key, node) {
+    if (node) node.remove();
+    scenarioStatusSignatures.delete(key);
+    const prior = scenarioStatusTimers.get(key);
+    if (prior) clearTimeout(prior);
+    scenarioStatusTimers.delete(key);
   }
 
   // ── boss battle board (mini in the main view, expanded in the modal) ───
@@ -3097,7 +3122,7 @@
       exportButton.textContent = "Export Log";
       exportButton.title = "Copy a debugging log to the clipboard";
       exportButton.addEventListener("click", exportDebugLog);
-      document.querySelector(".board-controls").appendChild(exportButton);
+      document.querySelector(".log-actions")?.appendChild(exportButton);
     } else if ((!view || !gameId) && exportButton) {
       exportButton.remove();
     }
