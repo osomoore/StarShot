@@ -467,7 +467,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .boss-callout .bc-bar-fill { height: 100%; background: linear-gradient(90deg,#a86ad1,#ff6a8a); }
 /* Mini battle board: discrete progress boxes + one chip row per boss phase. */
 .boss-mini-board {
-  position: absolute; right: 56px; top: 10px; z-index: 4; max-width: 240px;
+  position: absolute; right: 12px; bottom: 12px; z-index: 4; max-width: 240px;
   border: 1px solid rgba(168,106,209,.55); border-radius: 10px;
   background: rgba(9,14,27,.88); padding: 7px 9px; cursor: pointer;
 }
@@ -555,6 +555,12 @@ h1, h2, .brand, .poster-title, .banner-text {
 .boss-modal-map { width: 100%; overflow: auto; }
 .boss-lane-mark text { paint-order: stroke; stroke: #10182b; stroke-width: 3px; }
 .boss-detail-shield { fill: none; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(126,216,255,.45)); }
+.boss-circuit-link { opacity: .18; transition: opacity .12s ease, filter .12s ease; }
+.boss-circuit-link.active { opacity: .24; }
+.boss-circuit-link.hot { opacity: 1; filter: drop-shadow(0 0 5px var(--trace-color)); }
+.boss-circuit-link.hot .boss-circuit-line { stroke-width: 2.2; }
+.boss-circuit-link.hot .boss-circuit-dot { r: 3; }
+.boss-circuit-hotspot { cursor: pointer; }
 .boss-modal-grid { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
 .boss-modal-side { min-width: 190px; flex: 1; font-size: 12px; color: var(--ink-dim); }
 .boss-modal-side h4 { font-family: "Pirata One", serif; color: #d9a6ff; margin: 8px 0 3px; font-size: 16px; }

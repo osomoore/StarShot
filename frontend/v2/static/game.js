@@ -543,8 +543,8 @@
   function preyPosition() {
     const sb = view && view.star_breach;
     if (!sb) return null;
-    const prey = view.players[sb.prey_player_id];
-    return prey && prey.ship && !prey.ship.destroyed ? { q: prey.ship.q, r: prey.ship.r } : null;
+    const ship = displayShipFor(sb.prey_player_id);
+    return ship && !ship.destroyed ? { q: ship.q, r: ship.r } : null;
   }
 
   function myRoles() {
@@ -619,6 +619,28 @@
 
   function stackColor(key) { return STACK_COLORS[key] || "#d9a6ff"; }
   function kindColor(kind) { return KIND_COLORS[kind] || "#d9a6ff"; }
+  function progressMax(sb) {
+    return Math.max(...Object.values(sb.tier_progress || {}).map(Number), 1);
+  }
+  function displayedProgress(sb, progress) {
+    return Math.min(progress || 0, progressMax(sb));
+  }
+  function tierLabel(sb, tier) {
+    const layout = sb.boss_layout || {};
+    for (const phase of layout.phases || []) {
+      const slot = (phase.slots || []).find((entry) => entry.slot === "tier" && Number(entry.tier) === Number(tier));
+      if (slot) {
+        return {
+          kind: phase.key === "starbreach" ? "breacher" : (slot.kind || phase.kind || "attack"),
+          stack: phase.key,
+        };
+      }
+    }
+    if ((layout.tier_spawns || {})[String(tier)]) return { kind: "spawn", stack: null };
+    const explicit = (layout.tier_labels || {})[String(tier)];
+    if (explicit) return explicit;
+    return { kind: "filler", stack: null };
+  }
 
   /* The star-breach state to draw: the latest view state, overridden with the
      rewound/rolling replay state while a replay is animating, so the boss
@@ -694,15 +716,15 @@
     for (const [tier, threshold] of Object.entries(sb.tier_progress || {})) {
       thresholds[threshold] = Number(tier);
     }
-    const labels = (sb.boss_layout || {}).tier_labels || {};
-    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), progress || 0, 1);
+    const shownProgress = displayedProgress(sb, progress);
+    const maxTrack = progressMax(sb);
     let boxes = "";
     for (let step = 1; step <= maxTrack; step++) {
       const tier = thresholds[step];
-      const label = tier != null ? labels[String(tier)] : null;
-      const kind = label ? label.kind : (tier != null ? "attack" : null);
+      const label = tier != null ? tierLabel(sb, tier) : null;
+      const kind = label ? label.kind : null;
       const classes = ["bmb-box"];
-      if (step <= progress) classes.push("filled");
+      if (step <= shownProgress) classes.push("filled");
       if (tier != null) classes.push("major");
       if (tier != null && (sb.active_tiers || []).includes(tier)) classes.push("online");
       const color = label && label.stack ? stackColor(label.stack) : (kind === "spawn" ? "#ff7ad0" : "#d9a6ff");
@@ -716,7 +738,7 @@
   }
 
   function progressTrackHTML(sb, progressOverride = null) {
-    const progress = progressOverride ?? sb.progress ?? 0;
+    const progress = displayedProgress(sb, progressOverride ?? sb.progress ?? 0);
     return `<div class="bmb-track" title="Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.">
       <span class="bmb-track-label">☄ ${progress}</span>${progressBoxesHTML(sb, progress)}</div>`;
   }
@@ -727,12 +749,19 @@
      between the resolved actions and the ones still to come. */
   function actionRowsHTML(sb) {
     const layout = sb.boss_layout || {};
-    const componentById = bossComponentById(sb);
     const cursor = bossPhaseCursor();
     const marker = `<div class="bmb-now" title="The turn stands here — actions above have resolved; the rest are still to come."><span>▶</span></div>`;
     const rowClasses = (index, doneIndex, key) => "bmb-row"
       + (doneIndex >= 0 && index <= doneIndex ? " done" : "")
       + (cursor.resolving === key ? " resolving" : "");
+    const totalChip = (kind, count, title, fleet = false) => {
+      if (!count) return "";
+      const color = fleet ? "#9aa3b8" : kindColor(kind);
+      const symbol = fleet ? `▣${KIND_SYMBOL[kind] || ""}` : (KIND_SYMBOL[kind] || "");
+      return `<span class="bmb-chip on bmb-total${fleet ? " fleet" : ""} bmb-kind-${kind}"
+        style="border-color:${color};color:${color}"
+        title="${esc(title)}">${symbol}${count}</span>`;
+    };
     const phases = layout.phases || [];
     if (!phases.length) {
       // Older games without phase data: fall back to plain counts.
@@ -750,21 +779,26 @@
     const doneIndex = phases.findIndex((phase) => phase.key === cursor.done);
     return phases.map((phase, index) => {
       const color = stackColor(phase.key);
-      const chips = (phase.slots || []).map((slot) => {
-        const active = bossSlotActive(sb, slot);
+      const totals = {};
+      for (const slot of phase.slots || []) {
+        if (!bossSlotActive(sb, slot)) continue;
         const kind = slot.kind || phase.kind;
-        const chipColor = kindColor(kind);
-        return `<span class="bmb-chip ${active ? "on" : "off"} bmb-kind-${kind}"
-          style="border-color:${chipColor};${active ? `color:${chipColor}` : ""}"
-          title="${esc(slotChipTitle(sb, slot, componentById, active))} — ${esc(kind)}">${slotChipText(sb, slot, componentById)}</span>`;
-      }).join("");
+        totals[kind] = (totals[kind] || 0) + 1;
+      }
       const fleetKinds = ((layout.fleet_actions || {})[phase.key]) || [];
-      const fleet = fleetAlive && fleetKinds.length
-        ? fleetKinds.map((kind) => `<span class="bmb-chip fleet on" title="Fleet ×${fleetAlive} — ${esc(kind)}">▣${KIND_SYMBOL[kind] || ""}</span>`).join("")
-        : "";
+      if (fleetAlive) {
+        for (const kind of fleetKinds) totals[`fleet_${kind}`] = (totals[`fleet_${kind}`] || 0) + fleetAlive;
+      }
+      const chips = ["attack", "move", "breacher", "spawn", "ability"].concat(["fleet_attack", "fleet_move"])
+        .map((kind) => {
+          const fleet = kind.startsWith("fleet_");
+          const baseKind = fleet ? kind.slice(6) : kind;
+          return totalChip(baseKind, totals[kind], `${phase.key} ${fleet ? "fleet " : ""}${baseKind} total: ${totals[kind] || 0}`, fleet);
+        })
+        .join("");
       return `<div class="${rowClasses(index, doneIndex, phase.key)}">
         <span class="bmb-phase" style="color:${color}" title="${esc(phase.key === "starbreach" ? "StarBreach phase" : "Boss Action " + phase.key)}">${esc(PHASE_SHORT[phase.key] || phase.key)}${KIND_SYMBOL[phase.kind] || ""}</span>
-        ${chips || '<span class="bmb-none">—</span>'}${fleet}</div>`
+        ${chips || '<span class="bmb-none">—</span>'}</div>`
         + (index === doneIndex ? marker : "");
     }).join("");
   }
@@ -783,16 +817,7 @@
       els["board-wrap"].appendChild(board);
     }
     board.innerHTML = `<div class="bmb-rows">${actionRowsHTML(sb)}</div>`;
-    // The progress track runs vertically down the side of the space board.
-    if (!rail) {
-      rail = document.createElement("div");
-      rail.id = "boss-progress-rail";
-      rail.className = "boss-progress-rail";
-      rail.title = "Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.";
-      rail.addEventListener("click", showBossModal);
-      els["board-wrap"].appendChild(rail);
-    }
-    rail.innerHTML = `<span class="bmb-track-label">☄ ${sb.progress ?? 0}</span>${progressBoxesHTML(sb, sb.progress ?? 0)}`;
+    rail?.remove();
   }
 
   function pauseAfterActions() {
@@ -1431,10 +1456,13 @@
       }
       const component = componentsByHex[cell.q + "," + cell.r];
       const fillAlpha = selected ? ".78" : ".5";
+      const componentAttrs = component
+        ? `data-component-id="${esc(component.id)}" class="boss-component-node"`
+        : "";
       hullSvg += `<polygon points="${pts.join(" ")}"
         fill="${dead ? "rgba(25,25,32,.9)" : `rgba(${tint},${fillAlpha})`}"
         stroke="${dead ? "#333" : selected ? "#fff" : `rgb(${tint})`}" stroke-width="${selected ? 1.8 : 1}"
-        ${clickable ? `data-area="${esc(cell.area)}" class="boss-region-cell" cursor="pointer"` : ""}>
+        ${clickable ? `data-area="${esc(cell.area)}" class="boss-region-cell" cursor="pointer"` : componentAttrs}>
         <title>${esc(component ? component.name : `${areaDisplayName(cell.area)} hull`)}${dead ? " (destroyed)" : ""}</title></polygon>`;
       if (component) {
         hullSvg += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="8.5" font-weight="700"
@@ -1532,37 +1560,43 @@
     const rowsTop = (parts.minY + parts.maxY) / 2 - totalH / 2 + rowH / 2;
     let svg = "";
     let busIndex = 0;
+    let linkIndex = 0;
     let maxChipX = rowsX;
     phases.forEach((phase, phaseIndex) => {
       const rowY = rowsTop + phaseIndex * rowH;
       const color = stackColor(phase.key);
+      svg += `<rect class="boss-circuit-hotspot boss-circuit-stack-hotspot" data-stack-key="${esc(phase.key)}"
+        x="${(rowsX - labelW - 8).toFixed(1)}" y="${(rowY - rowH / 2 + 2).toFixed(1)}"
+        width="280" height="${rowH - 4}" fill="transparent"/>`;
       svg += `<text x="${rowsX}" y="${rowY + 4}" text-anchor="end" font-size="12" font-family="Pirata One"
         fill="${color}">${esc(PHASE_SHORT[phase.key] || phase.key)} ${KIND_SYMBOL[phase.kind] || ""}</text>`;
       let chipX = rowsX + 10;
-      // Circuit trace from a powering hull hex to the chip at chipX.
-      const trace = (hx, hy, active) => {
+      const trace = (hx, hy, active, linkId) => {
         const busX = parts.maxX - 28 + (busIndex++ % 10) * 5.5;
         const stroke = active ? color : "#4a4a55";
-        svg += `<g pointer-events="none">
-          <path d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
-            fill="none" stroke="${stroke}" stroke-width="1.2" opacity="${active ? ".75" : ".45"}"
+        svg += `<g class="boss-circuit-link${active ? " active" : " inactive"}" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"
+            style="--trace-color:${stroke}" pointer-events="none">
+          <path class="boss-circuit-line" d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
+            fill="none" stroke="${stroke}" stroke-width="1.2"
             ${active ? "" : 'stroke-dasharray="3 3"'} stroke-linejoin="round"/>
-          <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}" opacity=".9"/>
-          <circle cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}" opacity=".9"/></g>`;
+          <circle class="boss-circuit-dot" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}"/>
+          <circle class="boss-circuit-dot" cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}"/></g>
+          <circle class="boss-circuit-hotspot" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"
+            cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="10" fill="transparent"/>`;
       };
       for (const slot of phase.slots || []) {
         const active = bossSlotActive(sb, slot);
         const kind = slot.kind || phase.kind;
         const text = slotChipText(sb, slot, componentById);
+        const linkId = `phase-${phase.key}-${linkIndex++}`;
         if (slot.slot === "component") {
           const component = componentById[slot.component_id];
-          if (component) trace(...parts.xy(component.q, component.r), active);
+          if (component) trace(...parts.xy(component.q, component.r), active, linkId);
         } else if (slot.slot === "tier" && slot.core_hex) {
-          // Breacher abilities anchored to a core: trace from that core hex.
-          trace(...parts.xy(slot.core_hex[0], slot.core_hex[1]), active);
+          trace(...parts.xy(slot.core_hex[0], slot.core_hex[1]), active, linkId);
         }
-        const title = `${slotChipTitle(sb, slot, componentById, active)} — ${kind}`;
-        svg += `<g><title>${esc(title)}</title>
+        const title = `${slotChipTitle(sb, slot, componentById, active)} - ${kind}`;
+        svg += `<g class="boss-circuit-hotspot" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"><title>${esc(title)}</title>
           <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="4"
             fill="${active ? `${color}22` : "rgba(30,30,38,.9)"}" stroke="${active ? color : "#4a4a55"}"
             stroke-width="${active ? 1.4 : 1}" ${active ? "" : 'stroke-dasharray="3 2"'}/>
@@ -1572,11 +1606,10 @@
         </g>`;
         chipX += chipW + chipGap;
       }
-      // Fleet markers at the row's end.
       const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
       for (const kind of ((layout.fleet_actions || {})[phase.key]) || []) {
         if (!fleetAlive) break;
-        svg += `<g><title>Fleet ×${fleetAlive} — ${esc(kind)}</title>
+        svg += `<g class="boss-circuit-hotspot boss-circuit-stack-hotspot" data-stack-key="${esc(phase.key)}"><title>Fleet x${fleetAlive} - ${esc(kind)}</title>
           <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="10"
             fill="rgba(160,160,180,.12)" stroke="#9aa3b8" stroke-width="1"/>
           <text x="${chipX + chipW / 2}" y="${rowY + 3.6}" text-anchor="middle" font-size="9"
@@ -1645,9 +1678,28 @@
       </div>
       <button class="btn ghost picker-cancel" id="boss-modal-close">Close</button>`;
     overlay.appendChild(box);
+    wireBossCircuitHover(box);
     box.querySelector("#boss-modal-close").addEventListener("click", hidePicker);
     overlay.addEventListener("click", function onOverlay(event) {
       if (event.target === overlay) { hidePicker(); overlay.removeEventListener("click", onOverlay); }
+    });
+  }
+
+  function wireBossCircuitHover(root) {
+    const links = Array.from(root.querySelectorAll(".boss-circuit-link"));
+    const setHot = (target, on) => {
+      const linkId = target.dataset.linkId;
+      const stackKey = target.dataset.stackKey;
+      for (const link of links) {
+        const match = linkId
+          ? link.dataset.linkId === linkId
+          : stackKey && link.dataset.stackKey === stackKey;
+        if (match) link.classList.toggle("hot", on);
+      }
+    };
+    root.querySelectorAll(".boss-circuit-hotspot").forEach((target) => {
+      target.addEventListener("mouseenter", () => setHot(target, true));
+      target.addEventListener("mouseleave", () => setHot(target, false));
     });
   }
 
@@ -2529,7 +2581,7 @@
       if (slot.slot === "tier") return `Tier ${slot.tier}`;
       return names[slot.component_id] || slot.component_id;
     });
-    const maxTrack = Math.max(...Object.values(sb.tier_progress || { x: 12 }).map(Number), event.progress || 0);
+    const maxTrack = progressMax(sb);
     const label = event.boss_phase === "starbreach" ? "STARBREACH" : `Action ${event.boss_phase}`;
     document.getElementById("boss-phase-callout")?.remove();
     const node = document.createElement("div");
@@ -3244,9 +3296,9 @@
         return;
       }
       case "desperation_consequence": {
-        const player = view.players[event.player_id];
-        if (player) {
-          const at = Board.hexToScreen(player.ship.q, player.ship.r);
+        const ship = displayShipFor(event.player_id);
+        if (ship) {
+          const at = Board.hexToScreen(ship.q, ship.r);
           FX.floatText(at, "☄ DESPERATE", "#c9a3f0");
         }
         return;

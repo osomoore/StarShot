@@ -487,6 +487,7 @@
     const steps = design.progression.steps;
     if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= steps.length) return;
     const [step] = steps.splice(fromIndex, 1);
+    if (!step || typeof step !== "object") return;
     steps.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, step);
     markDirty();
   }
@@ -913,8 +914,20 @@
     };
   }
 
+  function normalizeProgression() {
+    if (!design.progression) design.progression = { triggers: [], steps: [] };
+    if (!Array.isArray(design.progression.triggers)) design.progression.triggers = [];
+    if (!Array.isArray(design.progression.steps)) design.progression.steps = [];
+    design.progression.steps = design.progression.steps.map((step) => {
+      if (!step || typeof step !== "object") return defaultStep("filler");
+      const kind = step.kind || step.type || "filler";
+      return (META.step_kinds || []).includes(kind) ? { ...step, kind } : defaultStep("filler");
+    });
+  }
+
   function openDesign(document_) {
     design = document_;
+    normalizeProgression();
     if (!design.behavior) design.behavior = defaultBehavior();
     for (const region of design.shield_regions) {
       if (region.max_charges === undefined) region.max_charges = region.charges ?? 3;
@@ -951,6 +964,7 @@
   async function saveDesign() {
     if (!design) return;
     design.name = el("bd-name").value.trim() || design.name;
+    normalizeProgression();
     try {
       const result = await call("", { method: "PUT", body: JSON.stringify(design) });
       dirty = false;

@@ -185,6 +185,27 @@ class DesignSpecTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["location"], "fang")
 
+    def test_missing_tier_labels_infer_fillers_from_phase_slots(self):
+        spec = sb_spec.spec_from_design(playable_design())
+        spec.pop("tier_labels")
+        labels = sb_spec.boss_layout_to_dict(spec)["tier_labels"]
+        self.assertEqual(labels["1"], {"kind": "filler", "stack": None})
+        self.assertEqual(labels["2"], {"kind": "attack", "stack": "0.5"})
+        self.assertEqual(labels["3"], {"kind": "breacher", "stack": "starbreach"})
+        self.assertEqual(labels["4"], {"kind": "filler", "stack": None})
+
+    def test_stale_filler_labels_do_not_hide_action_slots(self):
+        spec = sb_spec.spec_from_design(playable_design())
+        spec["tier_labels"] = {
+            str(tier): {"kind": "filler", "stack": None}
+            for tier in spec["tier_progress"]
+        }
+        labels = sb_spec.boss_layout_to_dict(spec)["tier_labels"]
+        self.assertEqual(labels["1"], {"kind": "filler", "stack": None})
+        self.assertEqual(labels["2"], {"kind": "attack", "stack": "0.5"})
+        self.assertEqual(labels["3"], {"kind": "breacher", "stack": "starbreach"})
+        self.assertEqual(labels["4"], {"kind": "filler", "stack": None})
+
 
 class DesignedBossGameTests(unittest.TestCase):
     def _designed_state(self, seed=11):
@@ -220,6 +241,21 @@ class DesignedBossGameTests(unittest.TestCase):
         # The designed boss announced phases with its own slots.
         phase_events = [e for e in state.event_log if e["type"] == "boss_phase_resolved"]
         self.assertTrue(phase_events)
+
+    def test_designed_boss_progress_caps_at_final_step(self):
+        state = self._designed_state()
+        from starshot.rules.star_breach_engine import _advance_boss_progress
+
+        _advance_boss_progress(state, 99)
+        self.assertEqual(state.star_breach.progress, 4)
+        event = state.event_log[-1]
+        self.assertEqual(event["type"], "boss_progress_advanced")
+        self.assertEqual(event["amount"], 4)
+        self.assertEqual(event["progress"], 4)
+        event_count = len(state.event_log)
+        _advance_boss_progress(state, 1)
+        self.assertEqual(state.star_breach.progress, 4)
+        self.assertEqual(len(state.event_log), event_count)
 
     def test_designed_state_serialization_round_trip(self):
         state = self._designed_state()

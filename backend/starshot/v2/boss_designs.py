@@ -230,10 +230,14 @@ def _normalize_behavior(raw) -> dict:
 
 
 def _normalize_step(raw, index: int) -> dict:
+    if raw is None:
+        return {"kind": "filler"}
     if not isinstance(raw, dict):
         raise BossDesignError(f"progression.steps[{index}] must be an object.")
     label = f"progression.steps[{index}]"
-    kind = raw.get("kind")
+    kind = raw.get("kind", raw.get("type"))
+    if kind is None or kind == "":
+        kind = "filler"
     if kind not in STEP_KINDS:
         raise BossDesignError(f"{label}.kind must be one of {', '.join(STEP_KINDS)}.")
     step: dict = {"kind": kind}
@@ -405,10 +409,6 @@ def validate_design(design: dict) -> list[str]:
         present = hexes & footprint
         if present and not _connected(present):
             problems.append(f"{tag} hexes are not continuous.")
-        interior = sorted(h for h in present if not edge_facings(h[0], h[1], footprint))
-        for q, r in interior:
-            problems.append(f"{tag} includes ({q},{r}), which is not on the ship edge.")
-
         generator = region["generator"]
         if generator is None:
             matches = [t for t in shield_gens if t["number"] == region["number"]]

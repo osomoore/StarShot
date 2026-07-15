@@ -397,6 +397,11 @@ def tier_progress_map(spec: dict) -> dict[int, int]:
     return {int(tier): threshold for tier, threshold in spec["tier_progress"].items()}
 
 
+def max_progress(spec: dict) -> int:
+    thresholds = tier_progress_map(spec).values()
+    return max(thresholds, default=0)
+
+
 def unlocked_tiers(spec: dict, progress: int) -> tuple[int, ...]:
     return tuple(
         tier for tier, threshold in sorted(tier_progress_map(spec).items()) if progress >= threshold
@@ -457,7 +462,22 @@ def tier_spawns(spec: dict) -> dict[int, dict]:
 
 
 def tier_labels(spec: dict) -> dict[str, dict]:
-    return {str(tier): dict(entry) for tier, entry in (spec.get("tier_labels") or {}).items()}
+    labels = {str(tier): dict(entry) for tier, entry in (spec.get("tier_labels") or {}).items()}
+    for tier in spec.get("tier_progress", {}):
+        labels.setdefault(str(tier), {"kind": "filler", "stack": None})
+    for phase in spec.get("phases", ()):
+        stack = phase.get("key")
+        for slot in phase.get("slots", ()):
+            if slot.get("slot") != "tier":
+                continue
+            tier = str(slot.get("tier"))
+            kind = slot.get("kind") or phase.get("kind") or "attack"
+            if stack == "starbreach":
+                kind = "breacher"
+            labels[tier] = {"kind": kind, "stack": stack}
+    for tier in spec.get("tier_spawns", {}):
+        labels[str(tier)] = {"kind": "spawn", "stack": None}
+    return labels
 
 
 def boss_layout_to_dict(spec: dict) -> dict:

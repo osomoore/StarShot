@@ -663,13 +663,18 @@ def _advance_boss_progress(state: GameState, amount: int) -> None:
     assert sb is not None
     spec = sb_spec.spec_for(sb)
     before_tiers = set(sb_spec.unlocked_tiers(spec, sb.progress))
-    sb.progress += amount
+    before_progress = sb.progress
+    max_progress = sb_spec.max_progress(spec)
+    sb.progress = min(max_progress, sb.progress + amount) if max_progress > 0 else sb.progress
+    actual_amount = sb.progress - before_progress
+    if actual_amount <= 0:
+        return
     new_tiers = sorted(set(sb_spec.unlocked_tiers(spec, sb.progress)) - before_tiers)
     state.event_log.append(
         {
             "type": "boss_progress_advanced",
             "round": state.round_number,
-            "amount": amount,
+            "amount": actual_amount,
             "progress": sb.progress,
             "tiers_unlocked": new_tiers,
         }
@@ -1267,5 +1272,4 @@ def _repair_one_component(target: PlayerState) -> str | None:
         target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
         return component.id
     return None
-
 

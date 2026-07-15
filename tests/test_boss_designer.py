@@ -89,6 +89,25 @@ class NormalizeTests(unittest.TestCase):
         with self.assertRaises(boss_designs.BossDesignError):
             boss_designs.normalize_design(raw)
 
+    def test_blank_and_legacy_steps_normalize_to_saveable_track(self):
+        raw = make_design()
+        raw["progression"]["steps"] = [
+            {"kind": "filler"},
+            None,
+            {"type": "action_link", "stack": "1.5", "action": "move"},
+            {"kind": ""},
+        ]
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(
+            design["progression"]["steps"],
+            [
+                {"kind": "filler"},
+                {"kind": "filler"},
+                {"kind": "action_link", "stack": "1.5", "action": "move"},
+                {"kind": "filler"},
+            ],
+        )
+
     def test_rejects_duplicate_region_numbers(self):
         raw = make_design()
         raw["shield_regions"].append({"number": 1, "hexes": [], "generator": None, "lanes": []})
@@ -147,11 +166,10 @@ class ValidateTests(unittest.TestCase):
         problems = self._problems(raw)
         self.assertTrue(any("not continuous" in p for p in problems))
 
-    def test_interior_region_hex_flagged(self):
+    def test_interior_region_hex_can_be_protected(self):
         raw = make_design()
         raw["shield_regions"][0]["hexes"].append([0, 0])  # core: fully surrounded
-        problems = self._problems(raw)
-        self.assertTrue(any("not on the ship edge" in p for p in problems))
+        self.assertEqual(self._problems(raw), [])
 
     def test_lane_facing_must_be_edge_face(self):
         raw = make_design()
