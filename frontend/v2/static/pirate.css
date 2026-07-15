@@ -402,21 +402,64 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 .boss-callout .bc-bar { margin-top: 7px; height: 7px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
 .boss-callout .bc-bar-fill { height: 100%; background: linear-gradient(90deg,#a86ad1,#ff6a8a); }
-.boss-progress-rail {
-  position: absolute; right: 12px; top: 16%; bottom: 22%; width: 16px; z-index: 4;
-  border: 1px solid rgba(168,106,209,.55); border-radius: 8px;
-  background: rgba(9,14,27,.85); overflow: hidden;
+/* Mini battle board: discrete progress boxes + one chip row per boss phase. */
+.boss-mini-board {
+  position: absolute; right: 56px; top: 10px; z-index: 4; max-width: 240px;
+  border: 1px solid rgba(168,106,209,.55); border-radius: 10px;
+  background: rgba(9,14,27,.88); padding: 7px 9px; cursor: pointer;
 }
-.boss-progress-rail .bpr-fill {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(0deg,#a86ad1,#ff6a8a); transition: height .5s ease;
+.boss-mini-board:hover { border-color: rgba(217,166,255,.9); }
+.bmb-track { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.bmb-track-label { font-size: 11px; color: #d9a6ff; margin-right: 4px; font-family: "Pirata One", serif; }
+.bmb-box {
+  width: 12px; height: 12px; border-radius: 3px; box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.05);
+  font-size: 8px; line-height: 10px; text-align: center; color: rgba(255,255,255,.55);
 }
-.boss-progress-rail .bpr-tick { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.35); }
-.boss-progress-rail .bpr-tick.active { background: var(--gold-bright); height: 2px; box-shadow: 0 0 6px rgba(212,167,72,.8); }
-.boss-progress-rail .bpr-label {
-  position: absolute; left: 50%; top: -18px; transform: translateX(-50%);
-  font-size: 11px; color: #d9a6ff; white-space: nowrap;
+.bmb-box.filled { background: linear-gradient(135deg,#a86ad1,#ff6a8a); border-color: #d9a6ff; color: #16081f; }
+.bmb-box.major { border-width: 2px; width: 14px; height: 14px; line-height: 11px; }
+.bmb-box.major.online { box-shadow: 0 0 6px rgba(212,167,72,.85); }
+.bmb-rows { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.bmb-row { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.bmb-phase {
+  font-family: "Pirata One", serif; font-size: 12px; min-width: 34px; text-align: right;
+  margin-right: 2px;
 }
+.bmb-chip {
+  display: inline-block; min-width: 17px; height: 15px; padding: 0 2px; border-radius: 4px;
+  border: 1px solid; box-sizing: border-box; font-size: 9px; line-height: 13px; text-align: center;
+  background: rgba(255,255,255,.05);
+}
+.bmb-chip.off {
+  border-style: dashed; color: #555 !important; opacity: .65;
+  background: rgba(20,20,26,.8); text-decoration: line-through;
+}
+.bmb-chip.fleet { border-color: #9aa3b8; color: #9aa3b8; border-radius: 8px; }
+.bmb-none { color: var(--ink-dim); font-size: 10px; }
+.bmb-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.bmb-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; }
+.boss-board-modal { max-width: 720px; }
+.boss-board-modal .bmb-track { margin-top: 8px; }
+.boss-board-modal .bmb-box { width: 16px; height: 16px; font-size: 10px; line-height: 14px; }
+.boss-board-modal .bmb-box.major { width: 18px; height: 18px; line-height: 14px; }
+/* Shield-region target picker */
+.boss-region-picker { max-width: 600px; }
+.boss-region-map { width: 100%; overflow: auto; }
+.boss-region-cell:hover { filter: brightness(1.35); }
+.brp-regions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: center; }
+.brp-region {
+  border: 1px solid; border-radius: 8px; background: rgba(255,255,255,.05);
+  color: var(--ink); font-size: 12px; padding: 5px 10px; cursor: pointer;
+}
+.brp-region.picked { box-shadow: 0 0 8px rgba(217,166,255,.5); }
+.brp-lanes { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; justify-content: center; }
+.brp-lane {
+  min-width: 26px; padding: 3px 7px; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(212,167,72,.6); background: rgba(255,255,255,.05); color: var(--ink);
+  font-family: "Pirata One", serif; font-size: 13px;
+}
+.brp-lane.picked { background: rgba(212,167,72,.35); box-shadow: 0 0 7px rgba(212,167,72,.6); }
+.brp-actions { margin-top: 12px; display: flex; gap: 10px; justify-content: center; }
 .sb-pause-toggle {
   display: flex; align-items: center; gap: 6px;
   border: 1px solid rgba(168,106,209,.55); border-radius: 8px;

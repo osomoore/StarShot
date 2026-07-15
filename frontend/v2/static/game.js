@@ -2336,8 +2336,9 @@
     const sb = view.star_breach || {};
     const names = {};
     for (const component of (sb.boss_layout || {}).components || []) {
+      // Numbered names ("Cannon 2") show whole; stock ones keep the last word.
       const words = component.name.split(" ");
-      names[component.id] = words[words.length - 1];
+      names[component.id] = words.length > 2 ? words[words.length - 1] : component.name;
     }
     const sources = (event.slots || []).map((slot) => {
       if (slot.slot === "base") return "Base";

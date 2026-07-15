@@ -609,6 +609,44 @@
       cols.appendChild(col);
     }
     container.appendChild(cols);
+
+    // Mini ship view: hover a component card above to see it light up here.
+    const mini = document.createElement("div");
+    mini.className = "bd-mini-ship";
+    mini.innerHTML = `<div class="bd-mini-ship-label">Ship view — hover a component card to locate it</div>${miniShipSVG()}`;
+    container.appendChild(mini);
+  }
+
+  function miniShipSVG() {
+    if (!design.tiles.length) return '<span class="admin-note">no hull tiles yet</span>';
+    const size = 9;
+    const mxy = (q, r) => [size * 1.5 * q, size * SQ * (r + q / 2)];
+    const numbers = componentNumbers();
+    let body = "";
+    for (const tile of design.tiles) {
+      const [x, y] = mxy(tile.q, tile.r);
+      const tint = TILE_FILL[tile.type];
+      const badge = tile.type === "firing_computer" ? "C" + numbers[key(tile.q, tile.r)]
+        : tile.type === "fuel_tank" ? "E" + numbers[key(tile.q, tile.r)]
+        : tile.type === "shield_gen" ? "S" + tile.number
+        : tile.type === "core" ? "◉" : "";
+      body += `<g><polygon data-hex="${tile.q},${tile.r}" points="${hexPoints(x, y, size - 0.5)}"
+        fill="rgba(${tint},.42)" stroke="rgb(${tint})" stroke-width="1">
+        <title>${esc(tile.type === "generic" ? "hull" : componentLabel(tile, numbers))} (${tile.q},${tile.r})</title></polygon>
+        ${badge ? `<text x="${x}" y="${y + 2.6}" text-anchor="middle" font-size="6.4" font-weight="700"
+          fill="#0a0f1e" pointer-events="none">${esc(badge)}</text>` : ""}</g>`;
+    }
+    const xs = design.tiles.map((t) => size * 1.5 * t.q);
+    const ys = design.tiles.map((t) => size * SQ * (t.r + t.q / 2));
+    const pad = size * 1.6;
+    const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+    const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+    return `<svg class="bd-mini-svg" viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}">${body}</svg>`;
+  }
+
+  function highlightMiniHex(q, r, on) {
+    const node = el("bd-stacks")?.querySelector(`[data-hex="${q},${r}"]`);
+    if (node) node.classList.toggle("bd-mini-hot", !!on);
   }
 
   function renderBehaviorPanel() {
@@ -754,6 +792,15 @@
         <label>round ≥ <input data-f="round" type="number" min="1" max="99" value="${step.round ?? ""}" placeholder="—"></label>`;
     } else if (step.kind === "ability_trigger") {
       fields = `<label>name <input data-f="name" maxlength="80" value="${esc(step.name || "")}"></label>`;
+    } else if (step.kind === "spawn_fleet") {
+      const locations = META.spawn_locations || ["boss_front", "bauble", "fang"];
+      const locationLabels = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" };
+      const counts = Array.from({ length: META.spawn_max_count || 3 }, (_v, i) => i + 1);
+      fields = `
+        <label>craft <select data-f="count">${counts.map((n) =>
+          `<option ${(step.count || 1) === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+        <label>at <select data-f="location">${locations.map((location) =>
+          `<option value="${location}" ${step.location === location ? "selected" : ""}>${locationLabels[location] || location}</option>`).join("")}</select></label>`;
     }
 
     row.innerHTML = `
@@ -764,6 +811,7 @@
         <option value="action_link" ${step.kind === "action_link" ? "selected" : ""}>Action link</option>
         <option value="breacher_link" ${step.kind === "breacher_link" ? "selected" : ""}>Breacher link</option>
         <option value="ability_trigger" ${step.kind === "ability_trigger" ? "selected" : ""}>Ability trigger</option>
+        <option value="spawn_fleet" ${step.kind === "spawn_fleet" ? "selected" : ""}>Spawn fleet</option>
       </select>
       <span class="bd-step-fields">${fields}</span>
       <span class="bd-step-actions">
@@ -793,7 +841,9 @@
     row.querySelectorAll("[data-f]:not([data-f=kind])").forEach((node) => {
       node.addEventListener("change", () => {
         const field = node.dataset.f;
-        if (field === "core" || field === "round") {
+        if (field === "count") {
+          step.count = Math.max(1, Math.min(META.spawn_max_count || 3, parseInt(node.value, 10) || 1));
+        } else if (field === "core" || field === "round") {
           const value = parseInt(node.value, 10);
           if (Number.isNaN(value)) delete step[field];
           else step[field] = value;
@@ -824,6 +874,7 @@
     if (kind === "action_link") return { kind, stack: META.action_stacks[0], action: "shoot" };
     if (kind === "breacher_link") return { kind, round: 1 };
     if (kind === "ability_trigger") return { kind, name: "New ability", notes: "" };
+    if (kind === "spawn_fleet") return { kind, count: 1, location: "boss_front" };
     return { kind: "filler" };
   }
 
@@ -909,20 +960,31 @@
 
   // ── boot / markup ────────────────────────────────────────────────────────
   function buildMarkup() {
+    const transferTools = isAdmin ? `
+        <span class="deck-set-sep">|</span>
+        <button class="btn ghost small" id="bd-download">⬇ Download</button>
+        <input id="bd-import-file" type="file" accept=".json,application/json">
+        <button class="btn ghost small" id="bd-upload">⬆ Upload</button>` : "";
+    const playerLibrary = isAdmin ? `
+      <div class="bd-designbar bd-player-library">
+        <span class="bd-strip-label">Player bosses:</span>
+        <select id="bd-player-design-select"><option value="">— loading… —</option></select>
+        <button class="btn ghost small" id="bd-player-refresh">↻</button>
+        <button class="btn gold small" id="bd-player-clone">⧉ Clone to shared library</button>
+      </div>` : `
+      <p class="admin-note">Design up to ${META.player_design_limit || 10} of yer own bosses and launch
+        StarBreach raids against them. The admiralty may clone favorites into everyone's library.</p>`;
     root().innerHTML = `
       <h2 class="panel-title">Boss Ship Designer</h2>
       <div class="bd-designbar">
         <select id="bd-design-select"></select>
         <button class="btn ghost small" id="bd-load">Open</button>
         <input id="bd-new-name" placeholder="New boss name…" maxlength="80">
-        <button class="btn gold small" id="bd-new">＋ New design</button>
-        <span class="deck-set-sep">|</span>
-        <button class="btn ghost small" id="bd-download">⬇ Download</button>
-        <input id="bd-import-file" type="file" accept=".json,application/json">
-        <button class="btn ghost small" id="bd-upload">⬆ Upload</button>
+        <button class="btn gold small" id="bd-new">＋ New design</button>${transferTools}
         <span class="deck-set-sep">|</span>
         <button class="btn crimson small" id="bd-delete">🗑 Delete</button>
       </div>
+      ${playerLibrary}
       <div id="bd-editor" class="hidden">
         <div class="bd-topbar">
           <label>Name <input id="bd-name" maxlength="80"></label>
@@ -1139,36 +1201,39 @@
       markDirty();
     });
 
-    el("bd-download").addEventListener("click", async () => {
-      const id = el("bd-design-select").value;
-      if (!id) { setStatus("Pick a design to download.", false); return; }
-      try {
-        const response = await fetch(API + "/" + encodeURIComponent(id) + "/export", { credentials: "same-origin" });
-        if (!response.ok) throw new Error(`Download failed (${response.status})`);
-        const url = URL.createObjectURL(await response.blob());
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `starshot-boss-${id}.json`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      } catch (error) { setStatus("✘ " + error.message, false); }
-    });
-    el("bd-upload").addEventListener("click", async () => {
-      const input = el("bd-import-file");
-      const file = input.files && input.files[0];
-      if (!file) { setStatus("Choose a boss design .json file first.", false); return; }
-      try {
-        const result = await call("/import", { method: "POST", body: await file.text() });
-        input.value = "";
-        await refreshList(result.design.id);
-        openDesign(result.design);
-        renderProblems(result.problems);
-        setStatus(`✔ Imported as "${result.design.name}" (${result.design.id})` +
-          (result.renamed ? " — renamed to avoid clobbering an existing design." : "."), true);
-      } catch (error) { setStatus("✘ Upload failed: " + error.message, false); }
-    });
+    if (isAdmin) {
+      el("bd-download").addEventListener("click", async () => {
+        const id = el("bd-design-select").value;
+        if (!id) { setStatus("Pick a design to download.", false); return; }
+        try {
+          const response = await fetch(API + "/" + encodeURIComponent(id) + "/export", { credentials: "same-origin" });
+          if (!response.ok) throw new Error(`Download failed (${response.status})`);
+          const url = URL.createObjectURL(await response.blob());
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `starshot-boss-${id}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        } catch (error) { setStatus("✘ " + error.message, false); }
+      });
+      el("bd-upload").addEventListener("click", async () => {
+        const input = el("bd-import-file");
+        const file = input.files && input.files[0];
+        if (!file) { setStatus("Choose a boss design .json file first.", false); return; }
+        try {
+          const result = await call("/import", { method: "POST", body: await file.text() });
+          input.value = "";
+          await refreshList(result.design.id);
+          openDesign(result.design);
+          renderProblems(result.problems);
+          setStatus(`✔ Imported as "${result.design.name}" (${result.design.id})` +
+            (result.renamed ? " — renamed to avoid clobbering an existing design." : "."), true);
+        } catch (error) { setStatus("✘ Upload failed: " + error.message, false); }
+      });
+      wirePlayerLibrary();
+    }
 
     el("bd-step-add").addEventListener("click", () => {
       design.progression.steps.push(defaultStep("filler"));
@@ -1181,6 +1246,49 @@
     });
   }
 
+  // Admin only: browse every player's designs and clone one into the shared
+  // library so all crews can fight it.
+  let playerDesigns = [];
+  async function refreshPlayerLibrary() {
+    const select = el("bd-player-design-select");
+    if (!select) return;
+    try {
+      const response = await fetch("/api/v2/admin/player-boss-designs", { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+      playerDesigns = data.designs || [];
+      select.innerHTML = playerDesigns.length ? "" : "<option value=''>— no player designs yet —</option>";
+      playerDesigns.forEach((entry, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${entry.valid ? "✔" : "⚠"} ${entry.owner_name}: ${entry.name}` +
+          ` (${entry.tile_count} tiles, ${entry.step_count} steps)` + (entry.valid ? "" : " — not battle-ready");
+        select.appendChild(option);
+      });
+    } catch (error) { setStatus("✘ " + error.message, false); }
+  }
+
+  function wirePlayerLibrary() {
+    refreshPlayerLibrary();
+    el("bd-player-refresh").addEventListener("click", refreshPlayerLibrary);
+    el("bd-player-clone").addEventListener("click", async () => {
+      const entry = playerDesigns[parseInt(el("bd-player-design-select").value, 10)];
+      if (!entry) { setStatus("Pick a player design to clone.", false); return; }
+      try {
+        const response = await fetch(
+          `/api/v2/admin/player-boss-designs/${entry.owner_id}/${encodeURIComponent(entry.id)}/clone`,
+          { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" } },
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+        await refreshList(data.design.id);
+        openDesign(data.design);
+        renderProblems(data.problems);
+        setStatus(`✔ Cloned "${data.design.name}" from ${entry.owner_name} into the shared library as "${data.design.id}".`, true);
+      } catch (error) { setStatus("✘ Clone failed: " + error.message, false); }
+    });
+  }
+
   async function boot() {
     if (booted) return;
     booted = true;
@@ -1190,13 +1298,53 @@
       await refreshList();
       setStatus("", true);
     } catch (error) {
-      setStatus("✘ " + error.message + " (sign in as the admin first)", false);
-      booted = false; // retry on next tab visit
+      setStatus("✘ " + error.message + (isAdmin ? " (sign in as the admin first)" : ""), false);
+      booted = false; // retry on next open
     }
   }
 
-  // Lazy-boot when the tab is first opened (admin.js handles the show/hide).
-  document.querySelectorAll('.admin-tab[data-tab="bossdesign"]').forEach((tab) => {
-    tab.addEventListener("click", boot);
-  });
+  return { boot };
+  } // end createBossDesigner
+
+  // Admin page: lazy-boot inside the #tab-bossdesign tab.
+  const adminTabs = document.querySelectorAll('.admin-tab[data-tab="bossdesign"]');
+  if (adminTabs.length) {
+    const adminDesigner = createBossDesigner({
+      apiBase: "/api/v2/admin/boss-designs",
+      root: () => document.getElementById("tab-bossdesign"),
+      isAdmin: true,
+    });
+    adminTabs.forEach((tab) => tab.addEventListener("click", adminDesigner.boot));
+  }
+
+  // Main app: full-screen "My Bosses" overlay, opened from the lobby.
+  let playerDesigner = null;
+  function openPlayerDesigner() {
+    let overlay = document.getElementById("player-bossdesigner-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "player-bossdesigner-overlay";
+      overlay.className = "bd-player-overlay";
+      overlay.innerHTML = `
+        <div class="bd-player-shell">
+          <button class="btn ghost small bd-player-close" id="bd-player-close">✕ Back to Port</button>
+          <div id="player-bossdesign"></div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector("#bd-player-close").addEventListener("click", () => {
+        overlay.classList.add("hidden");
+      });
+    }
+    overlay.classList.remove("hidden");
+    if (!playerDesigner) {
+      playerDesigner = createBossDesigner({
+        apiBase: "/api/v2/my/boss-designs",
+        root: () => document.getElementById("player-bossdesign"),
+        isAdmin: false,
+      });
+    }
+    playerDesigner.boot();
+  }
+
+  window.BossDesigner = { openPlayerDesigner };
 })();

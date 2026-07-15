@@ -139,3 +139,38 @@
 .bd-problems { margin-top: 12px; font-size: 13px; }
 .bd-problems .ok-note { color: #9fd8ae; }
 .bd-problem { color: #ffcf9a; margin-top: 3px; }
+
+/* spawn-fleet progression chips */
+.bd-prog-chip.bd-kind-spawn_fleet { border-color: #ff7ad0; }
+
+/* mini ship view under the action-stack organizer */
+.bd-mini-ship {
+  margin-top: 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
+  background: #0d1426; padding: 8px 10px; text-align: center;
+}
+.bd-mini-ship-label { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+.bd-mini-svg { max-height: 180px; width: 100%; }
+.bd-mini-svg polygon { transition: filter .1s ease; }
+.bd-mini-svg .bd-mini-hot {
+  stroke: #fff; stroke-width: 2.4; filter: drop-shadow(0 0 6px rgba(255,255,255,.9));
+}
+
+/* admin: player-design library bar */
+.bd-player-library { margin-top: 6px; }
+.bd-player-library select { max-width: 420px; }
+
+/* player-facing designer overlay (main app) */
+.bd-player-overlay {
+  position: fixed; inset: 0; z-index: 60; overflow: auto;
+  background: rgba(5,8,16,.96);
+}
+.bd-player-overlay.hidden { display: none; }
+.bd-player-shell { max-width: 1180px; margin: 0 auto; padding: 18px 16px 40px; }
+.bd-player-close { margin-bottom: 10px; }
+
+/* note/status styles (duplicated from admin.css so the player-facing
+   designer works on the main app, which does not load admin.css) */
+.bd-player-overlay .admin-note { color: var(--ink-dim); font-size: 13px; line-height: 1.5; margin: 6px 0 14px; }
+.bd-player-overlay .admin-status { min-height: 22px; margin-top: 12px; font-size: 13px; }
+.bd-player-overlay .admin-status.ok { color: #9fd8ae; }
+.bd-player-overlay .admin-status.err { color: #ff9a8a; white-space: pre-wrap; }

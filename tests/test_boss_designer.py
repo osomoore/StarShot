@@ -215,5 +215,59 @@ class StorageTests(unittest.TestCase):
         self.assertIsNotNone(boss_designs.load_design("test_boss_ii"))
 
 
+class SpawnStepTests(unittest.TestCase):
+    def test_spawn_fleet_step_normalizes(self):
+        raw = make_design()
+        raw["progression"]["steps"].append({"kind": "spawn_fleet", "count": 2, "location": "bauble"})
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(design["progression"]["steps"][-1], {"kind": "spawn_fleet", "count": 2, "location": "bauble"})
+        self.assertEqual(boss_designs.validate_design(design), [])
+
+    def test_spawn_fleet_rejects_bad_count_and_location(self):
+        raw = make_design()
+        raw["progression"]["steps"] = [{"kind": "spawn_fleet", "count": 0, "location": "fang"}]
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+        raw["progression"]["steps"] = [{"kind": "spawn_fleet", "count": 1, "location": "nowhere"}]
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+
+
+class PlayerStorageTests(unittest.TestCase):
+    def setUp(self):
+        self._tempdir = tempfile.TemporaryDirectory()
+        self._original_dir = boss_designs.DESIGNS_DIR
+        boss_designs.DESIGNS_DIR = Path(self._tempdir.name)
+
+    def tearDown(self):
+        boss_designs.DESIGNS_DIR = self._original_dir
+        self._tempdir.cleanup()
+
+    def test_player_designs_are_separate_from_global(self):
+        boss_designs.save_design(make_design(), owner_id=7)
+        self.assertIsNone(boss_designs.load_design("test_boss"))
+        self.assertIsNotNone(boss_designs.load_design("test_boss", owner_id=7))
+        self.assertEqual(boss_designs.list_designs(), [])
+        self.assertEqual(len(boss_designs.list_designs(7)), 1)
+        self.assertEqual(boss_designs.list_player_owner_ids(), [7])
+
+    def test_player_design_limit(self):
+        for index in range(boss_designs.PLAYER_DESIGN_LIMIT):
+            boss_designs.save_design(make_design(id=f"boss_{index}"), owner_id=7)
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.save_design(make_design(id="one_more"), owner_id=7)
+        # Updating an existing design is still allowed at the cap.
+        updated, _ = boss_designs.save_design(make_design(id="boss_0", name="Renamed"), owner_id=7)
+        self.assertEqual(updated["name"], "Renamed")
+
+    def test_clone_player_design_to_global(self):
+        boss_designs.save_design(make_design(), owner_id=7)
+        cloned, problems = boss_designs.clone_design_to_global(7, "test_boss")
+        self.assertEqual(problems, [])
+        self.assertIsNotNone(boss_designs.load_design(cloned["id"]))
+        again, _ = boss_designs.clone_design_to_global(7, "test_boss")
+        self.assertNotEqual(again["id"], cloned["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

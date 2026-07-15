@@ -145,6 +145,46 @@ class DesignSpecTests(unittest.TestCase):
         self.assertEqual(sb_spec.fleet_action_kinds(spec, "1.5"), ["move"])
         self.assertEqual(sb_spec.fleet_action_kinds(spec, "2.5"), [])
 
+    def test_components_are_auto_numbered(self):
+        spec = sb_spec.spec_from_design(playable_design())
+        names = [component["name"] for component in spec["components"]]
+        self.assertIn("Cannon 1", names)
+        self.assertIn("Engine 1", names)
+
+    def test_spawn_fleet_step_compiles_and_spawns_on_tier_activation(self):
+        raw = make_design()
+        raw["behavior"] = {
+            "boss_ai": "hunter_killer",
+            "fleet": {"count": 0, "kind": "hunter_killer", "hp": 4, "ai": "hunter_killer", "actions": []},
+        }
+        raw["progression"]["steps"].append({"kind": "spawn_fleet", "count": 2, "location": "fang"})
+        design = normalize_design(raw)
+        spec = sb_spec.spec_from_design(design)
+        spawn_tier = str(len(design["progression"]["steps"]))
+        self.assertEqual(
+            spec["tier_spawns"][spawn_tier],
+            {"count": 2, "location": "fang", "kind": "hunter_killer", "hp": 4},
+        )
+        self.assertEqual(spec["tier_labels"][spawn_tier], {"kind": "spawn", "stack": None})
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("alice", "bob"),
+                seed=3,
+                active_expansions=("star_breach",),
+                star_breach_boss_design=design,
+            )
+        )
+        from starshot.rules.star_breach_engine import _activate_star_breach_tiers
+
+        sb = state.star_breach
+        before = len(sb.fleet)
+        sb.progress = int(spawn_tier)
+        _activate_star_breach_tiers(state)
+        self.assertEqual(len(sb.fleet), before + 2)
+        events = [event for event in state.event_log if event["type"] == "boss_fleet_spawned"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["location"], "fang")
+
 
 class DesignedBossGameTests(unittest.TestCase):
     def _designed_state(self, seed=11):
