@@ -43,6 +43,7 @@
   const REGION_COLORS = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0",
     "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
   const STACK_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
+  const FLEET_STACKS = ["0.5", "1.5", "2.5", "3.5"];
   const TRIGGER_LABELS = {
     bauble_pickup_boss: "Bauble pickup — boss",
     bauble_pickup_fleet: "Bauble pickup — boss fleet",
@@ -387,11 +388,42 @@
     el("bd-panel-structure").classList.toggle("hidden", mode !== "structure");
     el("bd-panel-shields").classList.toggle("hidden", mode !== "shields");
     el("bd-panel-progression").classList.toggle("hidden", mode !== "progression");
+    el("bd-panel-behavior").classList.toggle("hidden", mode !== "behavior");
     root().querySelectorAll(".bd-mode").forEach((button) =>
       button.classList.toggle("active", button.dataset.mode === mode));
     if (mode === "shields") renderShieldPanel();
     if (mode === "progression") renderProgressionPanel();
     if (mode === "structure") renderStructurePanel();
+    if (mode === "behavior") renderBehaviorPanel();
+  }
+
+  function renderBehaviorPanel() {
+    const fleet = design.behavior.fleet;
+    el("bd-boss-ai").value = design.behavior.boss_ai;
+    el("bd-fleet-count").value = fleet.count;
+    el("bd-fleet-hp").value = fleet.hp;
+    el("bd-fleet-kind").value = fleet.kind;
+    el("bd-fleet-ai").value = fleet.ai;
+    const table = el("bd-fleet-actions");
+    table.querySelectorAll("tr:not(:first-child)").forEach((row) => row.remove());
+    for (const stack of FLEET_STACKS) {
+      const row = document.createElement("tr");
+      const cells = ["move", "shoot"].map((action) => {
+        const ticked = fleet.actions.some((entry) => entry.stack === stack && entry.action === action);
+        return `<td><input type="checkbox" data-stack="${stack}" data-action="${action}" ${ticked ? "checked" : ""}></td>`;
+      });
+      row.innerHTML = `<td>Action ${stack}</td>${cells.join("")}`;
+      table.appendChild(row);
+    }
+    table.querySelectorAll("input[type=checkbox]").forEach((box) => {
+      box.addEventListener("change", () => {
+        const entry = { stack: box.dataset.stack, action: box.dataset.action };
+        fleet.actions = fleet.actions.filter(
+          (item) => !(item.stack === entry.stack && item.action === entry.action));
+        if (box.checked) fleet.actions.push(entry);
+        markDirty();
+      });
+    });
   }
 
   function renderStructurePanel() {
@@ -432,10 +464,25 @@
     info.innerHTML = `
       <div><span class="bd-swatch" style="background:${regionColor(region.number)}"></span>
         Powered by: ${generatorText}</div>
+      <div class="bd-charges-row">
+        <label>Start charges <input id="bd-region-charges" type="number" min="0" max="9" value="${region.charges ?? 3}"></label>
+        <label>Max charges <input id="bd-region-maxcharges" type="number" min="0" max="9" value="${region.max_charges ?? 3}"></label>
+      </div>
       <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · missing: ${missing.join(", ")}` : " · complete"}</div>
       <div class="admin-note">${shieldSub === "hexes"
         ? "Click hull hexes to add/remove them from this region; click a Shield Gen tile to set the power source."
         : "Click a region hex to assign the next lane (2-8). Click again to rotate its entry face; past the last face, the lane is cleared."}</div>`;
+    const chargesInput = info.querySelector("#bd-region-charges");
+    const maxInput = info.querySelector("#bd-region-maxcharges");
+    const applyCharges = () => {
+      region.max_charges = Math.max(0, Math.min(9, parseInt(maxInput.value, 10) || 0));
+      region.charges = Math.max(0, Math.min(region.max_charges, parseInt(chargesInput.value, 10) || 0));
+      chargesInput.value = region.charges;
+      maxInput.value = region.max_charges;
+      markDirty();
+    };
+    chargesInput.addEventListener("change", applyCharges);
+    maxInput.addEventListener("change", applyCharges);
   }
 
   function nextRegionNumber() {
@@ -567,14 +614,28 @@
     for (const entry of designs) {
       const option = document.createElement("option");
       option.value = entry.id;
-      option.textContent = `${entry.name} (${entry.tile_count} tiles, ${entry.region_count} regions, ${entry.step_count} steps)`;
+      const badge = entry.valid ? "✔" : "⚠";
+      option.textContent = `${badge} ${entry.name} (${entry.tile_count} tiles, ${entry.region_count} regions, ${entry.step_count} steps)` +
+        (entry.valid ? "" : " — not battle-ready");
       if (design && entry.id === design.id) option.selected = true;
       select.appendChild(option);
     }
   }
 
+  function defaultBehavior() {
+    return {
+      boss_ai: "hunter_killer",
+      fleet: { count: 0, kind: "hunter_killer", hp: 3, ai: "hunter_killer", actions: [] },
+    };
+  }
+
   function openDesign(document_) {
     design = document_;
+    if (!design.behavior) design.behavior = defaultBehavior();
+    for (const region of design.shield_regions) {
+      if (region.max_charges === undefined) region.max_charges = region.charges ?? 3;
+      if (region.charges === undefined) region.charges = region.max_charges;
+    }
     dirty = false;
     el("bd-save").classList.remove("attention");
     currentRegion = design.shield_regions.length ? design.shield_regions[0].number : null;
@@ -626,6 +687,10 @@
         <input id="bd-new-name" placeholder="New boss name…" maxlength="80">
         <button class="btn gold small" id="bd-new">＋ New design</button>
         <span class="deck-set-sep">|</span>
+        <button class="btn ghost small" id="bd-download">⬇ Download</button>
+        <input id="bd-import-file" type="file" accept=".json,application/json">
+        <button class="btn ghost small" id="bd-upload">⬆ Upload</button>
+        <span class="deck-set-sep">|</span>
         <button class="btn crimson small" id="bd-delete">🗑 Delete</button>
       </div>
       <div id="bd-editor" class="hidden">
@@ -635,6 +700,7 @@
             <button class="btn ghost bd-mode active" data-mode="structure">⬡ Structure</button>
             <button class="btn ghost bd-mode" data-mode="shields">🛡 Shields &amp; Lanes</button>
             <button class="btn ghost bd-mode" data-mode="progression">📈 Progression</button>
+            <button class="btn ghost bd-mode" data-mode="behavior">⚙ Behavior</button>
           </div>
           <button class="btn gold" id="bd-save">💾 Save design</button>
         </div>
@@ -671,6 +737,26 @@
               </div>
               <div id="bd-region-info" class="bd-region-info"></div>
             </div>
+            <div id="bd-panel-behavior" class="hidden">
+              <h3 class="panel-sub">Boss behavior</h3>
+              <label class="bd-field">Boss AI
+                <select id="bd-boss-ai"><option value="hunter_killer">Hunter-Killer — close on the Prey, shoot the Prey</option></select>
+              </label>
+              <h3 class="panel-sub">Fleet craft</h3>
+              <div class="bd-fleet-row">
+                <label>Count <input id="bd-fleet-count" type="number" min="0" max="6"></label>
+                <label>HP <input id="bd-fleet-hp" type="number" min="1" max="9"></label>
+              </div>
+              <div class="bd-fleet-row">
+                <label>Type <select id="bd-fleet-kind"><option value="hunter_killer">Mini Hunter-Killer</option></select></label>
+                <label>AI <select id="bd-fleet-ai"><option value="hunter_killer">Hunter-Killer</option></select></label>
+              </div>
+              <h3 class="panel-sub">Fleet actions per boss stage</h3>
+              <p class="admin-note">Tick which actions the fleet (as a unit) takes at each boss action stage.</p>
+              <table class="bd-fleet-actions" id="bd-fleet-actions">
+                <tr><th>Stage</th><th>Move</th><th>Shoot</th></tr>
+              </table>
+            </div>
             <div id="bd-panel-progression" class="hidden">
               <h3 class="panel-sub">Progression triggers</h3>
               <div id="bd-triggers" class="bd-triggers"></div>
@@ -696,6 +782,7 @@
       openDesign({
         id, name, description: "", tiles: [], shield_regions: [],
         progression: { triggers: [], steps: [] },
+        behavior: defaultBehavior(),
       });
       el("bd-new-name").value = "";
       markDirty();
@@ -748,7 +835,7 @@
     el("bd-region-add").addEventListener("click", () => {
       const number = nextRegionNumber();
       if (number === null) { setStatus("All nine region numbers are in use.", false); return; }
-      design.shield_regions.push({ number, hexes: [], generator: null, lanes: [] });
+      design.shield_regions.push({ number, hexes: [], generator: null, lanes: [], charges: 3, max_charges: 3 });
       currentRegion = number;
       markDirty();
       renderShieldPanel();
@@ -767,6 +854,60 @@
         shieldSub = button.dataset.sub;
         renderShieldPanel();
       });
+    });
+
+    el("bd-boss-ai").addEventListener("change", (event) => {
+      design.behavior.boss_ai = event.target.value;
+      markDirty();
+    });
+    el("bd-fleet-count").addEventListener("change", (event) => {
+      design.behavior.fleet.count = Math.max(0, Math.min(6, parseInt(event.target.value, 10) || 0));
+      event.target.value = design.behavior.fleet.count;
+      markDirty();
+    });
+    el("bd-fleet-hp").addEventListener("change", (event) => {
+      design.behavior.fleet.hp = Math.max(1, Math.min(9, parseInt(event.target.value, 10) || 1));
+      event.target.value = design.behavior.fleet.hp;
+      markDirty();
+    });
+    el("bd-fleet-kind").addEventListener("change", (event) => {
+      design.behavior.fleet.kind = event.target.value;
+      markDirty();
+    });
+    el("bd-fleet-ai").addEventListener("change", (event) => {
+      design.behavior.fleet.ai = event.target.value;
+      markDirty();
+    });
+
+    el("bd-download").addEventListener("click", async () => {
+      const id = el("bd-design-select").value;
+      if (!id) { setStatus("Pick a design to download.", false); return; }
+      try {
+        const response = await fetch(API + "/" + encodeURIComponent(id) + "/export", { credentials: "same-origin" });
+        if (!response.ok) throw new Error(`Download failed (${response.status})`);
+        const url = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `starshot-boss-${id}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) { setStatus("✘ " + error.message, false); }
+    });
+    el("bd-upload").addEventListener("click", async () => {
+      const input = el("bd-import-file");
+      const file = input.files && input.files[0];
+      if (!file) { setStatus("Choose a boss design .json file first.", false); return; }
+      try {
+        const result = await call("/import", { method: "POST", body: await file.text() });
+        input.value = "";
+        await refreshList(result.design.id);
+        openDesign(result.design);
+        renderProblems(result.problems);
+        setStatus(`✔ Imported as "${result.design.name}" (${result.design.id})` +
+          (result.renamed ? " — renamed to avoid clobbering an existing design." : "."), true);
+      } catch (error) { setStatus("✘ Upload failed: " + error.message, false); }
     });
 
     el("bd-step-add").addEventListener("click", () => {

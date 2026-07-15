@@ -24,6 +24,7 @@ from starshot.rules.models import (
 )
 from starshot.rules.star_command import CAPTAINS_BY_ID, STARFALLS_BY_ID, captain_to_dict, starfall_to_dict
 from starshot.rules import star_breach as sb_data
+from starshot.rules import star_breach_spec as sb_spec
 from starshot.rules.deck_data import active_catalog
 from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
 
@@ -57,7 +58,11 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         ),
         "active_starfall_round": state.active_starfall_round,
         "starfall_bauble_number": state.starfall_bauble_number,
-        "star_breach": star_breach_to_dict(state.star_breach) if state.star_breach else None,
+        "star_breach": (
+            star_breach_to_dict(state.star_breach, round_number=state.round_number)
+            if state.star_breach
+            else None
+        ),
     }
 
 
@@ -83,34 +88,39 @@ def state_from_dict(data: dict) -> GameState:
     )
 
 
-def star_breach_to_dict(sb: StarBreachState) -> dict:
+def star_breach_to_dict(sb: StarBreachState, *, round_number: int = 1) -> dict:
+    spec = sb_spec.spec_for(sb)
     destroyed = sorted(sb.destroyed_hexes)
-    destroyed_components = sb_data.destroyed_component_ids(sb.destroyed_hexes)
+    destroyed_components = sb_spec.destroyed_component_ids(spec, sb.destroyed_hexes)
     board_hexes = sb_data.boss_board_hexes(sb.anchor_q, sb.anchor_r, sb.facing)
     return {
         "scenario_id": sb.scenario_id,
+        "boss_name": spec["name"],
         "prey_player_id": sb.prey_player_id,
         "anchor_q": sb.anchor_q,
         "anchor_r": sb.anchor_r,
         "facing": sb.facing,
         "board_hexes": [
             {"q": q, "r": r, "area": area}
-            for (q, r), area in zip(board_hexes, sb_data.BOARD_HEX_AREAS)
+            for (q, r), area in zip(board_hexes, sb_spec.board_hex_areas(spec))
         ],
         "destroyed_hexes": [[q, r] for q, r in destroyed],
         "destroyed_component_ids": sorted(destroyed_components),
         "shield_hp": dict(sb.shield_hp),
-        "shield_max": dict(sb_data.INITIAL_SHIELD_HP),
+        "shield_max": dict(spec["shield_max"]),
         "progress": sb.progress,
-        "tiers_unlocked": list(sb_data.unlocked_tiers(sb.progress)),
+        "tiers_unlocked": list(sb_spec.unlocked_tiers(spec, sb.progress)),
         "active_tiers": list(sb.active_tiers),
-        "tier_progress": {str(tier): threshold for tier, threshold in sb_data.TIER_PROGRESS.items()},
-        "expected_actions": sb_data.expected_phase_actions(destroyed_components, sb.active_tiers),
+        "tier_progress": dict(spec["tier_progress"]),
+        "expected_actions": sb_spec.expected_phase_actions(
+            spec, sb.destroyed_hexes, sb.active_tiers, round_number
+        ),
         "fleet": [fleet_craft_to_dict(craft) for craft in sb.fleet],
         "boss_movement_this_action": sb.boss_movement_this_action,
         "repaired_ship_ids_this_action": list(sb.repaired_ship_ids_this_action),
-        "boss_layout": sb_data.boss_layout_to_dict(),
+        "boss_layout": sb_spec.boss_layout_to_dict(spec),
         "roles": {role.id: sb_data.role_to_dict(role) for role in sb_data.ROLES},
+        "boss_spec": sb.boss_spec,
     }
 
 
@@ -128,6 +138,7 @@ def star_breach_from_dict(data: dict) -> StarBreachState:
         fleet=[fleet_craft_from_dict(craft) for craft in data.get("fleet", [])],
         boss_movement_this_action=data.get("boss_movement_this_action", 0),
         repaired_ship_ids_this_action=list(data.get("repaired_ship_ids_this_action", [])),
+        boss_spec=data.get("boss_spec"),
     )
 
 

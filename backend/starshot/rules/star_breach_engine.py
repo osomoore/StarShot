@@ -20,6 +20,7 @@ from starshot.rules.baubles import ship_inside_bauble
 from starshot.rules.decks import card_by_id
 from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GameConfig, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
 from starshot.rules import star_breach as sb_data
+from starshot.rules import star_breach_spec as sb_spec
 from starshot.rules.star_breach import EXPANSION_ID
 from starshot.rules.desperation import draw_desperation_card
 from starshot.rules.hex import BOARD_RADIUS, DIRECTIONS, START_INSET_FROM_CORNER, clamp_to_board, hex_distance, is_within_board, move_forward
@@ -118,35 +119,41 @@ def _assign_star_breach_roles(players: dict[str, PlayerState]) -> None:
 
 def _initialize_star_breach(state: GameState, config: GameConfig | None = None) -> None:
     nose_q, nose_r = sb_data.BOSS_START
+    design = config.star_breach_boss_design if config is not None else None
+    boss_spec = sb_spec.spec_from_design(design) if design else None
+    spec = boss_spec or sb_spec.default_spec()
     fleet = [
         FleetCraftState(
-            id=craft_id,
-            kind=kind,
-            color=color,
-            q=nose_q + offset_q,
-            r=nose_r + offset_r,
-            hp=sb_data.HUNTER_KILLER_HP,
-            max_hp=sb_data.HUNTER_KILLER_HP,
+            id=craft["id"],
+            kind=craft["kind"],
+            color=craft["color"],
+            q=nose_q + craft["offset"][0],
+            r=nose_r + craft["offset"][1],
+            hp=craft["hp"],
+            max_hp=craft["hp"],
         )
-        for craft_id, kind, color, (offset_q, offset_r) in sb_data.FLEET_SCENARIO
+        for craft in spec["fleet"]
     ]
     requested_prey = config.star_breach_prey_player_id if config is not None else None
     prey_player_id = requested_prey if requested_prey in state.players else next(iter(state.players))
+    scenario_id = f"design:{design['id']}" if design else sb_data.SCENARIO_ID
     state.star_breach = StarBreachState(
-        scenario_id=sb_data.SCENARIO_ID,
+        scenario_id=scenario_id,
         prey_player_id=prey_player_id,
         anchor_q=nose_q,
         anchor_r=nose_r,
         facing=sb_data.BOSS_START_FACING,
-        shield_hp=dict(sb_data.INITIAL_SHIELD_HP),
+        shield_hp=dict(spec["initial_shield_hp"]),
         fleet=fleet,
+        boss_spec=boss_spec,
     )
     state.event_log.append(
         {
             "type": "expansion_enabled",
             "round": state.round_number,
             "expansion_id": EXPANSION_ID,
-            "scenario_id": sb_data.SCENARIO_ID,
+            "scenario_id": scenario_id,
+            "boss_name": spec["name"],
             "prey_player_id": prey_player_id,
             "roles": {player.id: list(player.roles) for player in state.players.values()},
             "fleet": [
@@ -194,7 +201,7 @@ def _activate_star_breach_tiers(state: GameState) -> None:
     sb = state.star_breach
     if sb is None:
         return
-    unlocked = sb_data.unlocked_tiers(sb.progress)
+    unlocked = sb_spec.unlocked_tiers(sb_spec.spec_for(sb), sb.progress)
     newly_active = sorted(set(unlocked) - set(sb.active_tiers))
     if not newly_active:
         return
@@ -229,7 +236,7 @@ def _validate_star_breach_target(state: GameState, player: PlayerState, target: 
     assert sb is not None
     if target.startswith("boss:"):
         area = target.split(":", 1)[1]
-        if area not in sb_data.AREAS:
+        if area not in sb_spec.spec_for(sb)["areas"]:
             raise RulesError(f"Unknown StarBreacher target area: {area}")
         return
     if target.startswith("craft:"):
@@ -251,7 +258,7 @@ def _boss_token_hexes(sb: StarBreachState) -> tuple[tuple[int, int], ...]:
 
 def _boss_active(sb: StarBreachState) -> bool:
     """The boss fights while any internal hull hex survives."""
-    return len(sb.destroyed_hexes) < len(sb_data.BOSS_FOOTPRINT)
+    return len(sb.destroyed_hexes) < sb_spec.hull_size(sb_spec.spec_for(sb))
 
 
 def _boss_distance_to(sb: StarBreachState, q: int, r: int) -> int | None:
@@ -317,29 +324,17 @@ def _roll_d6_sum_impl(state: GameState, dice: int) -> int:
 def _boss_active_slots(state: GameState, phase_key: str) -> list[dict]:
     sb = state.star_breach
     assert sb is not None
-    destroyed_components = sb_data.destroyed_component_ids(sb.destroyed_hexes)
     # Tiers reached mid-round only power slots from the start of the next round.
-    tiers = set(sb.active_tiers)
-    for key, _kind, slots in sb_data.BOSS_PHASES:
-        if key != phase_key:
-            continue
-        active: list[dict] = []
-        for slot_type, detail in slots:
-            if slot_type == "base":
-                active.append({"slot": "base"})
-            elif slot_type == "component" and detail not in destroyed_components:
-                active.append({"slot": "component", "component_id": detail})
-            elif slot_type == "tier" and detail in tiers:
-                active.append({"slot": "tier", "tier": detail})
-        return active
-    return []
-
-
-def _boss_phase_kind(phase_key: str) -> str:
-    for key, kind, _slots in sb_data.BOSS_PHASES:
-        if key == phase_key:
-            return kind
-    raise RulesError(f"Unknown boss phase: {phase_key}")
+    return [
+        dict(slot)
+        for slot in sb_spec.active_phase_slots(
+            sb_spec.spec_for(sb),
+            phase_key,
+            sb.destroyed_hexes,
+            set(sb.active_tiers),
+            state.round_number,
+        )
+    ]
 
 
 def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
@@ -350,7 +345,8 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
     for craft in sb.fleet:
         craft.movement_this_action = 0
 
-    kind = _boss_phase_kind(phase_key)
+    spec = sb_spec.spec_for(sb)
+    kind = sb_spec.phase_kind(spec, phase_key)
     slot_results: list[dict] = []
     active_slots = _boss_active_slots(state, phase_key) if _boss_active(sb) else []
     if active_slots:
@@ -369,11 +365,12 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
             }
         )
     # Each active slot performs exactly one action: one attack, or one hex of
-    # movement.
+    # movement. Designed bosses may mix kinds within one stack, so slots can
+    # carry their own kind; stock slots fall back to the phase kind.
     for slot in active_slots:
         entry = dict(slot)
         entry["amount"] = 1
-        if kind == "move":
+        if slot.get("kind", kind) == "move":
             entry["movement"] = _move_boss_toward_prey(state, 1)
         else:
             entry["attacks"] = [_boss_attack(state)]
@@ -383,17 +380,20 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
             break
 
     craft_results: list[dict] = []
-    if state.phase != GamePhase.COMPLETE and phase_key != "starbreach":
-        for craft in sb.fleet:
-            if craft.destroyed:
-                continue
-            if kind == "move":
-                craft_results.append(_move_craft(state, craft))
-            else:
-                craft_results.append(_craft_attack(state, craft))
-                _check_star_breach_defeat(state)
-                if state.phase == GamePhase.COMPLETE:
-                    break
+    if state.phase != GamePhase.COMPLETE:
+        for craft_kind in sb_spec.fleet_action_kinds(spec, phase_key):
+            if state.phase == GamePhase.COMPLETE:
+                break
+            for craft in sb.fleet:
+                if craft.destroyed:
+                    continue
+                if craft_kind == "move":
+                    craft_results.append(_move_craft(state, craft))
+                else:
+                    craft_results.append(_craft_attack(state, craft))
+                    _check_star_breach_defeat(state)
+                    if state.phase == GamePhase.COMPLETE:
+                        break
 
     state.event_log.append(
         {
@@ -465,6 +465,7 @@ def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
         moved += 1
         sb.boss_movement_this_action += 1
         pushed.extend(_push_ships_out_of_boss(state, best_direction))
+        _collect_enemy_baubles(state, "boss", _boss_token_hexes(sb), label="starbreacher")
     return {
         "before": before,
         "after": {"anchor_q": sb.anchor_q, "anchor_r": sb.anchor_r, "facing": sb.facing},
@@ -525,7 +526,7 @@ def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
         target = prey
     boss_hexes = set(_boss_token_hexes(sb))
     moved = 0
-    for _ in range(sb_data.HUNTER_KILLER_MOVE):
+    for _ in range(sb_spec.spec_for(sb)["fleet_move"]):
         distance = hex_distance(craft.q, craft.r, target.ship.q, target.ship.r)
         if distance <= 1:
             break
@@ -544,6 +545,7 @@ def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
         craft.q, craft.r = best[2], best[3]
         craft.movement_this_action += 1
         moved += 1
+    _collect_enemy_baubles(state, "fleet", ((craft.q, craft.r),), label=craft.id)
     return {"craft_id": craft.id, "before": before, "after": [craft.q, craft.r], "moved": moved}
 
 
@@ -588,19 +590,36 @@ def _resolve_enemy_shot(
     state.event_log.append(event)
 
     sb = state.star_breach
-    if sb is not None and hit and target.id == sb.prey_player_id:
-        _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_HIT)
-        if target.ship.destroyed:
-            _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_KILL - sb_data.PROGRESS_PER_PREY_HIT)
+    if sb is not None:
+        triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
+        if triggers is None:
+            # Stock scenario rules: any hit on The Prey advances the track.
+            if hit and target.id == sb.prey_player_id:
+                _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_HIT)
+                if target.ship.destroyed:
+                    _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_KILL - sb_data.PROGRESS_PER_PREY_HIT)
+        else:
+            # Designer-selected triggers: hull damage means damage got through.
+            source = "boss" if attacker_label == "starbreacher" else "fleet"
+            if (
+                hit
+                and target.id == sb.prey_player_id
+                and event.get("damage_applied", 0) > 0
+                and f"prey_hull_damage_{source}" in triggers
+            ):
+                _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_HIT)
+            if hit and target.ship.destroyed and "player_kill" in triggers:
+                _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_KILL)
     return event
 
 
 def _advance_boss_progress(state: GameState, amount: int) -> None:
     sb = state.star_breach
     assert sb is not None
-    before_tiers = set(sb_data.unlocked_tiers(sb.progress))
+    spec = sb_spec.spec_for(sb)
+    before_tiers = set(sb_spec.unlocked_tiers(spec, sb.progress))
     sb.progress += amount
-    new_tiers = sorted(set(sb_data.unlocked_tiers(sb.progress)) - before_tiers)
+    new_tiers = sorted(set(sb_spec.unlocked_tiers(spec, sb.progress)) - before_tiers)
     state.event_log.append(
         {
             "type": "boss_progress_advanced",
@@ -610,6 +629,38 @@ def _advance_boss_progress(state: GameState, amount: int) -> None:
             "tiers_unlocked": new_tiers,
         }
     )
+
+
+def _collect_enemy_baubles(
+    state: GameState, source: str, positions: tuple[tuple[int, int], ...], *, label: str
+) -> None:
+    """Designed bosses may progress by snatching baubles: when the trigger is
+    enabled, the boss token (or a fleet craft) covering a bauble claims it
+    once and advances the track. The Fang is never taken."""
+    sb = state.star_breach
+    assert sb is not None
+    triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
+    if triggers is None or f"bauble_pickup_{source}" not in triggers:
+        return
+    from starshot.rules.baubles import BAUBLE_RADIUS
+
+    for bauble in state.baubles:
+        if bauble.is_fang or "starbreacher" in bauble.claimed_by:
+            continue
+        if any(
+            hex_distance(q, r, bauble.q, bauble.r) <= BAUBLE_RADIUS for q, r in positions
+        ):
+            bauble.claimed_by.append("starbreacher")
+            state.event_log.append(
+                {
+                    "type": "boss_bauble_pickup",
+                    "round": state.round_number,
+                    "source": source,
+                    "collector": label,
+                    "bauble_id": bauble.id,
+                }
+            )
+            _advance_boss_progress(state, 1)
 
 
 def _boss_attack(state: GameState) -> dict:
@@ -648,7 +699,7 @@ def _craft_attack(state: GameState, craft: FleetCraftState) -> dict:
         attacker_label=craft.id,
         attacker_position=(craft.q, craft.r),
         distance=distance,
-        aim_bonus=sb_data.HUNTER_KILLER_AIM,
+        aim_bonus=sb_spec.spec_for(state.star_breach)["fleet_aim"],
     )
     event["craft_id"] = craft.id
     return event
@@ -741,7 +792,7 @@ def _boss_token_hex_areas(sb: StarBreachState) -> dict[tuple[int, int], str]:
     """Map each board-token hex to the target area it counts as when struck."""
     if not _boss_active(sb):
         return {}
-    return dict(zip(_boss_token_hexes(sb), sb_data.BOARD_HEX_AREAS))
+    return dict(zip(_boss_token_hexes(sb), sb_spec.board_hex_areas(sb_spec.spec_for(sb))))
 
 
 def _nearest_boss_area(sb: StarBreachState, q: int, r: int) -> str | None:
@@ -824,12 +875,9 @@ def _resolve_volley_vs_boss(
 ) -> None:
     sb = state.star_breach
     assert sb is not None
+    spec = sb_spec.spec_for(sb)
     profile = _collect_attack_profile(stack, attack_cards)
-    area_has_intact_hull = any(
-        (q, r) not in sb.destroyed_hexes
-        for q, r in sb_data.BOSS_FOOTPRINT
-        if sb_data.region_of_hex(q, r) == area
-    )
+    area_has_intact_hull = sb_spec.area_has_intact_hull(spec, area, sb.destroyed_hexes)
     if not area_has_intact_hull or not _boss_active(sb):
         state.event_log.append(
             {
@@ -884,7 +932,7 @@ def _resolve_volley_vs_boss(
                 desperation_cards_drawn += 1
                 shots.append({"result": "glancing_blow", "roll": lane_roll, "ace_shift": ace_shift, "desperation_card_id": drawn.id})
                 continue
-            local = sb_data.first_intact_lane_hex(area, adjusted_roll, sb.destroyed_hexes)
+            local = sb_spec.first_intact_lane_hex(spec, area, adjusted_roll, sb.destroyed_hexes)
             if local is None:
                 shots.append({"result": "overpenetration", "roll": lane_roll, "ace_shift": ace_shift, "lane": adjusted_roll})
                 continue
@@ -897,13 +945,13 @@ def _resolve_volley_vs_boss(
                 "lane": adjusted_roll,
                 "hex": [local[0], local[1]],
             }
-            component = sb_data.BOSS_COMPONENT_BY_HEX.get(local)
+            component = sb_spec.component_by_hex(spec, local[0], local[1])
             if component is not None:
-                components_destroyed.append(component.id)
-                shot["component_id"] = component.id
-                shot["component_type"] = component.component_type
-                if component.component_type == "shield_generator":
-                    for arc in component.shield_arcs:
+                components_destroyed.append(component["id"])
+                shot["component_id"] = component["id"]
+                shot["component_type"] = component["type"]
+                if component["type"] == "shield_generator":
+                    for arc in component["shield_arcs"]:
                         sb.shield_hp[arc] = 0
             shots.append(shot)
 
@@ -940,28 +988,27 @@ def _resolve_volley_vs_boss(
 
 
 def _shield_generator_intact(sb: StarBreachState, area: str) -> bool:
-    """Whether the arc's shield still has power. The nose (forward) charge is
-    intrinsic — it only depletes; the other arcs die with their generator."""
-    destroyed_components = sb_data.destroyed_component_ids(sb.destroyed_hexes)
-    for component in sb_data.BOSS_COMPONENTS:
-        if component.component_type == "shield_generator" and area in component.shield_arcs:
-            return component.id not in destroyed_components
-    return area == "forward"
+    """Whether the arc's shield still has power. Arcs with no assigned
+    generator carry an intrinsic charge — it only depletes; the rest die with
+    their generator hex."""
+    return sb_spec.shield_generator_intact(sb_spec.spec_for(sb), area, sb.destroyed_hexes)
 
 
 def _fighting_ace_lane_choice(sb: StarBreachState, area: str, lane_roll: int) -> tuple[int, int]:
     """Deterministic Fighting Ace policy: shift the lane roll by ±1 when that
     turns a Glancing Blow into a strike or steers the hit onto a component."""
 
+    spec = sb_spec.spec_for(sb)
+
     def lane_score(roll: int) -> float:
         if roll < 1 or roll > 8:
             return -1.0
         if roll == sb_data.GLANCING_BLOW_ROLL:
             return 0.5  # a desperation card is worth something, hull damage more
-        local = sb_data.first_intact_lane_hex(area, roll, sb.destroyed_hexes)
+        local = sb_spec.first_intact_lane_hex(spec, area, roll, sb.destroyed_hexes)
         if local is None:
             return 0.0
-        return 3.0 if local in sb_data.BOSS_COMPONENT_BY_HEX else 1.0
+        return 3.0 if sb_spec.component_by_hex(spec, local[0], local[1]) else 1.0
 
     best_roll = lane_roll
     best_score = lane_score(lane_roll)

@@ -37,6 +37,14 @@ LANE_ROLLS = tuple(range(2, 9))
 STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger")
 ACTION_TYPES = ("move", "shoot")
 
+# Behavior options (single choices for now; enums so the schema can grow).
+BOSS_AIS = ("hunter_killer",)
+FLEET_KINDS = ("hunter_killer",)
+FLEET_AIS = ("hunter_killer",)
+FLEET_MAX_COUNT = 6
+# Fleet craft act during the numbered boss stacks (not the StarBreach stack).
+FLEET_STACKS = ("0.5", "1.5", "2.5", "3.5")
+
 TRIGGER_TYPES = (
     "bauble_pickup_boss",
     "bauble_pickup_fleet",
@@ -57,6 +65,13 @@ def safe_design_id(value: str) -> str:
     return slug[:60]
 
 
+def default_behavior() -> dict:
+    return {
+        "boss_ai": "hunter_killer",
+        "fleet": {"count": 0, "kind": "hunter_killer", "hp": 3, "ai": "hunter_killer", "actions": []},
+    }
+
+
 def empty_design(design_id: str, name: str) -> dict:
     return {
         "id": design_id,
@@ -65,6 +80,7 @@ def empty_design(design_id: str, name: str) -> dict:
         "tiles": [],
         "shield_regions": [],
         "progression": {"triggers": [], "steps": []},
+        "behavior": default_behavior(),
     }
 
 
@@ -145,7 +161,65 @@ def _normalize_region(raw, index: int) -> dict:
         if not 0 <= facing <= 5:
             raise BossDesignError(f"{label}.lanes[{i}].facing must be 0-5.")
         normalized_lanes.append({"roll": roll, "q": q, "r": r, "facing": facing})
-    return {"number": number, "hexes": seen, "generator": generator, "lanes": normalized_lanes}
+    max_charges = _as_int(raw.get("max_charges", raw.get("charges", 3)), f"{label}.max_charges")
+    charges = _as_int(raw.get("charges", max_charges), f"{label}.charges")
+    if not 0 <= max_charges <= 9:
+        raise BossDesignError(f"{label}.max_charges must be 0-9.")
+    if not 0 <= charges <= max_charges:
+        raise BossDesignError(f"{label}.charges must be 0-{max_charges} (its max_charges).")
+    return {
+        "number": number,
+        "hexes": seen,
+        "generator": generator,
+        "lanes": normalized_lanes,
+        "charges": charges,
+        "max_charges": max_charges,
+    }
+
+
+def _normalize_behavior(raw) -> dict:
+    if raw is None:
+        return default_behavior()
+    if not isinstance(raw, dict):
+        raise BossDesignError("behavior must be an object.")
+    boss_ai = raw.get("boss_ai", "hunter_killer")
+    if boss_ai not in BOSS_AIS:
+        raise BossDesignError(f"behavior.boss_ai must be one of {', '.join(BOSS_AIS)}.")
+    fleet_raw = raw.get("fleet") or {}
+    if not isinstance(fleet_raw, dict):
+        raise BossDesignError("behavior.fleet must be an object.")
+    count = _as_int(fleet_raw.get("count", 0), "behavior.fleet.count")
+    if not 0 <= count <= FLEET_MAX_COUNT:
+        raise BossDesignError(f"behavior.fleet.count must be 0-{FLEET_MAX_COUNT}.")
+    kind = fleet_raw.get("kind", "hunter_killer")
+    if kind not in FLEET_KINDS:
+        raise BossDesignError(f"behavior.fleet.kind must be one of {', '.join(FLEET_KINDS)}.")
+    hp = _as_int(fleet_raw.get("hp", 3), "behavior.fleet.hp")
+    if not 1 <= hp <= 9:
+        raise BossDesignError("behavior.fleet.hp must be 1-9.")
+    ai = fleet_raw.get("ai", "hunter_killer")
+    if ai not in FLEET_AIS:
+        raise BossDesignError(f"behavior.fleet.ai must be one of {', '.join(FLEET_AIS)}.")
+    actions_raw = fleet_raw.get("actions", [])
+    if not isinstance(actions_raw, list):
+        raise BossDesignError("behavior.fleet.actions must be a list.")
+    actions: list[dict] = []
+    for index, entry in enumerate(actions_raw):
+        if not isinstance(entry, dict):
+            raise BossDesignError(f"behavior.fleet.actions[{index}] must be an object.")
+        stack = str(entry.get("stack", ""))
+        if stack not in FLEET_STACKS:
+            raise BossDesignError(f"behavior.fleet.actions[{index}].stack must be one of {', '.join(FLEET_STACKS)}.")
+        action = entry.get("action")
+        if action not in ACTION_TYPES:
+            raise BossDesignError(f"behavior.fleet.actions[{index}].action must be 'move' or 'shoot'.")
+        normalized = {"stack": stack, "action": action}
+        if normalized not in actions:
+            actions.append(normalized)
+    return {
+        "boss_ai": boss_ai,
+        "fleet": {"count": count, "kind": kind, "hp": hp, "ai": ai, "actions": actions},
+    }
 
 
 def _normalize_step(raw, index: int) -> dict:
@@ -243,6 +317,7 @@ def normalize_design(raw: dict) -> dict:
         "tiles": tiles,
         "shield_regions": regions,
         "progression": {"triggers": triggers, "steps": steps},
+        "behavior": _normalize_behavior(raw.get("behavior")),
     }
 
 
@@ -288,6 +363,8 @@ def validate_design(design: dict) -> list[str]:
         problems.append("The ship has no tiles yet.")
     elif not _connected(footprint):
         problems.append("The hull is not fully connected.")
+    if tiles and not design["shield_regions"]:
+        problems.append("The ship needs at least one shield region so players can target and damage it.")
 
     core_numbers = [tile["number"] for tile in tiles if tile["type"] == "core"]
     for number in sorted(set(n for n in core_numbers if core_numbers.count(n) > 1)):
@@ -351,7 +428,16 @@ def validate_design(design: dict) -> list[str]:
         if step["kind"] == "breacher_link" and "core" in step and step["core"] not in core_set:
             problems.append(f"Progression step {index + 1} links to core {step['core']}, which is not on the ship.")
 
+    fleet = design["behavior"]["fleet"]
+    if fleet["count"] > 0 and not fleet["actions"]:
+        problems.append("The fleet has craft but no ticked actions — it would never move or shoot.")
+
     return problems
+
+
+def is_design_valid(design: dict) -> bool:
+    """Playable = normalized and free of design problems."""
+    return not validate_design(design)
 
 
 # ── storage ─────────────────────────────────────────────────────────────────
@@ -369,6 +455,10 @@ def list_designs() -> list[dict]:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
+            try:
+                valid = is_design_valid(normalize_design(data))
+            except BossDesignError:
+                valid = False
             entries.append(
                 {
                     "id": data.get("id", path.stem),
@@ -376,6 +466,7 @@ def list_designs() -> list[dict]:
                     "tile_count": len(data.get("tiles", [])),
                     "region_count": len(data.get("shield_regions", [])),
                     "step_count": len(data.get("progression", {}).get("steps", [])),
+                    "valid": valid,
                 }
             )
     return entries

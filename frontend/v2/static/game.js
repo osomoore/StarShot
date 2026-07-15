@@ -1084,6 +1084,13 @@
     }
     const AREA_FILL = { forward: "217,166,255", port: "170,110,190", rear: "190,120,80", starboard: "110,170,120" };
     const AREA_STROKE = { forward: "#9ee7ff", port: "#bcb0ff", rear: "#ffd08a", starboard: "#9fe8b6" };
+    // Designed bosses name their areas after shield regions; give them stable
+    // colors by position in the layout's area list.
+    const EXTRA_FILL = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
+    const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
+    const layoutAreas = (sb.boss_layout.areas || []);
+    const areaFill = (area) => AREA_FILL[area] || EXTRA_FILL[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_FILL.length];
+    const areaStroke = (area) => AREA_STROKE[area] || EXTRA_STROKE[Math.max(0, layoutAreas.indexOf(area)) % EXTRA_STROKE.length];
     const BADGE = { shield_generator: "SG", firing_computer: "FC", fuel_tank: "FT", core: "◉" };
     const size = 13, sq = Math.sqrt(3);
     const cells = sb.boss_layout.footprint || [];
@@ -1100,7 +1107,7 @@
     for (const cell of cells) {
       const x = size * 1.5 * cell.q, y = size * sq * (cell.r + cell.q / 2);
       const dead = destroyed.has(cell.q + "," + cell.r);
-      const tint = AREA_FILL[cell.area] || "150,150,150";
+      const tint = cell.area ? areaFill(cell.area) : "150,150,150";
       const pts = [];
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 180) * (60 * i);
@@ -1119,7 +1126,7 @@
     const qs = cells.map((c) => c.q), rs = cells.map((c) => size * sq * (c.r + c.q / 2));
     let laneSvg = "";
     for (const [area, lanes] of Object.entries(sb.boss_layout.damage_lanes || {})) {
-      const color = AREA_STROKE[area] || "#d9a6ff";
+      const color = areaStroke(area);
       for (const [roll, lane] of Object.entries(lanes || {})) {
         if (!Array.isArray(lane) || lane.length < 2) continue;
         const points = lane.map(([q, r]) => xy(q, r).map((n) => n.toFixed(1)).join(",")).join(" ");
@@ -1144,25 +1151,28 @@
             marker-end="url(#bossLaneArrow)"/></g>`;
       }
     }
+    // The decorative shield-arc ellipses are tuned to the stock four-arc hull;
+    // designed bosses show their shields in the table instead.
     const centerByArea = { forward: [0, -2], port: [-5, 2], rear: [0, 3], starboard: [5, -3] };
     const arcByArea = { forward: [-150, -30], port: [145, 250], rear: [35, 145], starboard: [-70, 35] };
     let shieldSvg = "";
-    for (const area of ["forward", "port", "rear", "starboard"]) {
+    for (const area of layoutAreas) {
       const hp = sb.shield_hp?.[area] ?? 0;
-      if (!hp) continue;
+      if (!hp || !centerByArea[area]) continue;
       const center = centerByArea[area];
       const angles = arcByArea[area];
       const [cx, cy] = xy(center[0], center[1]);
       for (let layer = 0; layer < hp; layer++) {
         shieldSvg += `<path class="boss-detail-shield" d="${arcPath(cx, cy, size * (3.35 + layer * .34), size * (2.55 + layer * .25), angles[0], angles[1])}"
-          stroke="${AREA_STROKE[area]}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
+          stroke="${areaStroke(area)}" opacity="${Math.max(.45, .88 - layer * .12).toFixed(2)}"><title>${esc(area)} shield layer ${layer + 1}</title></path>`;
       }
     }
     const minX = Math.min(...qs) * size * 1.5 - size * 5.1, maxX = Math.max(...qs) * size * 1.5 + size * 5.1;
     const minY = Math.min(...rs) - size * 4.3, maxY = Math.max(...rs) + size * 4.3;
-    const shields = ["forward", "port", "rear", "starboard"].map((area) => {
+    const shields = layoutAreas.map((area) => {
       const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
-      return `<td>${esc(area)}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td>`;
+      const label = AREA_STROKE[area] ? area : `region ${area}`;
+      return `<td>${esc(label)}</td><td>${"🛡".repeat(hp) || "—"} ${hp}/${max}</td>`;
     }).map((row) => `<tr>${row}</tr>`).join("");
     const PHASE_NAMES = { "0.5": "Action 0.5 (attack)", "1.5": "Action 1.5 (move)", "2.5": "Action 2.5 (move)", "3.5": "Action 3.5 (attack)", starbreach: "StarBreach (attack)" };
     const expected = Object.entries(sb.expected_actions || {})
@@ -1183,7 +1193,7 @@
     box.className = "picker";
     box.style.maxWidth = "640px";
     box.innerHTML = `
-      <h3>☄ The StarBreacher — Damage Board</h3>
+      <h3>☄ ${esc(sb.boss_name || "The StarBreacher")} — Damage Board</h3>
       <div class="boss-modal-grid">
         <div class="boss-modal-map">
           <svg viewBox="${minX} ${minY} ${maxX - minX} ${maxY - minY}" style="width:100%;max-height:300px">
@@ -1225,14 +1235,29 @@
     const destroyed = new Set((sb.destroyed_hexes || []).map(([q, r]) => q + "," + r));
     const areaAlive = {};
     for (const cell of (sb.boss_layout || {}).footprint || []) {
-      if (!destroyed.has(cell.q + "," + cell.r)) areaAlive[cell.area] = true;
+      if (cell.area && !destroyed.has(cell.q + "," + cell.r)) areaAlive[cell.area] = true;
+    }
+    // Designed bosses: an area also lives while any of its damage lanes can
+    // still bite (mirrors the engine's area_hexes check). Stock areas are
+    // exactly their footprint cells, so this only applies to designs.
+    const laneBackedAreas = String(sb.scenario_id || "").startsWith("design:");
+    for (const [area, lanes] of Object.entries(laneBackedAreas ? (sb.boss_layout || {}).damage_lanes || {} : {})) {
+      if (areaAlive[area]) continue;
+      for (const lane of Object.values(lanes || {})) {
+        if ((lane || []).some(([q, r]) => !destroyed.has(q + "," + r))) {
+          areaAlive[area] = true;
+          break;
+        }
+      }
     }
     const options = [];
-    for (const area of ["forward", "port", "rear", "starboard"]) {
+    const bossLabel = sb.boss_name || "StarBreacher";
+    for (const area of (sb.boss_layout || {}).areas || []) {
       if (!areaAlive[area]) continue;
+      const areaLabel = /^\d+$/.test(area) ? `region ${area}` : area;
       options.push({
         icon: "☄", value: "boss:" + area,
-        label: `StarBreacher — ${area}`,
+        label: `${bossLabel} — ${areaLabel}`,
         sub: `shield ${sb.shield_hp?.[area] ?? 0}/${sb.shield_max?.[area] ?? 3}`,
       });
     }

@@ -67,6 +67,27 @@
 .bd-step input[type="number"] { width: 58px; }
 .bd-step-actions { display: flex; gap: 4px; }
 
+.bd-field { display: flex; flex-direction: column; gap: 4px; color: var(--ink-dim); font-size: 13px; margin-bottom: 10px; }
+.bd-field select, .bd-fleet-row input, .bd-fleet-row select {
+  background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
+  color: var(--ink); padding: 6px 8px; font-size: 13px; font-family: inherit;
+}
+.bd-fleet-row { display: flex; gap: 14px; margin-bottom: 8px; }
+.bd-fleet-row label { display: flex; align-items: center; gap: 6px; color: var(--ink-dim); font-size: 13px; }
+.bd-fleet-row input[type="number"] { width: 58px; }
+.bd-fleet-actions { border-collapse: collapse; font-size: 13px; color: var(--ink); }
+.bd-fleet-actions th, .bd-fleet-actions td {
+  border: 1px solid var(--panel-edge); padding: 5px 12px; text-align: center;
+}
+.bd-fleet-actions th { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.bd-charges-row { display: flex; gap: 14px; }
+.bd-charges-row label { display: flex; align-items: center; gap: 6px; }
+.bd-charges-row input {
+  width: 52px; background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
+  color: var(--ink); padding: 5px 7px;
+}
+#bd-import-file { max-width: 190px; color: var(--ink-dim); font-size: 12px; }
+
 .bd-problems { margin-top: 12px; font-size: 13px; }
 .bd-problems .ok-note { color: #9fd8ae; }
 .bd-problem { color: #ffcf9a; margin-top: 3px; }

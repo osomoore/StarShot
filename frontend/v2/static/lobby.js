@@ -23,6 +23,8 @@
   let aiLevel = "deck_hand";
   let currentUser = null;
   let starBreachPreySelection = "__host__";
+  let starBreachBossSelection = "";
+  let bossDesignsLoaded = false;
   let starCommandActive = false;
   let starBreachActive = false;
   const activeExpansions = () => [
@@ -158,6 +160,7 @@
     const total = 1 + crew.length + openSeats;
     const minShips = starBreachActive ? 1 : 2;
     updateStarBreachPreyPicker();
+    updateStarBreachBossPicker();
     const button = document.getElementById("btn-create-match");
     button.disabled = total < minShips || total > 4;
     button.textContent = total < minShips ? "🏴‍☠ Pick at least one foe" : `🏴‍☠ Launch Raid (${total} ships)`;
@@ -182,6 +185,37 @@
     label.querySelector("select").addEventListener("change", (event) => {
       starBreachPreySelection = event.target.value || "__host__";
     });
+    ensureStarBreachBossPicker(box);
+  }
+
+  function ensureStarBreachBossPicker(box) {
+    if (document.getElementById("star-breach-boss")) return;
+    const label = document.createElement("label");
+    label.className = "open-seats-label star-breach-boss-label hidden";
+    label.innerHTML = `StarBreach Boss:
+      <select id="star-breach-boss"><option value="">The StarBreacher (default)</option></select>`;
+    box.appendChild(label);
+    label.querySelector("select").addEventListener("change", (event) => {
+      starBreachBossSelection = event.target.value || "";
+    });
+  }
+
+  async function updateStarBreachBossPicker() {
+    const label = document.querySelector(".star-breach-boss-label");
+    const select = document.getElementById("star-breach-boss");
+    if (!label || !select) return;
+    label.classList.toggle("hidden", !starBreachActive);
+    if (!starBreachActive || bossDesignsLoaded) return;
+    bossDesignsLoaded = true;
+    try {
+      const data = await API.bossDesigns();
+      for (const entry of data.designs || []) {
+        const option = document.createElement("option");
+        option.value = entry.id;
+        option.textContent = entry.name + " (custom)";
+        select.appendChild(option);
+      }
+    } catch (err) { bossDesignsLoaded = false; /* transient; retry next toggle */ }
   }
 
   function updateStarBreachPreyPicker() {
@@ -768,6 +802,7 @@
           open_seats: openSeats,
           active_expansions: activeExpansions(),
           star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
+          star_breach_boss_design_id: starBreachActive ? (starBreachBossSelection || null) : null,
         });
         crew = [];
         updateCrewUI();

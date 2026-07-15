@@ -78,6 +78,9 @@ class GameConfig:
     debug_start_with_attack_desperation_card: bool = False
     active_expansions: tuple[str, ...] = ()
     star_breach_prey_player_id: str | None = None
+    # A normalized boss-designer document (see starshot.v2.boss_designs); when
+    # set, StarBreach games fight this design instead of the stock scenario.
+    star_breach_boss_design: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,6 +226,9 @@ class StarBreachState:
     fleet: list[FleetCraftState] = field(default_factory=list)
     boss_movement_this_action: int = 0
     repaired_ship_ids_this_action: list[str] = field(default_factory=list)
+    # Compiled boss spec for designed bosses (see rules/star_breach_spec.py);
+    # None means the stock Bauble Breacher scenario.
+    boss_spec: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)

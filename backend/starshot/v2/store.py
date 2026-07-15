@@ -138,6 +138,7 @@ _MIGRATIONS = (
     "ALTER TABLE leaderboard_results ADD COLUMN ship_losses INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE feedback ADD COLUMN is_bug_report INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE feedback ADD COLUMN game_log TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE matches ADD COLUMN star_breach_boss_design_id TEXT",
 )
 
 
@@ -659,13 +660,14 @@ class V2Store:
         ai_level: str = "deck_hand",
         active_expansions: list[str] | None = None,
         star_breach_prey_player_id: str | None = None,
+        star_breach_boss_design_id: str | None = None,
     ) -> str:
         match_id = uuid.uuid4().hex[:12]
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO matches
-                   (id, name, status, host_user_id, seats, ai_level, active_expansions_json, star_breach_prey_player_id, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, name, status, host_user_id, seats, ai_level, active_expansions_json, star_breach_prey_player_id, star_breach_boss_design_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match_id,
                     name,
@@ -675,6 +677,7 @@ class V2Store:
                     ai_level,
                     json.dumps(active_expansions or []),
                     star_breach_prey_player_id,
+                    star_breach_boss_design_id,
                     _now(),
                     _now(),
                 ),

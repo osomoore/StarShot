@@ -356,6 +356,7 @@ class CreateMatchRequest(BaseModel):
     open_seats: int = Field(default=0, ge=0, le=3)
     active_expansions: list[str] = Field(default_factory=list, max_length=4)
     star_breach_prey_player_id: str | None = Field(default=None, max_length=80)
+    star_breach_boss_design_id: str | None = Field(default=None, max_length=80)
 
 
 def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> str | None:
@@ -393,6 +394,14 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"Unknown AI level: {body.ai_level}")
     active_expansions = _validated_expansions(body.active_expansions)
     prey_player_id = _resolve_requested_prey_id(body, user["username"]) if "star_breach" in active_expansions else None
+    boss_design_id = body.star_breach_boss_design_id if "star_breach" in active_expansions else None
+    if boss_design_id:
+        from starshot.v2.service import _load_playable_boss_design
+
+        try:
+            _load_playable_boss_design(boss_design_id)  # fail fast at creation
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     total = 1 + len(body.ai_types) + body.open_seats
     minimum = 1 if "star_breach" in active_expansions else 2
     if total < minimum or total > 4:
@@ -408,6 +417,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         ai_level=body.ai_level,
         active_expansions=active_expansions,
         star_breach_prey_player_id=prey_player_id,
+        star_breach_boss_design_id=boss_design_id,
     )
     store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"])
     counts: dict[str, int] = {}

@@ -104,12 +104,26 @@ Admin tools:
   fuel tank / core), shield regions with a powering generator and seven d8
   damage lanes (rolls 2-8, each with an entry face), and a progression track
   (triggers + filler/action-link/breacher-link/ability-trigger steps).
-  Designs are JSON documents in `resources/boss_designs/`; they are design
-  data only and are not yet consumed by the rules engine. Kept insulated:
-  schema/validation/storage in `backend/starshot/v2/boss_designs.py` (no
-  FastAPI), routes in `backend/starshot/v2/boss_designer_api.py`, UI in
+  Also: per-region shield start/max charges, a Behavior tab (boss AI —
+  hunter-killer only for now; fleet craft count/type/HP/AI and a tick-box
+  grid of fleet actions per boss stage), JSON download/upload of designs,
+  and delete-with-confirmation. Designs are JSON documents in
+  `resources/boss_designs/`. Kept insulated: schema/validation/storage in
+  `backend/starshot/v2/boss_designs.py` (no FastAPI), routes in
+  `backend/starshot/v2/boss_designer_api.py`, UI in
   `frontend/v2/static/bossdesigner.js` + `bossdesigner.css`; tests in
   `tests/test_boss_designer.py`.
+- Designed bosses are playable: `backend/starshot/rules/star_breach_spec.py`
+  compiles a design into a JSON "boss spec" (hull, areas = shield regions,
+  damage-lane rays, phases from firing computers / fuel tanks / progression
+  steps, fleet, triggers); `star_breach_engine.py` and serialization read all
+  boss data through its accessors. `spec_for(sb)` returns the stock scenario
+  when `StarBreachState.boss_spec` is None, so base games are untouched. The
+  spec is stored in game state, so design edits never affect games in flight.
+  Match creation accepts `star_breach_boss_design_id` (matches table column,
+  lobby "StarBreach Boss" dropdown via public `GET /api/v2/boss-designs`);
+  only problem-free designs are offered/accepted — incomplete designs can be
+  saved but not played. Tests in `tests/test_boss_spec.py`.
 
 Not implemented yet:
 
@@ -144,4 +158,4 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 216 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 225 tests passing as of last session (2 API test modules require `fastapi` installed).

@@ -275,10 +275,33 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
     return state
 
 
+def _load_playable_boss_design(design_id: str | None) -> dict | None:
+    """Resolve a boss design id chosen at match creation. Only validated
+    (problem-free) designs may enter a game."""
+    if not design_id:
+        return None
+    from starshot.v2 import boss_designs
+
+    design = boss_designs.load_design(design_id)
+    if design is None:
+        raise ValueError(f"Boss design '{design_id}' no longer exists.")
+    problems = boss_designs.validate_design(design)
+    if problems:
+        raise ValueError(
+            f"Boss design '{design['name']}' is not battle-ready: {problems[0]}"
+        )
+    return design
+
+
 def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None, seed: int | None = None) -> str:
     player_ids = tuple(seat["player_id"] for seat in match["seat_list"])
     deck_path = deck_path or core_deck_path()
     active_expansions = tuple(match.get("active_expansions") or ())
+    boss_design = (
+        _load_playable_boss_design(match.get("star_breach_boss_design_id"))
+        if "star_breach" in active_expansions
+        else None
+    )
     with deck_set_override(deck_path):
         state = create_initial_state(
             GameConfig(
@@ -286,6 +309,7 @@ def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None,
                 seed=seed,
                 active_expansions=active_expansions,
                 star_breach_prey_player_id=match.get("star_breach_prey_player_id"),
+                star_breach_boss_design=boss_design,
             )
         )
     state = advance_game(state, match, deck_path)

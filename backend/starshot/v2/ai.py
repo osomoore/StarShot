@@ -910,13 +910,17 @@ def _coop_boss_target(state: GameState, pos: Pos) -> tuple[str, tuple[int, int]]
     if sb is None:
         return None
     from starshot.rules import star_breach as sb_data
+    from starshot.rules import star_breach_spec as sb_spec
 
-    if len(sb.destroyed_hexes) >= len(sb_data.BOSS_FOOTPRINT):
+    spec = sb_spec.spec_for(sb)
+    if len(sb.destroyed_hexes) >= sb_spec.hull_size(spec):
         return None
     token = sb_data.boss_board_hexes(sb.anchor_q, sb.anchor_r, sb.facing)
-    hex_q, hex_r = min(token, key=lambda h: hex_distance(pos.q, pos.r, h[0], h[1]))
-    area = dict(zip(token, sb_data.BOARD_HEX_AREAS))[(hex_q, hex_r)]
-    return f"boss:{area}", (hex_q, hex_r)
+    areas = dict(zip(token, sb_spec.board_hex_areas(spec)))
+    if not areas:
+        return None
+    hex_q, hex_r = min(areas, key=lambda h: hex_distance(pos.q, pos.r, h[0], h[1]))
+    return f"boss:{areas[(hex_q, hex_r)]}", (hex_q, hex_r)
 
 
 def _coop_craft_target(state: GameState, pos: Pos) -> tuple[str, tuple[int, int]] | None:
