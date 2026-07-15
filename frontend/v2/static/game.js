@@ -202,6 +202,20 @@
     } catch (err) {}
   }
 
+  /* playEvents() drives a long async animation loop; if anything in it throws
+     (a rendering bug, an unexpected event shape, …), every call site below
+     awaits or chains off it without a catch, so the corrective final
+     renderAll() would silently never run and the UI would stay frozen mid-
+     replay. Route every call through here so a broken replay always still
+     ends with a renderAll() that snaps the UI back to the true server state. */
+  async function playEventsSafely(events) {
+    try {
+      await playEvents(events);
+    } catch (error) {
+      console.error("StarShot: replay animation failed; snapping to current state.", error);
+    }
+  }
+
   function canBuildOrders(player = myPlayer()) {
     return view && view.phase === "give_orders" && player
       && !player.has_submitted_orders && !player.eliminated && !(player.ship || {}).destroyed;
@@ -380,7 +394,7 @@
     if (fresh.some(isVisualEvent)) {
       animating = true;
       renderAll();        // draw ships/baubles first so the replay has actors
-      playEvents(fresh).then(renderAll);
+      playEventsSafely(fresh).then(renderAll);
     } else {
       renderAll();
     }
@@ -417,7 +431,7 @@
       hidePicker();
       animating = true;
       renderAll();
-      await playEvents(view.event_log || []);
+      await playEventsSafely(view.event_log || []);
       renderAll();
     });
   }
@@ -1015,14 +1029,17 @@
     els["deck-count"].textContent = me ? me.deck_count : 0;
     els["discard-count"].textContent = me ? (me.discard || []).length : 0;
 
+    const ordering = view.phase === "give_orders" && me && !me.has_submitted_orders && !me.eliminated && !(me.ship || {}).destroyed;
+
     // While the round replays, keep the captain's submitted orders on the
-    // table and highlight each stack as it plays out.
-    if (animating && replayOrders) {
+    // table and highlight each stack as it plays out — but never let a
+    // stuck, overlapping, or slow-to-finish replay block placing fresh
+    // orders once the server has actually moved the game on. The real
+    // current state (view.phase / round_number) always wins.
+    if (animating && replayOrders && replayOrders.round === view.round_number && !ordering) {
       renderReplayOrders(slotsArea, handArea);
       return;
     }
-
-    const ordering = view.phase === "give_orders" && me && !me.has_submitted_orders && !me.eliminated && !(me.ship || {}).destroyed;
     const needsCaptain = ordering && me.captain_options && me.captain_options.length && !me.captain;
     els["btn-submit-orders"].disabled = !ordering || needsCaptain;
     els["btn-clear-orders"].disabled = !ordering || needsCaptain;
@@ -2941,13 +2958,20 @@
         if (replayOrdersByRound) {
           replayOrders = replayOrdersByRound[event.round] || null;
           if (replayOrders) replayOrders.active = null;
-          renderOrdersPanel();
         }
         if (replayBossState) {
           replayBossState.phaseCursor = null;
           replayBossState.phaseResolving = null;
-          refreshBossWidgets();
         }
+        if (event.round === view.round_number) {
+          // The replay has caught up to the live round: stop leaning on
+          // interpolated/replay positions and snap the board straight to
+          // the server's truth, so nothing looks stale once give-orders
+          // opens (even before this replay call finishes winding down).
+          Board.renderShips(view.players, seatOrder(), you);
+        }
+        renderOrdersPanel();
+        refreshBossWidgets();
         await wait(700);
         return;
       case "action_revealed":
@@ -3357,7 +3381,7 @@
     });
     document.getElementById("btn-endgame-replay").addEventListener("click", async () => {
       overlay.classList.add("hidden");
-      await playEvents(view.event_log || []);
+      await playEventsSafely(view.event_log || []);
       renderAll();
       showEndgame();
     });
@@ -3464,7 +3488,7 @@
       if (!view || animating) return;
       animating = true;
       renderAll();
-      await playEvents(view.event_log || []);
+      await playEventsSafely(view.event_log || []);
       renderAll();
     });
   });
