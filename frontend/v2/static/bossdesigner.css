@@ -155,6 +155,53 @@
   stroke: #fff; stroke-width: 2.4; filter: drop-shadow(0 0 6px rgba(255,255,255,.9));
 }
 
+/* printable boss-sheet export */
+.bd-print {
+  min-height: 66vh;
+  max-height: 72vh;
+  overflow: auto;
+  padding: 10px;
+  background: #060b15;
+}
+.bd-print-preview {
+  width: min(100%, 920px);
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 10px 34px rgba(0,0,0,.35);
+}
+.bd-print-preview svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.bd-print-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+.bd-print-controls label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.bd-print-controls select {
+  background: #0a1020;
+  border: 1px solid var(--panel-edge);
+  border-radius: 6px;
+  color: var(--ink);
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.bd-print-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
 /* admin: player-design library bar */
 .bd-player-library { margin-top: 6px; }
 .bd-player-library select { max-width: 420px; }

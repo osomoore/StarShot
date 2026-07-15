@@ -73,6 +73,10 @@
   let currentRegion = null; // shield region number being edited
   let shieldSub = "hexes";  // hexes | lanes
   let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
+  let printTone = "color";  // color | bw
+  let printOptions = {
+    lanes: true, stacks: true, stackLinks: true, components: true, progression: true, fleet: true,
+  };
 
   // ── tiny helpers ─────────────────────────────────────────────────────────
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -452,9 +456,11 @@
     el("bd-panel-progression").classList.toggle("hidden", mode !== "progression");
     el("bd-panel-stacks").classList.toggle("hidden", mode !== "stacks");
     el("bd-panel-behavior").classList.toggle("hidden", mode !== "behavior");
-    // The stacks view takes over the board area; every other mode shows the hex board.
-    el("bd-board").classList.toggle("hidden", mode === "stacks");
+    el("bd-panel-print").classList.toggle("hidden", mode !== "print");
+    // The stacks and print views take over the board area; every other mode shows the hex board.
+    el("bd-board").classList.toggle("hidden", mode === "stacks" || mode === "print");
     el("bd-stacks").classList.toggle("hidden", mode !== "stacks");
+    el("bd-print").classList.toggle("hidden", mode !== "print");
     root().querySelectorAll(".bd-mode").forEach((button) =>
       button.classList.toggle("active", button.dataset.mode === mode));
     if (mode === "shields") renderShieldPanel();
@@ -462,6 +468,56 @@
     if (mode === "structure") renderStructurePanel();
     if (mode === "behavior") renderBehaviorPanel();
     if (mode === "stacks") renderStacksView();
+    if (mode === "print") renderPrintView();
+  }
+
+  function actionStackItems() {
+    const numbers = componentNumbers();
+    const byStack = {};
+    for (const stack of META.action_stacks) byStack[stack] = [];
+    for (const tile of design.tiles) {
+      if (!tile.stack || !byStack[tile.stack]) continue;
+      if (tile.type === "firing_computer") {
+        byStack[tile.stack].push({
+          kind: "attack", label: componentLabel(tile, numbers), source: "component",
+          q: tile.q, r: tile.r,
+        });
+      } else if (tile.type === "fuel_tank") {
+        byStack[tile.stack].push({
+          kind: "move", label: componentLabel(tile, numbers), source: "component",
+          q: tile.q, r: tile.r,
+        });
+      }
+    }
+    design.progression.steps.forEach((step, index) => {
+      if (step.kind === "action_link" && byStack[step.stack]) {
+        byStack[step.stack].push({
+          kind: step.action === "shoot" ? "attack" : "move",
+          label: `Step ${index + 1}: ${step.action}`,
+          source: "progression",
+        });
+      } else if (step.kind === "breacher_link" && byStack.starbreach) {
+        const bits = [];
+        if (step.core !== undefined) bits.push(`core ${step.core}`);
+        if (step.round !== undefined) bits.push(`round >= ${step.round}`);
+        byStack.starbreach.push({
+          kind: "breacher",
+          label: `Step ${index + 1}: Breacher`,
+          source: bits.length ? bits.join(", ") : "progression",
+        });
+      }
+    });
+    const fleet = design.behavior?.fleet || defaultBehavior().fleet;
+    if (fleet.count > 0) {
+      for (const entry of fleet.actions || []) {
+        if (byStack[entry.stack]) {
+          byStack[entry.stack].push({
+            kind: "fleet", label: `Fleet x${fleet.count}: ${entry.action}`, source: "behavior",
+          });
+        }
+      }
+    }
+    return byStack;
   }
 
   // ── action stacks view (drag components/steps between boss stacks) ───────
@@ -651,6 +707,266 @@
   function highlightMiniHex(q, r, on) {
     const node = el("bd-stacks")?.querySelector(`[data-hex="${q},${r}"]`);
     if (node) node.classList.toggle("bd-mini-hot", !!on);
+  }
+
+  function printPalette() {
+    if (printTone === "bw") {
+      return {
+        page: "#ffffff", text: "#111111", dim: "#555555", line: "#111111",
+        hull: "#f4f4f4", generic: "#ffffff", attack: "#eeeeee", move: "#dddddd",
+        shieldGen: "#e8e8e8", core: "#cfcfcf", lane: "#111111", fleet: "#f0f0f0",
+      };
+    }
+    return {
+      page: "#fffaf0", text: "#151923", dim: "#5f6675", line: "#283246",
+      hull: "#f2ead8", generic: "#f8f3e7", attack: "#ffd2c7", move: "#ffe2a8",
+      shieldGen: "#c7eaff", core: "#e8c8ff", lane: "#c54530", fleet: "#d6f3ff",
+    };
+  }
+
+  function printTileFill(tile, colors) {
+    if (tile.type === "firing_computer") return colors.attack;
+    if (tile.type === "fuel_tank") return colors.move;
+    if (tile.type === "shield_gen") return colors.shieldGen;
+    if (tile.type === "core") return colors.core;
+    return colors.generic;
+  }
+
+  function printSheetSVG() {
+    if (!design) return "";
+    const colors = printPalette();
+    const numbers = componentNumbers();
+    const stacks = actionStackItems();
+    const pageW = 1400;
+    const pageH = 1900;
+    const breachBox = { x: 55, y: 175, w: 640, h: 640 };
+    const baseShipSize = 34;
+    const baseXy = (q, r) => [baseShipSize * 1.5 * q, baseShipSize * SQ * (r + q / 2)];
+    const basePoints = design.tiles.length ? design.tiles.map((tile) => baseXy(tile.q, tile.r)) : [[0, 0]];
+    const baseMinX = Math.min(...basePoints.map(([x]) => x)) - baseShipSize;
+    const baseMaxX = Math.max(...basePoints.map(([x]) => x)) + baseShipSize;
+    const baseMinY = Math.min(...basePoints.map(([, y]) => y)) - baseShipSize;
+    const baseMaxY = Math.max(...basePoints.map(([, y]) => y)) + baseShipSize;
+    const shipScale = Math.min(
+      1,
+      (breachBox.w - 54) / Math.max(1, baseMaxX - baseMinX),
+      (breachBox.h - 54) / Math.max(1, baseMaxY - baseMinY),
+    );
+    const shipSize = baseShipSize * shipScale;
+    const rawXy = (q, r) => [shipSize * 1.5 * q, shipSize * SQ * (r + q / 2)];
+    const rawPoints = design.tiles.length ? design.tiles.map((tile) => rawXy(tile.q, tile.r)) : [[0, 0]];
+    const minRawX = Math.min(...rawPoints.map(([x]) => x)) - shipSize;
+    const maxRawX = Math.max(...rawPoints.map(([x]) => x)) + shipSize;
+    const minRawY = Math.min(...rawPoints.map(([, y]) => y)) - shipSize;
+    const maxRawY = Math.max(...rawPoints.map(([, y]) => y)) + shipSize;
+    const shipX = breachBox.x + breachBox.w / 2 - (minRawX + maxRawX) / 2;
+    const shipY = breachBox.y + breachBox.h / 2 - (minRawY + maxRawY) / 2;
+    const pxy = (q, r) => {
+      const [x, y] = rawXy(q, r);
+      return [shipX + x, shipY + y];
+    };
+    const tileMap = new Map(design.tiles.map((tile) => [key(tile.q, tile.r), tile]));
+    const componentBadge = (tile) => {
+      if (tile.type === "firing_computer") return "C" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "fuel_tank") return "E" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "shield_gen") return "SG" + tile.number;
+      if (tile.type === "core") return "CORE " + tile.number;
+      return "";
+    };
+
+    let ship = "";
+    for (const tile of design.tiles) {
+      const [x, y] = pxy(tile.q, tile.r);
+      const badge = componentBadge(tile);
+      const title = tile.type === "generic" ? "Hull" : componentLabel(tile, numbers);
+      ship += `<g>
+        <polygon points="${hexPoints(x, y, shipSize - 1.2)}" fill="${printTileFill(tile, colors)}" stroke="${colors.line}" stroke-width="2"/>
+        ${badge ? `<text x="${x}" y="${y + 6}" text-anchor="middle" class="ps-badge">${esc(badge)}</text>` : ""}
+        <text x="${x}" y="${y + shipSize - 5}" text-anchor="middle" class="ps-coord">${tile.q},${tile.r}</text>
+        <title>${esc(title)} (${tile.q},${tile.r})</title>
+      </g>`;
+    }
+
+    if (printOptions.lanes) {
+      for (const region of design.shield_regions) {
+        for (const lane of region.lanes) {
+          const [cx, cy] = pxy(lane.q, lane.r);
+          const [dq, dr] = DIRS[lane.facing];
+          const [ox, oy] = pxy(lane.q + dq, lane.r + dr);
+          let ux = ox - cx, uy = oy - cy;
+          const len = Math.hypot(ux, uy) || 1;
+          ux /= len; uy /= len;
+          const startX = cx + ux * shipSize * 1.48;
+          const startY = cy + uy * shipSize * 1.48;
+          const endX = cx + ux * shipSize * 1.04;
+          const endY = cy + uy * shipSize * 1.04;
+          ship += `<g class="ps-lane">
+            <line x1="${startX.toFixed(1)}" y1="${startY.toFixed(1)}" x2="${endX.toFixed(1)}" y2="${endY.toFixed(1)}"
+              stroke="${colors.lane}" stroke-width="2.4" marker-end="url(#psArrow)"/>
+            <circle cx="${startX.toFixed(1)}" cy="${startY.toFixed(1)}" r="11" fill="${colors.page}" stroke="${colors.lane}" stroke-width="2"/>
+            <text x="${startX.toFixed(1)}" y="${(startY + 5).toFixed(1)}" text-anchor="middle" class="ps-lane-num">${lane.roll}</text>
+          </g>`;
+        }
+      }
+    }
+
+    const stackX = 70;
+    const stackY = 875;
+    const colW = 244;
+    const colGap = 10;
+    const rowH = 38;
+    let stackSvg = "";
+    if (printOptions.stacks) {
+      META.action_stacks.forEach((stack, stackIndex) => {
+        const x = stackX + stackIndex * (colW + colGap);
+        const items = stacks[stack] || [];
+        stackSvg += `<g>
+          <rect x="${x}" y="${stackY}" width="${colW}" height="320" rx="8" fill="${colors.generic}" stroke="${colors.line}" stroke-width="2"/>
+          <text x="${x + colW / 2}" y="${stackY + 27}" text-anchor="middle" class="ps-stack-title">${stack === "starbreach" ? "StarBreach" : "Action " + stack}</text>`;
+        if (!items.length) {
+          stackSvg += `<text x="${x + colW / 2}" y="${stackY + 70}" text-anchor="middle" class="ps-small">empty</text>`;
+        }
+        items.slice(0, 6).forEach((item, itemIndex) => {
+          const y = stackY + 48 + itemIndex * rowH;
+          const fill = item.kind === "attack" ? colors.attack
+            : item.kind === "move" ? colors.move
+            : item.kind === "fleet" ? colors.fleet
+            : colors.hull;
+          stackSvg += `<rect x="${x + 8}" y="${y}" width="${colW - 16}" height="${rowH - 7}" rx="6"
+              fill="${fill}" stroke="${colors.line}" stroke-width="1.5"/>
+            <text x="${x + 14}" y="${y + 15}" class="ps-card">${esc(item.label)}</text>
+            <text x="${x + 14}" y="${y + 29}" class="ps-small">${esc(item.q !== undefined ? `hex ${item.q},${item.r}` : item.source)}</text>`;
+          if (item.q !== undefined && printOptions.stackLinks) {
+            const tile = tileMap.get(key(item.q, item.r));
+            const [tx, ty] = pxy(item.q, item.r);
+            stackSvg += `<line x1="${x + colW / 2}" y1="${y}" x2="${tx}" y2="${ty}"
+              stroke="${colors.line}" stroke-width="1.4" stroke-dasharray="5 5" opacity=".55"/>
+              <circle cx="${tx}" cy="${ty}" r="${shipSize - 8}" fill="none" stroke="${colors.line}" stroke-width="4" opacity=".5">
+                <title>${esc(tile ? componentLabel(tile, numbers) : "component")}</title>
+              </circle>`;
+          }
+        });
+        if (items.length > 6) {
+          stackSvg += `<text x="${x + 14}" y="${stackY + 305}" class="ps-small">+ ${items.length - 6} more</text>`;
+        }
+        stackSvg += "</g>";
+      });
+    }
+
+    let side = "";
+    let sideY = 170;
+    if (printOptions.components) {
+      side += `<text x="760" y="${sideY}" class="ps-section">Components</text>`;
+      sideY += 28;
+      const components = design.tiles.filter((tile) => tile.type !== "generic");
+      if (!components.length) {
+        side += `<text x="760" y="${sideY}" class="ps-small">No special components placed.</text>`;
+        sideY += 24;
+      }
+      components.forEach((tile) => {
+        side += `<text x="760" y="${sideY}" class="ps-list">${esc(componentBadge(tile))}</text>
+          <text x="840" y="${sideY}" class="ps-list">${esc(componentLabel(tile, numbers))} (${tile.q},${tile.r})</text>`;
+        sideY += 23;
+      });
+      sideY += 20;
+    }
+    if (printOptions.lanes) {
+      side += `<text x="760" y="${sideY}" class="ps-section">Damage Lanes</text>`;
+      sideY += 28;
+      for (const region of design.shield_regions) {
+        const gen = region.generator ? `SG at ${region.generator[0]},${region.generator[1]}` : "no generator";
+        side += `<text x="760" y="${sideY}" class="ps-list">Area ${region.number}: ${esc(gen)}</text>`;
+        sideY += 22;
+        const lanes = [...region.lanes].sort((a, b) => a.roll - b.roll);
+        const laneText = lanes.length
+          ? lanes.map((lane) => `${lane.roll}->${lane.q},${lane.r}`).join("  ")
+          : "no lane arrows";
+        side += `<text x="786" y="${sideY}" class="ps-small">${esc(laneText)}</text>`;
+        sideY += 24;
+      }
+      sideY += 12;
+    }
+    if (printOptions.progression) {
+      side += `<text x="760" y="${sideY}" class="ps-section">Progression Track</text>`;
+      sideY += 28;
+      if (!design.progression.steps.length) {
+        side += `<text x="760" y="${sideY}" class="ps-small">No progression steps.</text>`;
+        sideY += 24;
+      }
+      design.progression.steps.forEach((step, index) => {
+        side += `<text x="760" y="${sideY}" class="ps-list">${index + 1}. ${esc(stepLabel(step))}</text>`;
+        sideY += 22;
+      });
+      sideY += 12;
+    }
+    if (printOptions.fleet) {
+      const fleet = design.behavior?.fleet || defaultBehavior().fleet;
+      side += `<text x="760" y="${sideY}" class="ps-section">Fleet / Table Aids</text>`;
+      sideY += 28;
+      side += `<text x="760" y="${sideY}" class="ps-list">Fleet: ${fleet.count || 0} ${esc(fleet.kind || "craft")} at ${fleet.hp || 0} HP</text>`;
+      sideY += 22;
+      side += `<text x="760" y="${sideY}" class="ps-list">Use the arrows only for shield-area damage lanes; shield arcs are intentionally omitted.</text>`;
+      sideY += 22;
+      side += `<text x="760" y="${sideY}" class="ps-list">Unassigned d8 lane numbers reroll during play.</text>`;
+    }
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
+      <defs>
+        <marker id="psArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6 Z" fill="${colors.lane}"/>
+        </marker>
+        <style>
+          .ps-title{font:700 44px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          .ps-sub{font:600 18px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+          .ps-section{font:700 24px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          .ps-badge{font:700 18px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          .ps-coord{font:600 10px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+          .ps-lane-num{font:700 14px 'Space Grotesk',Arial,sans-serif;fill:${colors.lane}}
+          .ps-stack-title{font:700 17px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          .ps-card{font:700 12px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          .ps-small{font:500 12px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+          .ps-list{font:600 16px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+        </style>
+      </defs>
+      <rect width="${pageW}" height="${pageH}" fill="${colors.page}"/>
+      <text x="70" y="78" class="ps-title">${esc(design.name || "Boss Ship")}</text>
+      <text x="72" y="112" class="ps-sub">StarShot printable boss ship sheet - ${printTone === "bw" ? "black and white" : "color"}</text>
+      <text x="70" y="155" class="ps-section">Hull, Components, and Damage Lane Arrows</text>
+      <rect x="${breachBox.x}" y="${breachBox.y}" width="${breachBox.w}" height="${breachBox.h}" rx="14" fill="${colors.hull}" stroke="${colors.line}" stroke-width="2"/>
+      ${ship}
+      ${stackSvg}
+      ${side}
+      <text x="70" y="1810" class="ps-sub">Physical play checklist: boss sheet, d8 for damage lanes, component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
+    </svg>`;
+  }
+
+  function renderPrintView() {
+    const container = el("bd-print");
+    container.innerHTML = `<div class="bd-print-preview">${printSheetSVG()}</div>`;
+  }
+
+  function downloadPrintSheet() {
+    const blob = new Blob([printSheetSVG()], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `starshot-${(design.id || "boss").replace(/[^a-z0-9_-]+/gi, "-")}-print-sheet.svg`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function printSheet() {
+    const win = window.open("", "_blank");
+    if (!win) {
+      setStatus("Popup blocked. Use Download SVG and print the exported image.", false);
+      return;
+    }
+    win.document.write(`<!doctype html><html><head><title>${esc(design.name)} print sheet</title>
+      <style>body{margin:0;background:white}svg{width:100%;height:auto;display:block}@media print{body{margin:0}}</style>
+      </head><body>${printSheetSVG()}<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
+    win.document.close();
   }
 
   function renderBehaviorPanel() {
@@ -1011,6 +1327,7 @@
             <button class="btn ghost bd-mode" data-mode="progression">📈 Progression</button>
             <button class="btn ghost bd-mode" data-mode="stacks">🗂 Action Stacks</button>
             <button class="btn ghost bd-mode" data-mode="behavior">⚙ Behavior</button>
+            <button class="btn ghost bd-mode" data-mode="print">Print Sheets</button>
           </div>
           <button class="btn gold" id="bd-save">💾 Save design</button>
         </div>
@@ -1018,6 +1335,7 @@
           <div class="bd-board-wrap">
             <div id="bd-board" class="bd-board"></div>
             <div id="bd-stacks" class="bd-stacks hidden"></div>
+            <div id="bd-print" class="bd-print hidden"></div>
           </div>
           <div class="bd-side">
             <div id="bd-panel-structure">
@@ -1083,6 +1401,30 @@
               <table class="bd-fleet-actions" id="bd-fleet-actions">
                 <tr><th>Stage</th><th>Move</th><th>Shoot</th></tr>
               </table>
+            </div>
+            <div id="bd-panel-print" class="hidden">
+              <h3 class="panel-sub">Printable export</h3>
+              <p class="admin-note">Export a table-ready boss sheet with component labels,
+                damage lane arrows, action stacks, and the reference pieces needed for
+                in-person play. Shield arcs are not drawn on the sheet.</p>
+              <div class="bd-print-controls">
+                <label>Tone
+                  <select id="bd-print-tone">
+                    <option value="color">Color</option>
+                    <option value="bw">Black and white</option>
+                  </select>
+                </label>
+                <label><input type="checkbox" data-print-opt="lanes" checked> Damage lane arrows</label>
+                <label><input type="checkbox" data-print-opt="stacks" checked> Action stacks</label>
+                <label><input type="checkbox" data-print-opt="stackLinks" checked> Action stack links to ship</label>
+                <label><input type="checkbox" data-print-opt="components" checked> Component legend</label>
+                <label><input type="checkbox" data-print-opt="progression" checked> Progression track</label>
+                <label><input type="checkbox" data-print-opt="fleet" checked> Fleet and table aids</label>
+              </div>
+              <div class="bd-print-actions">
+                <button class="btn gold" id="bd-print-download">Download SVG</button>
+                <button class="btn ghost" id="bd-print-now">Print</button>
+              </div>
             </div>
             <div id="bd-panel-progression" class="hidden">
               <h3 class="panel-sub">Progression triggers</h3>
@@ -1218,6 +1560,18 @@
       design.behavior.fleet.ai = event.target.value;
       markDirty();
     });
+    el("bd-print-tone").addEventListener("change", (event) => {
+      printTone = event.target.value === "bw" ? "bw" : "color";
+      renderPrintView();
+    });
+    root().querySelectorAll("[data-print-opt]").forEach((box) => {
+      box.addEventListener("change", () => {
+        printOptions[box.dataset.printOpt] = !!box.checked;
+        renderPrintView();
+      });
+    });
+    el("bd-print-download").addEventListener("click", downloadPrintSheet);
+    el("bd-print-now").addEventListener("click", printSheet);
 
     if (isAdmin) {
       el("bd-download").addEventListener("click", async () => {
