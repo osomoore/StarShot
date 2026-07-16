@@ -700,9 +700,6 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
     }
 
 
-# ── AI battle runner ───────────────────────────────────────────────────────
-
-
 _BUILD_FRONTEND_SUFFIXES = {".html", ".css", ".js"}
 _BUILD_BACKEND_SUFFIXES = {".py", ".toml"}
 _BUILD_EXCLUDE_DIRS = {"__pycache__", ".pytest_cache"}
@@ -739,6 +736,18 @@ def build_info(request: Request) -> dict:
         "frontend": _latest_source_mtime(ROOT / "frontend" / "v2", _BUILD_FRONTEND_SUFFIXES),
         "backend": _latest_source_mtime(ROOT / "backend" / "starshot", _BUILD_BACKEND_SUFFIXES),
     }
+
+
+@admin_router.post("/server-update")
+def server_update(request: Request) -> dict:
+    _admin_user(request)
+    flag_path = ROOT / ".starshot" / "pull_flag"
+    flag_path.parent.mkdir(exist_ok=True)
+    flag_path.write_text("1")
+    return {"ok": True, "note": "Server update requested. The container will pull and restart within 60 seconds."}
+
+
+# ── AI battle runner ───────────────────────────────────────────────────────
 
 
 class AiBattleRequest(BaseModel):

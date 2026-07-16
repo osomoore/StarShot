@@ -868,6 +868,20 @@
     }
   });
 
+  const btnServerUpdate = document.getElementById("btn-server-update");
+  if (btnServerUpdate) {
+    btnServerUpdate.addEventListener("click", async () => {
+      btnServerUpdate.disabled = true;
+      try {
+        const res = await post("/admin/server-update");
+        toast(res.note, true);
+      } catch (error) {
+        toast("Update failed: " + error.message);
+      }
+      btnServerUpdate.disabled = false;
+    });
+  }
+
   // ── account ─────────────────────────────────────────────────────────────
   document.getElementById("pw-form").addEventListener("submit", async (event) => {
     event.preventDefault();
