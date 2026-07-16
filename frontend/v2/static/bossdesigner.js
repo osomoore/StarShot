@@ -75,8 +75,10 @@
   let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
   let printTone = "color";  // color | bw
   let printOptions = {
-    lanes: true, stacks: true, stackLinks: true, components: true, progression: true, fleet: true,
+    lanes: true, laneList: true, stacks: true, stackLinks: true, coords: true,
+    components: true, progression: true, fleet: true,
   };
+  let printZoom = 1; // ship-drawing scale multiplier (0.5 - 2.0)
 
   // ── tiny helpers ─────────────────────────────────────────────────────────
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -142,6 +144,12 @@
   const regionByNumber = (number) =>
     design.shield_regions.find((region) => region.number === number) || null;
   const regionColor = (number) => REGION_COLORS[(number - 1) % REGION_COLORS.length];
+  /* Lanes per region are configurable (1..max_lane_count); rolls run 2..N+1
+     on an (N+1)-sided die where 1 is always a glancing blow. */
+  const regionLaneCount = (region) =>
+    Math.max(1, Math.min(META.max_lane_count || 12, region.lane_count || META.default_lane_count || 7));
+  const regionRolls = (region) =>
+    Array.from({ length: regionLaneCount(region) }, (_unused, index) => index + 2);
 
   function edgeFacings(q, r, footprint) {
     const facings = [];
@@ -417,10 +425,11 @@
       }
       return;
     }
+    const rolls = regionRolls(region);
     const used = new Set(region.lanes.map((lane) => lane.roll));
-    const next = META.lane_rolls.find((roll) => !used.has(roll));
+    const next = rolls.find((roll) => !used.has(roll));
     if (next === undefined) {
-      setStatus("All seven lanes (2-8) are assigned — click an assigned hex to adjust or clear it.", false);
+      setStatus(`All ${rolls.length} lanes (2-${rolls[rolls.length - 1]}) are assigned — click an assigned hex to adjust or clear it.`, false);
       return;
     }
     // A stacked lane defaults to an entry face the hex isn't using yet.
@@ -429,23 +438,82 @@
     region.lanes.push({ roll: next, q, r, facing });
   }
 
-  /* Reassign rolls 2..8 to this region's lanes ordered by where their number
-     labels sit on the board, left-to-right (top-to-bottom breaks ties). */
-  function renumberLanes(region) {
-    const labelPos = (lane) => {
-      const [cx, cy] = xy(lane.q, lane.r);
-      const [dq, dr] = DIRS[lane.facing];
-      const [ox, oy] = xy(lane.q + dq, lane.r + dr);
-      const len = Math.hypot(ox - cx, oy - cy) || 1;
-      return [cx + ((ox - cx) / len) * SIZE * 1.9, cy + ((oy - cy) / len) * SIZE * 1.9];
+  /* Walk the hull perimeter and return a Map "q,r,facing" -> position index,
+     so lane numbering can follow the ship edge continuously. Flat-top hexes
+     have vertices at 60°·k; edge k (vertices k → k+1) borders the neighbor in
+     facing (6-k)%6. Taking each hex's edges with a consistent winding, the
+     shared (interior) edges cancel and the leftover boundary half-edges chain
+     end-corner to start-corner into the perimeter loop. */
+  function perimeterEdgeOrder(footprint) {
+    const cornerKey = (q, r, k) => {
+      const [cx, cy] = xy(q, r);
+      const angle = (Math.PI / 180) * (60 * k);
+      const x = cx + SIZE * Math.cos(angle);
+      const y = cy + SIZE * Math.sin(angle);
+      return `${Math.round(x * 100)},${Math.round(y * 100)}`;
     };
-    const ordered = [...region.lanes].sort((a, b) => {
-      const [ax, ay] = labelPos(a);
-      const [bx, by] = labelPos(b);
-      return ax - bx || ay - by;
+    // startCorner -> { end, edgeId }. One outgoing boundary edge per corner
+    // except at rare pinch points (two hulls meeting at a single corner),
+    // where one is dropped and its lanes fall back to the end of the order.
+    const edges = new Map();
+    for (const cellKey of footprint) {
+      const [q, r] = cellKey.split(",").map(Number);
+      for (let k = 0; k < 6; k++) {
+        const facing = (6 - k) % 6;
+        const [dq, dr] = DIRS[facing];
+        if (footprint.has(key(q + dq, r + dr))) continue; // shared edge cancels
+        edges.set(cornerKey(q, r, k), { end: cornerKey(q, r, (k + 1) % 6), edgeId: `${q},${r},${facing}` });
+      }
+    }
+    // Start from the topmost-leftmost corner so numbering begins near the bow.
+    const starts = [...edges.keys()].sort((a, b) => {
+      const [ax, ay] = a.split(",").map(Number);
+      const [bx, by] = b.split(",").map(Number);
+      return ay - by || ax - bx;
     });
-    ordered.forEach((lane, index) => {
-      lane.roll = META.lane_rolls[index % META.lane_rolls.length];
+    const order = new Map();
+    const visited = new Set();
+    let index = 0;
+    for (const first of starts) {
+      let corner = first;
+      let guard = 0;
+      while (corner !== undefined && !visited.has(corner) && guard++ <= edges.size) {
+        visited.add(corner);
+        const edge = edges.get(corner);
+        if (!edge) break;
+        if (!order.has(edge.edgeId)) order.set(edge.edgeId, index++);
+        corner = edge.end;
+      }
+    }
+    return order;
+  }
+
+  /* Reassign rolls 2..N to this region's lanes in perimeter order, so numbers
+     run continuously as you move along the ship's faces. The numbering seam is
+     placed in the largest gap between this region's lanes (not at the hull's
+     fixed start corner), so a lane arc that straddles that start corner isn't
+     split — the sequence only wraps once, across the biggest empty stretch. */
+  function renumberLanes(region) {
+    const order = perimeterEdgeOrder(footprintSet());
+    const total = order.size || 1;
+    const placed = region.lanes
+      .map((lane) => ({ lane, idx: order.get(`${lane.q},${lane.r},${lane.facing}`) }))
+      .filter((entry) => entry.idx !== undefined)
+      .sort((a, b) => a.idx - b.idx);
+    const unplaced = region.lanes.filter(
+      (lane) => order.get(`${lane.q},${lane.r},${lane.facing}`) === undefined);
+    let sequence = placed.map((entry) => entry.lane);
+    if (placed.length > 1) {
+      let startPos = 0, maxGap = -1;
+      for (let i = 0; i < placed.length; i++) {
+        const gap = (placed[(i + 1) % placed.length].idx - placed[i].idx + total) % total;
+        if (gap > maxGap) { maxGap = gap; startPos = (i + 1) % placed.length; }
+      }
+      sequence = placed.map((_entry, n) => placed[(startPos + n) % placed.length].lane);
+    }
+    const rolls = regionRolls(region);
+    sequence.concat(unplaced).forEach((lane, index) => {
+      lane.roll = rolls[index % rolls.length];
     });
   }
 
@@ -512,7 +580,8 @@
       for (const entry of fleet.actions || []) {
         if (byStack[entry.stack]) {
           byStack[entry.stack].push({
-            kind: "fleet", label: `Fleet x${fleet.count}: ${entry.action}`, source: "behavior",
+            kind: "fleet", action: entry.action,
+            label: `Fleet x${fleet.count}: ${entry.action}`, source: "behavior",
           });
         }
       }
@@ -548,18 +617,39 @@
     markDirty();
   }
 
-  function renderStacksView() {
-    const container = el("bd-stacks");
-    container.innerHTML = "";
+  /* Light up the stack cards fed by progression step `index`. */
+  function highlightStepItems(index, on) {
+    el("bd-stacks").querySelectorAll(`.bd-stack-item[data-step="${index}"]`)
+      .forEach((node) => node.classList.toggle("bd-stack-hot", !!on));
+  }
 
-    // Progression strip: the track in order; drag a chip onto another to reorder.
-    const strip = document.createElement("div");
-    strip.className = "bd-prog-strip";
-    const stripLabel = document.createElement("span");
-    stripLabel.className = "bd-strip-label";
-    stripLabel.textContent = "Progression track:";
-    strip.appendChild(stripLabel);
-    design.progression.steps.forEach((step, index) => {
+  /* Light up every mini-ship cell whose component has a slot in `stack`. */
+  function highlightStackHexes(stack, on) {
+    for (const tile of design.tiles) {
+      if (tile.stack === stack && (tile.type === "firing_computer" || tile.type === "fuel_tank")) {
+        highlightMiniHex(tile.q, tile.r, on);
+      }
+    }
+  }
+
+  /* The progression track as two balanced columns; the wrap arrow shows the
+     track reading order (bottom of column 1 continues at the top of column 2). */
+  function buildProgressionTrack() {
+    const wrap = document.createElement("div");
+    wrap.className = "bd-prog-track";
+    const label = document.createElement("div");
+    label.className = "bd-strip-label";
+    label.textContent = "Progression track:";
+    wrap.appendChild(label);
+    const steps = design.progression.steps;
+    if (!steps.length) {
+      const empty = document.createElement("span");
+      empty.className = "admin-note";
+      empty.textContent = "no steps yet (add them in Progression)";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+    const makeChip = (step, index) => {
       const chip = document.createElement("div");
       chip.className = "bd-prog-chip bd-kind-" + step.kind;
       chip.draggable = true;
@@ -575,15 +665,38 @@
         dragPayload = null;
         renderStacksView();
       });
-      strip.appendChild(chip);
-    });
-    if (!design.progression.steps.length) {
-      const empty = document.createElement("span");
-      empty.className = "admin-note";
-      empty.textContent = "no steps yet (add them in Progression)";
-      strip.appendChild(empty);
-    }
-    container.appendChild(strip);
+      // Hovering a step lights up the stack cards it feeds.
+      chip.addEventListener("mouseenter", () => highlightStepItems(index, true));
+      chip.addEventListener("mouseleave", () => highlightStepItems(index, false));
+      return chip;
+    };
+    const grid = document.createElement("div");
+    grid.className = "bd-prog-cols";
+    const colA = document.createElement("div");
+    colA.className = "bd-prog-col";
+    const colB = document.createElement("div");
+    colB.className = "bd-prog-col";
+    const half = Math.ceil(steps.length / 2);
+    steps.forEach((step, index) => (index < half ? colA : colB).appendChild(makeChip(step, index)));
+    const arrow = document.createElement("div");
+    arrow.className = "bd-prog-wrap-arrow";
+    arrow.innerHTML = `<svg viewBox="0 0 40 100" preserveAspectRatio="none" aria-hidden="true">
+      <defs><marker id="bdProgArrow" markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="currentColor"/></marker></defs>
+      <path d="M4 88 C 30 88, 10 12, 32 10" fill="none" stroke="currentColor" stroke-width="2.4"
+        stroke-linecap="round" stroke-dasharray="5 4" marker-end="url(#bdProgArrow)"/>
+    </svg>`;
+    grid.appendChild(colA);
+    grid.appendChild(arrow);
+    grid.appendChild(colB);
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  function renderStacksView() {
+    const container = el("bd-stacks");
+    container.innerHTML = "";
+    container.appendChild(buildProgressionTrack());
 
     const cols = document.createElement("div");
     cols.className = "bd-stack-cols";
@@ -591,6 +704,10 @@
       const col = document.createElement("div");
       col.className = "bd-stack-col";
       col.innerHTML = `<div class="bd-stack-head">${stack === "starbreach" ? "StarBreach" : "Action " + stack}</div>`;
+      // Hovering a stack header lights up its components in the ship view.
+      const head = col.querySelector(".bd-stack-head");
+      head.addEventListener("mouseenter", () => highlightStackHexes(stack, true));
+      head.addEventListener("mouseleave", () => highlightStackHexes(stack, false));
       col.addEventListener("dragover", (event) => {
         if (!dragPayload || dragPayload.type === "chip") return;
         event.preventDefault();
@@ -614,9 +731,10 @@
         renderBoard();
       });
 
-      const addItem = (label, sub, payload, extraClass, hoverHex) => {
+      const addItem = (label, sub, payload, extraClass, hoverHex, stepIndex) => {
         const item = document.createElement("div");
         item.className = "bd-stack-item" + (extraClass ? " " + extraClass : "");
+        if (stepIndex !== undefined) item.dataset.step = stepIndex;
         item.innerHTML = `<div>${label}</div>${sub ? `<div class="bd-item-sub">${sub}</div>` : ""}`;
         if (payload) {
           item.draggable = true;
@@ -646,7 +764,9 @@
             `Step ${index + 1} — ${step.action}`,
             `progression · unlocks at ${index + 1}`,
             { type: "step", index },
-            step.action === "shoot" ? "bd-item-attack" : "bd-item-move"
+            step.action === "shoot" ? "bd-item-attack" : "bd-item-move",
+            null,
+            index
           );
         } else if (step.kind === "breacher_link" && stack === "starbreach") {
           const bits = [];
@@ -656,7 +776,9 @@
             `Step ${index + 1} — Breacher`,
             `progression · unlocks at ${index + 1}${bits.length ? " · " + bits.join(" · ") : ""}`,
             null,
-            "bd-item-breacher"
+            "bd-item-breacher",
+            null,
+            index
           );
         }
       });
@@ -670,11 +792,12 @@
     }
     container.appendChild(cols);
 
-    // Mini ship view: hover a component card above to see it light up here.
-    const mini = document.createElement("div");
-    mini.className = "bd-mini-ship";
-    mini.innerHTML = `<div class="bd-mini-ship-label">Ship view — hover a component card to locate it</div>${miniShipSVG()}`;
-    container.appendChild(mini);
+    // Mini ship view: rendered in the right-hand panel so it stays alongside
+    // the stacks. Hover a card or a stack header to light up components here.
+    const mini = el("bd-stacks-mini");
+    if (mini) {
+      mini.innerHTML = `<div class="bd-mini-ship-label">Ship view — hover a card or stack header to locate its components</div>${miniShipSVG()}`;
+    }
   }
 
   function miniShipSVG() {
@@ -705,7 +828,7 @@
   }
 
   function highlightMiniHex(q, r, on) {
-    const node = el("bd-stacks")?.querySelector(`[data-hex="${q},${r}"]`);
+    const node = el("bd-stacks-mini")?.querySelector(`[data-hex="${q},${r}"]`);
     if (node) node.classList.toggle("bd-mini-hot", !!on);
   }
 
@@ -715,13 +838,23 @@
         page: "#ffffff", text: "#111111", dim: "#555555", line: "#111111",
         hull: "#f4f4f4", generic: "#ffffff", attack: "#eeeeee", move: "#dddddd",
         shieldGen: "#e8e8e8", core: "#cfcfcf", lane: "#111111", fleet: "#f0f0f0",
+        progression: "#ffffff", breacher: "#e6e6e6",
       };
     }
     return {
       page: "#fffaf0", text: "#151923", dim: "#5f6675", line: "#283246",
       hull: "#f2ead8", generic: "#f8f3e7", attack: "#ffd2c7", move: "#ffe2a8",
       shieldGen: "#c7eaff", core: "#e8c8ff", lane: "#c54530", fleet: "#d6f3ff",
+      progression: "#ddd2ff", breacher: "#f3c4f0",
     };
+  }
+
+  /* What kind of ability a stack card is: component-granted, progression-track,
+     fleet, or breacher. Drives the printed card's icon and colour stripe. */
+  function stackItemType(item) {
+    if (item.kind === "fleet") return "fleet";
+    if (item.kind === "breacher") return "breacher";
+    return item.source === "progression" ? "progression" : "component";
   }
 
   function printTileFill(tile, colors) {
@@ -751,7 +884,7 @@
       1,
       (breachBox.w - 54) / Math.max(1, baseMaxX - baseMinX),
       (breachBox.h - 54) / Math.max(1, baseMaxY - baseMinY),
-    );
+    ) * printZoom;
     const shipSize = baseShipSize * shipScale;
     const rawXy = (q, r) => [shipSize * 1.5 * q, shipSize * SQ * (r + q / 2)];
     const rawPoints = design.tiles.length ? design.tiles.map((tile) => rawXy(tile.q, tile.r)) : [[0, 0]];
@@ -782,33 +915,156 @@
       ship += `<g>
         <polygon points="${hexPoints(x, y, shipSize - 1.2)}" fill="${printTileFill(tile, colors)}" stroke="${colors.line}" stroke-width="2"/>
         ${badge ? `<text x="${x}" y="${y + 6}" text-anchor="middle" class="ps-badge">${esc(badge)}</text>` : ""}
-        <text x="${x}" y="${y + shipSize - 5}" text-anchor="middle" class="ps-coord">${tile.q},${tile.r}</text>
+        ${printOptions.coords ? `<text x="${x}" y="${y + shipSize - 5}" text-anchor="middle" class="ps-coord">${tile.q},${tile.r}</text>` : ""}
         <title>${esc(title)} (${tile.q},${tile.r})</title>
       </g>`;
     }
 
-    if (printOptions.lanes) {
+    if (printOptions.lanes && design.tiles.length) {
+      // Numbered bubbles sit at their natural radial spot just off each entry
+      // face. Only bubbles that would overlap a neighbour move: they back off
+      // ~0.75 hex along their own lane and then separate, so every other bubble
+      // stays exactly where it was. The shaft runs to the BACK of the arrowhead
+      // (an explicit triangle straddling the face), which always points straight
+      // into its own entry face.
+      const bubbleR = 12.5;
+      const normalDist = shipSize * 1.72;   // natural bubble distance from the hex centre
+      const backOff = shipSize * SQ * 0.75; // ~0.75 hex, for bubbles that must move
+      const headHalf = shipSize * 0.16;     // arrowhead half-width
+      const entries = [];
       for (const region of design.shield_regions) {
         for (const lane of region.lanes) {
-          const [cx, cy] = pxy(lane.q, lane.r);
+          const [lx, ly] = pxy(lane.q, lane.r);
           const [dq, dr] = DIRS[lane.facing];
           const [ox, oy] = pxy(lane.q + dq, lane.r + dr);
-          let ux = ox - cx, uy = oy - cy;
+          let ux = ox - lx, uy = oy - ly;
           const len = Math.hypot(ux, uy) || 1;
           ux /= len; uy /= len;
-          const startX = cx + ux * shipSize * 1.48;
-          const startY = cy + uy * shipSize * 1.48;
-          const endX = cx + ux * shipSize * 1.04;
-          const endY = cy + uy * shipSize * 1.04;
-          ship += `<g class="ps-lane">
-            <line x1="${startX.toFixed(1)}" y1="${startY.toFixed(1)}" x2="${endX.toFixed(1)}" y2="${endY.toFixed(1)}"
-              stroke="${colors.lane}" stroke-width="2.4" marker-end="url(#psArrow)"/>
-            <circle cx="${startX.toFixed(1)}" cy="${startY.toFixed(1)}" r="11" fill="${colors.page}" stroke="${colors.lane}" stroke-width="2"/>
-            <text x="${startX.toFixed(1)}" y="${(startY + 5).toFixed(1)}" text-anchor="middle" class="ps-lane-num">${lane.roll}</text>
-          </g>`;
+          entries.push({
+            roll: lane.roll, ux, uy,
+            tipX: lx + ux * shipSize * 0.72, tipY: ly + uy * shipSize * 0.72,  // arrowhead tip, just inside the face
+            hX: lx + ux * shipSize * 1.08, hY: ly + uy * shipSize * 1.08,       // back of the arrowhead, just outside
+            bx: lx + ux * normalDist, by: ly + uy * normalDist,                  // number bubble at its natural spot
+            displaced: false,
+          });
         }
       }
+      // Only bubbles that collide move: back each off along its lane, then push
+      // the collided ones apart. Untouched bubbles keep their natural position.
+      const minDist = bubbleR * 2.15;
+      for (let iter = 0; iter < 120; iter++) {
+        let moved = false;
+        for (let i = 0; i < entries.length; i++) {
+          for (let j = i + 1; j < entries.length; j++) {
+            const a = entries[i], b = entries[j];
+            let dx = b.bx - a.bx, dy = b.by - a.by;
+            let dist = Math.hypot(dx, dy);
+            if (dist >= minDist) continue;
+            if (!a.displaced) { a.bx += a.ux * backOff; a.by += a.uy * backOff; a.displaced = true; moved = true; }
+            if (!b.displaced) { b.bx += b.ux * backOff; b.by += b.uy * backOff; b.displaced = true; moved = true; }
+            dx = b.bx - a.bx; dy = b.by - a.by; dist = Math.hypot(dx, dy);
+            if (dist < minDist) {
+              if (dist < 0.01) { dx = 1; dy = 0; dist = 1; }
+              const push = (minDist - dist) / 2 + 0.3;
+              dx /= dist; dy /= dist;
+              a.bx -= dx * push; a.by -= dy * push;
+              b.bx += dx * push; b.by += dy * push;
+              moved = true;
+            }
+          }
+        }
+        if (!moved) break;
+      }
+      // Uncross the leaders: if two shafts cross, swap those two bubbles'
+      // positions. Each swap strictly shortens total leader length, so this
+      // settles. Leaders may sit at an angle, but none cross each other.
+      const ccw = (ax, ay, bx, by, cx, cy) => (cy - ay) * (bx - ax) - (by - ay) * (cx - ax);
+      const shaftsCross = (a, b) => {
+        const d1 = ccw(a.bx, a.by, a.hX, a.hY, b.bx, b.by);
+        const d2 = ccw(a.bx, a.by, a.hX, a.hY, b.hX, b.hY);
+        const d3 = ccw(b.bx, b.by, b.hX, b.hY, a.bx, a.by);
+        const d4 = ccw(b.bx, b.by, b.hX, b.hY, a.hX, a.hY);
+        return (d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0);
+      };
+      for (let pass = 0; pass < 80; pass++) {
+        let swapped = false;
+        for (let i = 0; i < entries.length; i++) {
+          for (let j = i + 1; j < entries.length; j++) {
+            if (shaftsCross(entries[i], entries[j])) {
+              const a = entries[i], b = entries[j];
+              const bx = a.bx, by = a.by;
+              a.bx = b.bx; a.by = b.by; b.bx = bx; b.by = by;
+              swapped = true;
+            }
+          }
+        }
+        if (!swapped) break;
+      }
+      for (const e of entries) {
+        // Shaft: bubble edge → back of the arrowhead (a straight leader).
+        let sx = e.hX - e.bx, sy = e.hY - e.by;
+        const slen = Math.hypot(sx, sy) || 1;
+        const startX = e.bx + (sx / slen) * bubbleR, startY = e.by + (sy / slen) * bubbleR;
+        const perpX = -e.uy, perpY = e.ux;
+        const tri = `${e.tipX.toFixed(1)},${e.tipY.toFixed(1)} `
+          + `${(e.hX + perpX * headHalf).toFixed(1)},${(e.hY + perpY * headHalf).toFixed(1)} `
+          + `${(e.hX - perpX * headHalf).toFixed(1)},${(e.hY - perpY * headHalf).toFixed(1)}`;
+        ship += `<g class="ps-lane">
+          <line x1="${startX.toFixed(1)}" y1="${startY.toFixed(1)}" x2="${e.hX.toFixed(1)}" y2="${e.hY.toFixed(1)}" stroke="${colors.lane}" stroke-width="2.6"/>
+          <polygon points="${tri}" fill="${colors.lane}"/>
+          <circle cx="${e.bx.toFixed(1)}" cy="${e.by.toFixed(1)}" r="${bubbleR}" fill="${colors.page}" stroke="${colors.lane}" stroke-width="2"/>
+          <text x="${e.bx.toFixed(1)}" y="${(e.by + 5).toFixed(1)}" text-anchor="middle" class="ps-lane-num">${e.roll}</text>
+        </g>`;
+      }
     }
+
+    // Action iconography for the printed stack cards. Drawn as SVG shapes (no
+    // small text on shaded fills) so they read the same in colour and B&W:
+    //   arrow = move, star = shoot; filled = ship component, outline =
+    //   progression track; a trio of glyphs = the fleet; diamond = breacher.
+    const GLYPH_INK = colors.line;
+    const itemAction = (item) =>
+      item.kind === "move" ? "move"
+      : item.kind === "attack" || item.kind === "breacher" ? "shoot"
+      : item.kind === "fleet" ? (item.action === "shoot" ? "shoot" : "move")
+      : "move";
+    function glyphMove(cx, cy, s, filled) {
+      const d = `M ${(cx - s * 0.5).toFixed(1)} ${(cy - s * 0.66).toFixed(1)} `
+        + `L ${(cx + s * 0.66).toFixed(1)} ${cy.toFixed(1)} `
+        + `L ${(cx - s * 0.5).toFixed(1)} ${(cy + s * 0.66).toFixed(1)} Z`;
+      return `<path d="${d}" fill="${filled ? GLYPH_INK : "none"}" stroke="${GLYPH_INK}" stroke-width="1.6" stroke-linejoin="round"/>`;
+    }
+    function glyphShoot(cx, cy, s, filled) {
+      const R = s * 0.9, ir = s * 0.36;
+      const pts = [[cx + R, cy], [cx + ir, cy - ir], [cx, cy - R], [cx - ir, cy - ir],
+        [cx - R, cy], [cx - ir, cy + ir], [cx, cy + R], [cx + ir, cy + ir]];
+      return `<path d="M ${pts.map((p) => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L ")} Z" `
+        + `fill="${filled ? GLYPH_INK : "none"}" stroke="${GLYPH_INK}" stroke-width="1.5" stroke-linejoin="round"/>`;
+    }
+    function glyphBreacher(cx, cy, s) {
+      const d = `M ${cx} ${(cy - s * 0.95).toFixed(1)} L ${(cx + s * 0.95).toFixed(1)} ${cy} `
+        + `L ${cx} ${(cy + s * 0.95).toFixed(1)} L ${(cx - s * 0.95).toFixed(1)} ${cy} Z`;
+      return `<path d="${d}" fill="${GLYPH_INK}"/><circle cx="${cx}" cy="${cy}" r="${(s * 0.3).toFixed(1)}" fill="${colors.page}"/>`;
+    }
+    function actionIcon(item, cx, cy) {
+      const source = stackItemType(item);
+      if (source === "breacher") return glyphBreacher(cx, cy, 9);
+      const shoot = itemAction(item) === "shoot";
+      if (source === "fleet") {
+        const one = (gx) => shoot ? glyphShoot(gx, cy, 5.4, true) : glyphMove(gx, cy, 5.4, true);
+        return one(cx - 7.5) + one(cx) + one(cx + 7.5);
+      }
+      const filled = source === "component";
+      return shoot ? glyphShoot(cx, cy, 9, filled) : glyphMove(cx, cy, 9, filled);
+    }
+    const cardStripe = (item) => {
+      if (printTone === "bw") return colors.line;
+      const source = stackItemType(item);
+      if (source === "progression") return colors.progression;
+      if (source === "fleet") return colors.fleet;
+      if (source === "breacher") return colors.breacher;
+      return itemAction(item) === "shoot" ? colors.attack : colors.move;
+    };
 
     const stackX = 70;
     const stackY = 875;
@@ -828,14 +1084,18 @@
         }
         items.slice(0, 6).forEach((item, itemIndex) => {
           const y = stackY + 48 + itemIndex * rowH;
-          const fill = item.kind === "attack" ? colors.attack
-            : item.kind === "move" ? colors.move
-            : item.kind === "fleet" ? colors.fleet
-            : colors.hull;
-          stackSvg += `<rect x="${x + 8}" y="${y}" width="${colW - 16}" height="${rowH - 7}" rx="6"
-              fill="${fill}" stroke="${colors.line}" stroke-width="1.5"/>
-            <text x="${x + 14}" y="${y + 15}" class="ps-card">${esc(item.label)}</text>
-            <text x="${x + 14}" y="${y + 29}" class="ps-small">${esc(item.q !== undefined ? `hex ${item.q},${item.r}` : item.source)}</text>`;
+          const cardH = rowH - 7;
+          let sub = "";
+          if (item.q !== undefined) sub = printOptions.coords ? `hex ${item.q},${item.r}` : "";
+          else if (item.kind === "breacher" && item.source && item.source !== "progression") sub = item.source;
+          // White card so the label stays crisp; the type reads from the icon
+          // and the coloured left stripe instead of a shaded background.
+          stackSvg += `<rect x="${x + 8}" y="${y}" width="${colW - 16}" height="${cardH}" rx="6"
+              fill="${colors.page}" stroke="${colors.line}" stroke-width="1.5"/>
+            <rect x="${x + 8}" y="${y}" width="7" height="${cardH}" rx="3" fill="${cardStripe(item)}"/>
+            ${actionIcon(item, x + 32, y + cardH / 2)}
+            <text x="${x + 48}" y="${y + (sub ? 14 : cardH / 2 + 4)}" class="ps-card">${esc(item.label)}</text>
+            ${sub ? `<text x="${x + 48}" y="${y + 28}" class="ps-small">${esc(sub)}</text>` : ""}`;
           if (item.q !== undefined && printOptions.stackLinks) {
             const tile = tileMap.get(key(item.q, item.r));
             const [tx, ty] = pxy(item.q, item.r);
@@ -851,6 +1111,18 @@
         }
         stackSvg += "</g>";
       });
+      const legY = stackY + 342;
+      stackSvg += `<g class="ps-legend">
+        ${glyphMove(stackX + 9, legY, 8, true)}<text x="${stackX + 22}" y="${legY + 4}" class="ps-small">move</text>
+        ${glyphShoot(stackX + 74, legY, 8, true)}<text x="${stackX + 87}" y="${legY + 4}" class="ps-small">shoot</text>
+        <text x="${stackX + 150}" y="${legY + 4}" class="ps-small">Filled = ship component</text>
+        ${glyphMove(stackX + 330, legY, 8, false)}<text x="${stackX + 343}" y="${legY + 4}" class="ps-small">Outline = progression track</text>
+      </g>`;
+      const legY2 = legY + 22;
+      stackSvg += `<g class="ps-legend">
+        ${glyphMove(stackX + 4, legY2, 5.4, true)}${glyphMove(stackX + 13, legY2, 5.4, true)}${glyphMove(stackX + 22, legY2, 5.4, true)}<text x="${stackX + 34}" y="${legY2 + 4}" class="ps-small">Trio = fleet acts as a squadron</text>
+        ${glyphBreacher(stackX + 330, legY2, 8)}<text x="${stackX + 343}" y="${legY2 + 4}" class="ps-small">Diamond = breacher core strike</text>
+      </g>`;
     }
 
     let side = "";
@@ -870,7 +1142,7 @@
       });
       sideY += 20;
     }
-    if (printOptions.lanes) {
+    if (printOptions.laneList) {
       side += `<text x="760" y="${sideY}" class="ps-section">Damage Lanes</text>`;
       sideY += 28;
       for (const region of design.shield_regions) {
@@ -887,15 +1159,27 @@
       sideY += 12;
     }
     if (printOptions.progression) {
+      // A tick-off form: one square per tier for the players to mark with a
+      // pen as the boss climbs its track, plus how the track advances.
       side += `<text x="760" y="${sideY}" class="ps-section">Progression Track</text>`;
-      sideY += 28;
+      sideY += 26;
+      const triggers = design.progression.triggers || [];
+      const trigText = triggers.length
+        ? "Tick a box each time: " + triggers.map((trigger) => TRIGGER_LABELS[trigger] || trigger).join(", ")
+        : "No progress triggers set.";
+      side += `<text x="760" y="${sideY}" class="ps-small">${esc(trigText)}</text>`;
+      sideY += 24;
       if (!design.progression.steps.length) {
         side += `<text x="760" y="${sideY}" class="ps-small">No progression steps.</text>`;
         sideY += 24;
       }
+      const boxSize = 18;
       design.progression.steps.forEach((step, index) => {
-        side += `<text x="760" y="${sideY}" class="ps-list">${index + 1}. ${esc(stepLabel(step))}</text>`;
-        sideY += 22;
+        const boxY = sideY - boxSize + 3;
+        side += `<rect x="760" y="${boxY}" width="${boxSize}" height="${boxSize}" rx="3" fill="${colors.page}" stroke="${colors.line}" stroke-width="1.8"/>
+          <text x="${760 + boxSize + 10}" y="${sideY}" class="ps-tier">T${index + 1}</text>
+          <text x="${760 + boxSize + 48}" y="${sideY}" class="ps-list">${esc(stepLabel(step))}</text>`;
+        sideY += 27;
       });
       sideY += 12;
     }
@@ -907,14 +1191,11 @@
       sideY += 22;
       side += `<text x="760" y="${sideY}" class="ps-list">Use the arrows only for shield-area damage lanes; shield arcs are intentionally omitted.</text>`;
       sideY += 22;
-      side += `<text x="760" y="${sideY}" class="ps-list">Unassigned d8 lane numbers reroll during play.</text>`;
+      side += `<text x="760" y="${sideY}" class="ps-list">Unassigned lane numbers reroll during play; a roll of 1 is a glancing blow.</text>`;
     }
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
       <defs>
-        <marker id="psArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L8,3 L0,6 Z" fill="${colors.lane}"/>
-        </marker>
         <style>
           .ps-title{font:700 44px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
           .ps-sub{font:600 18px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
@@ -922,6 +1203,7 @@
           .ps-badge{font:700 18px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
           .ps-coord{font:600 10px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
           .ps-lane-num{font:700 14px 'Space Grotesk',Arial,sans-serif;fill:${colors.lane}}
+          .ps-tier{font:700 13px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
           .ps-stack-title{font:700 17px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
           .ps-card{font:700 12px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
           .ps-small{font:500 12px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
@@ -936,7 +1218,7 @@
       ${ship}
       ${stackSvg}
       ${side}
-      <text x="70" y="1810" class="ps-sub">Physical play checklist: boss sheet, d8 for damage lanes, component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
+      <text x="70" y="1810" class="ps-sub">Physical play checklist: boss sheet, a damage-lane die per region (lanes + 1 sides), component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
     </svg>`;
   }
 
@@ -1015,7 +1297,7 @@
     for (const region of design.shield_regions) {
       const option = document.createElement("option");
       option.value = region.number;
-      option.textContent = `Region ${region.number} — ${region.hexes.length} hexes, ${region.lanes.length}/7 lanes`;
+      option.textContent = `Region ${region.number} — ${region.hexes.length} hexes, ${region.lanes.length}/${regionLaneCount(region)} lanes`;
       if (region.number === currentRegion) option.selected = true;
       select.appendChild(option);
     }
@@ -1033,8 +1315,11 @@
     const generatorText = region.generator
       ? `shield gen at (${region.generator[0]},${region.generator[1]})`
       : "<b>none — click a Shield Gen tile to power this region</b>";
+    const rolls = regionRolls(region);
+    const laneCount = rolls.length;
+    const topRoll = rolls[rolls.length - 1];
     const used = region.lanes.map((lane) => lane.roll).sort((a, b) => a - b);
-    const missing = META.lane_rolls.filter((roll) => !used.includes(roll));
+    const missing = rolls.filter((roll) => !used.includes(roll));
     info.innerHTML = `
       <div><span class="bd-swatch" style="background:${regionColor(region.number)}"></span>
         Powered by: ${generatorText}</div>
@@ -1042,10 +1327,14 @@
         <label>Start charges <input id="bd-region-charges" type="number" min="0" max="9" value="${region.charges ?? 3}"></label>
         <label>Max charges <input id="bd-region-maxcharges" type="number" min="0" max="9" value="${region.max_charges ?? 3}"></label>
       </div>
-      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · unassigned (rerolled in play): ${missing.join(", ")}` : " · all seven"}</div>
+      <div class="bd-charges-row">
+        <label>Damage lanes <input id="bd-region-lanecount" type="number" min="1" max="${META.max_lane_count || 12}" value="${laneCount}"></label>
+        <span class="admin-note" style="margin:0">d${laneCount + 1}: 1 misses, 2-${topRoll} are lanes</span>
+      </div>
+      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · unassigned (rerolled in play): ${missing.join(", ")}` : ` · all ${laneCount}`}</div>
       <div class="admin-note">${shieldSub === "hexes"
         ? "Click hull hexes to add/remove them from this region; click a Shield Gen tile to set the power source."
-        : "Click a region hex to assign the next lane (2-8). Click again to rotate its entry face; past the last face, the lane is cleared. Fewer than seven lanes is fine — unassigned numbers reroll. Tick the box to stack a second lane on a laned hex."}</div>`;
+        : `Click a region hex to assign the next lane (2-${topRoll}). Click again to rotate its entry face; past the last face, the lane is cleared. Fewer than ${laneCount} lanes is fine — unassigned numbers reroll. Tick the box to stack a second lane on a laned hex.`}</div>`;
     const chargesInput = info.querySelector("#bd-region-charges");
     const maxInput = info.querySelector("#bd-region-maxcharges");
     const applyCharges = () => {
@@ -1057,6 +1346,15 @@
     };
     chargesInput.addEventListener("change", applyCharges);
     maxInput.addEventListener("change", applyCharges);
+    info.querySelector("#bd-region-lanecount").addEventListener("change", (event) => {
+      const next = Math.max(1, Math.min(META.max_lane_count || 12, parseInt(event.target.value, 10) || laneCount));
+      region.lane_count = next;
+      // Lanes whose roll no longer fits the smaller die are dropped.
+      region.lanes = region.lanes.filter((lane) => lane.roll <= next + 1);
+      markDirty();
+      renderShieldPanel();
+      renderBoard();
+    });
   }
 
   function nextRegionNumber() {
@@ -1248,6 +1546,7 @@
     for (const region of design.shield_regions) {
       if (region.max_charges === undefined) region.max_charges = region.charges ?? 3;
       if (region.charges === undefined) region.charges = region.max_charges;
+      if (region.lane_count === undefined) region.lane_count = META.default_lane_count || 7;
     }
     dirty = false;
     el("bd-save").classList.remove("attention");
@@ -1373,14 +1672,8 @@
               <div id="bd-region-info" class="bd-region-info"></div>
             </div>
             <div id="bd-panel-stacks" class="hidden">
-              <h3 class="panel-sub">Action stacks</h3>
-              <p class="admin-note">Each column is a boss action stack. Firing Computers,
-                Fuel Tanks, and progression action links appear in the stack they feed —
-                drag a card to another column to reassign it. Breacher links live in the
-                StarBreach stack. The progression strip up top shows the track in order;
-                drag a step onto another to reorder the track.</p>
-              <p class="admin-note">Fleet actions (Behavior tab) are shown per column for
-                reference.</p>
+              <h3 class="panel-sub">Ship view</h3>
+              <div id="bd-stacks-mini" class="bd-mini-ship bd-mini-side"></div>
             </div>
             <div id="bd-panel-behavior" class="hidden">
               <h3 class="panel-sub">Boss behavior</h3>
@@ -1414,12 +1707,18 @@
                     <option value="bw">Black and white</option>
                   </select>
                 </label>
-                <label><input type="checkbox" data-print-opt="lanes" checked> Damage lane arrows</label>
+                <label><input type="checkbox" data-print-opt="lanes" checked> Damage lane arrows (on ship)</label>
+                <label><input type="checkbox" data-print-opt="laneList" checked> Damage lane list (sidebar)</label>
                 <label><input type="checkbox" data-print-opt="stacks" checked> Action stacks</label>
                 <label><input type="checkbox" data-print-opt="stackLinks" checked> Action stack links to ship</label>
+                <label><input type="checkbox" data-print-opt="coords" checked> Hex coordinates</label>
                 <label><input type="checkbox" data-print-opt="components" checked> Component legend</label>
                 <label><input type="checkbox" data-print-opt="progression" checked> Progression track</label>
                 <label><input type="checkbox" data-print-opt="fleet" checked> Fleet and table aids</label>
+                <label>Ship scale
+                  <input id="bd-print-zoom" type="range" min="50" max="200" step="5" value="100">
+                  <span id="bd-print-zoom-value">100%</span>
+                </label>
               </div>
               <div class="bd-print-actions">
                 <button class="btn gold" id="bd-print-download">Download SVG</button>
@@ -1504,7 +1803,10 @@
     el("bd-region-add").addEventListener("click", () => {
       const number = nextRegionNumber();
       if (number === null) { setStatus("All nine region numbers are in use.", false); return; }
-      design.shield_regions.push({ number, hexes: [], generator: null, lanes: [], charges: 3, max_charges: 3 });
+      design.shield_regions.push({
+        number, hexes: [], generator: null, lanes: [],
+        lane_count: META.default_lane_count || 7, charges: 3, max_charges: 3,
+      });
       currentRegion = number;
       markDirty();
       renderShieldPanel();
@@ -1569,6 +1871,11 @@
         printOptions[box.dataset.printOpt] = !!box.checked;
         renderPrintView();
       });
+    });
+    el("bd-print-zoom").addEventListener("input", (event) => {
+      printZoom = Math.max(0.5, Math.min(2, (parseInt(event.target.value, 10) || 100) / 100));
+      el("bd-print-zoom-value").textContent = Math.round(printZoom * 100) + "%";
+      renderPrintView();
     });
     el("bd-print-download").addEventListener("click", downloadPrintSheet);
     el("bd-print-now").addEventListener("click", printSheet);
@@ -1690,6 +1997,12 @@
   }
 
   // Main app: full-screen "My Bosses" overlay, opened from the lobby.
+  const LS_BUILD_CLICKED = "ss_build_content_clicked";
+  const LS_BUILD_INTRO = "ss_build_content_intro_seen";
+  const LS_BUILDER_HOWTO = "ss_bossdesigner_howto_seen";
+  const lsGet = (key) => { try { return localStorage.getItem(key); } catch (err) { return null; } };
+  const lsSet = (key) => { try { localStorage.setItem(key, "1"); } catch (err) { /* private mode */ } };
+
   let playerDesigner = null;
   function openPlayerDesigner() {
     let overlay = document.getElementById("player-bossdesigner-overlay");
@@ -1716,7 +2029,82 @@
       });
     }
     playerDesigner.boot();
+    maybeShowBuilderHowto();
   }
 
-  window.BossDesigner = { openPlayerDesigner };
+  // One-time "how to" blurb the first time a player enters the builder.
+  function maybeShowBuilderHowto() {
+    if (lsGet(LS_BUILDER_HOWTO)) return;
+    lsSet(LS_BUILDER_HOWTO);
+    const howto = document.createElement("div");
+    howto.className = "overlay bd-howto-overlay";
+    howto.innerHTML = `
+      <div class="picker">
+        <h3>🛠 StarBreach Ship Builder — how it works</h3>
+        <div class="tutorial-steps">
+          <div><b>1.</b> Name a new boss and hit <b>＋ New design</b>, then paint hull tiles in <b>Structure</b>. Firing Computers grant attacks, Fuel Tanks grant moves, Shield Gens power shield regions, Cores anchor Breacher abilities.</div>
+          <div><b>2.</b> In <b>Shields &amp; Lanes</b>, group hexes into shield regions and give each one damage lanes — the numbered arrows attackers roll against.</div>
+          <div><b>3.</b> <b>Progression</b> builds the boss's power-up track; <b>Action Stacks</b> shows which stack each ability feeds — drag cards between columns to reassign them.</div>
+          <div><b>4.</b> <b>Save</b> your design, then pick it as the StarBreach Boss when you launch a raid. You can also export a printable sheet from <b>Print Sheets</b>.</div>
+        </div>
+        <button class="btn gold picker-cancel" id="bd-howto-ok">Got it</button>
+      </div>`;
+    document.body.appendChild(howto);
+    howto.querySelector("#bd-howto-ok").addEventListener("click", () => howto.remove());
+  }
+
+  // Lobby topbar "Build New Content" button: twinkles until first clicked.
+  let twinkleTimer = null;
+  function wireBuildContentButton() {
+    const button = document.getElementById("btn-build-content");
+    if (!button) return;
+    if (!lsGet(LS_BUILD_CLICKED)) {
+      twinkleTimer = setInterval(() => {
+        button.classList.add("bd-twinkle");
+        setTimeout(() => button.classList.remove("bd-twinkle"), 1300);
+      }, 4200);
+    }
+    button.addEventListener("click", () => {
+      lsSet(LS_BUILD_CLICKED);
+      if (twinkleTimer) { clearInterval(twinkleTimer); twinkleTimer = null; }
+      button.classList.remove("bd-twinkle");
+      openPlayerDesigner();
+    });
+  }
+  wireBuildContentButton();
+
+  // One-time popup pointing new users at the button (called on lobby entry).
+  function offerBuildContentIntro() {
+    if (lsGet(LS_BUILD_INTRO)) return;
+    // If the first-visit rules tour is up, let it go first; this intro will
+    // fire on the next lobby entry instead.
+    const tour = document.getElementById("tutorial-overlay");
+    if (tour && !tour.classList.contains("hidden")) return;
+    lsSet(LS_BUILD_INTRO);
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker">
+        <h3>🛠 New: Build Your Own Content</h3>
+        <div class="tutorial-steps">
+          <div>You can design your own <b>StarBreach boss ships</b> — hull, shields, damage lanes, progression track, and fleet — then battle them with your crew.</div>
+          <div>Find the <b>🛠 Build New Content</b> button at the top of the page, next to your captain's name. It'll sparkle until you've paid it a visit.</div>
+        </div>
+        <div class="bd-intro-actions">
+          <button class="btn gold picker-cancel" id="bd-intro-open">🛠 Take me there</button>
+          <button class="btn ghost picker-cancel" id="bd-intro-later">Later</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#bd-intro-later").addEventListener("click", () => overlay.remove());
+    overlay.querySelector("#bd-intro-open").addEventListener("click", () => {
+      overlay.remove();
+      lsSet(LS_BUILD_CLICKED);
+      if (twinkleTimer) { clearInterval(twinkleTimer); twinkleTimer = null; }
+      document.getElementById("btn-build-content")?.classList.remove("bd-twinkle");
+      openPlayerDesigner();
+    });
+  }
+
+  window.BossDesigner = { openPlayerDesigner, offerBuildContentIntro };
 })();

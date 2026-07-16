@@ -32,6 +32,8 @@ def _designer_meta() -> dict:
         "tile_types": list(boss_designs.TILE_TYPES),
         "action_stacks": list(boss_designs.ACTION_STACKS),
         "lane_rolls": list(boss_designs.LANE_ROLLS),
+        "default_lane_count": boss_designs.DEFAULT_LANE_COUNT,
+        "max_lane_count": boss_designs.MAX_LANE_COUNT,
         "step_kinds": list(boss_designs.STEP_KINDS),
         "trigger_types": list(boss_designs.TRIGGER_TYPES),
         "spawn_locations": list(boss_designs.SPAWN_LOCATIONS),

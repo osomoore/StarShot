@@ -391,6 +391,18 @@ def _roll_d8_impl(state: GameState) -> int:
     return value
 
 
+def _roll_lane_die(state: GameState, sides: int) -> int:
+    """Damage-lane roll for a shield area. Areas with the classic 7 lanes go
+    through the shared d8 path (kept for test stubs and replay parity);
+    larger regions roll their own (lane_count + 1)-sided die."""
+    if sides == 8:
+        return _roll_d8(state)
+    rng = _make_rng(state)
+    value = rng.randint(1, max(2, sides))
+    state.rng_step += 1
+    return value
+
+
 def _roll_d6_sum(state: GameState, dice: int) -> int:
     from starshot.rules import engine as base
 
@@ -983,10 +995,11 @@ def _resolve_volley_vs_boss(
                 shields_absorbed += 1
                 shots.append({"result": "shield_absorbed", "shield_hp_left": sb.shield_hp[area]})
                 continue
-            lane_roll = _roll_d8(state)
-            # Regions may define fewer than seven lanes; an unassigned roll is
-            # rerolled (a glancing blow always stands). The stock boss defines
-            # every lane, so this never triggers there.
+            lane_die = sb_spec.lane_die(spec, area)
+            lane_roll = _roll_lane_die(state, lane_die)
+            # Regions may define fewer lanes than their die allows; an
+            # unassigned roll is rerolled (a glancing blow always stands).
+            # The stock boss defines every lane, so this never triggers there.
             defined_lanes = spec["damage_lanes"].get(area, {})
             rerolls = 0
             while (
@@ -994,7 +1007,7 @@ def _resolve_volley_vs_boss(
                 and str(lane_roll) not in defined_lanes
                 and rerolls < 16
             ):
-                lane_roll = _roll_d8(state)
+                lane_roll = _roll_lane_die(state, lane_die)
                 rerolls += 1
             adjusted_roll, ace_shift = (
                 _fighting_ace_lane_choice(sb, area, lane_roll, preferred=ace_preference)
@@ -1089,8 +1102,10 @@ def _fighting_ace_lane_choice(
     ):
         return preferred, preferred - lane_roll
 
+    die = sb_spec.lane_die(spec, area)
+
     def lane_score(roll: int) -> float:
-        if roll < 1 or roll > 8:
+        if roll < 1 or roll > die:
             return -1.0
         if roll == sb_data.GLANCING_BLOW_ROLL:
             return 0.5  # a desperation card is worth something, hull damage more

@@ -99,11 +99,18 @@
 .bd-step-drag:active { cursor: grabbing; }
 
 .bd-stacks { display: flex; flex-direction: column; gap: 10px; padding: 4px; }
-.bd-prog-strip {
-  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
-  border: 1px solid var(--panel-edge); border-radius: 8px; padding: 8px 10px; background: #0d1426;
-}
 .bd-strip-label { color: var(--ink-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+
+/* Progression track: two balanced columns read top-to-bottom, left first;
+   the dashed arrow wraps from the bottom of column 1 to the top of column 2. */
+.bd-prog-track {
+  border: 1px solid var(--panel-edge); border-radius: 8px; padding: 8px 10px; background: #0d1426;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.bd-prog-cols { display: grid; grid-template-columns: 1fr 34px 1fr; gap: 4px; align-items: stretch; }
+.bd-prog-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bd-prog-wrap-arrow { color: var(--gold); opacity: .75; display: flex; }
+.bd-prog-wrap-arrow svg { width: 100%; height: 100%; min-height: 60px; }
 .bd-prog-chip {
   border: 1px solid var(--panel-edge); border-radius: 6px; padding: 4px 8px;
   font-size: 12px; color: var(--ink); background: #0a1020; cursor: grab; user-select: none;
@@ -113,7 +120,9 @@
 .bd-prog-chip.bd-kind-breacher_link { border-color: #d9a6ff; }
 .bd-prog-chip.bd-kind-ability_trigger { border-color: #9dff8a; }
 
-.bd-stack-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-items: start; }
+/* Stretch: every stack bar matches the tallest, so empty bars stay easy drop
+   targets when dragging from a full one. */
+.bd-stack-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; align-items: stretch; }
 @media (max-width: 900px) { .bd-stack-cols { grid-template-columns: repeat(2, 1fr); } }
 .bd-stack-col {
   border: 1px solid var(--panel-edge); border-radius: 8px; background: #0d1426;
@@ -124,9 +133,14 @@
   color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 16px;
   border-bottom: 1px solid var(--panel-edge); padding-bottom: 4px; margin-bottom: 2px;
 }
+.bd-stack-head { cursor: default; }
 .bd-stack-item {
   border: 1px solid var(--panel-edge); border-left-width: 3px; border-radius: 6px;
   padding: 6px 8px; font-size: 12.5px; color: var(--ink); background: #0a1020;
+  transition: box-shadow .1s ease, border-color .1s ease;
+}
+.bd-stack-item.bd-stack-hot {
+  border-color: #fff; box-shadow: 0 0 8px rgba(255,255,255,.55); background: #131c33;
 }
 .bd-stack-item[draggable="true"] { cursor: grab; }
 .bd-stack-item[draggable="true"]:active { cursor: grabbing; }
@@ -143,13 +157,14 @@
 /* spawn-fleet progression chips */
 .bd-prog-chip.bd-kind-spawn_fleet { border-color: #ff7ad0; }
 
-/* mini ship view under the action-stack organizer */
+/* mini ship view beside the action-stack organizer */
 .bd-mini-ship {
-  margin-top: 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
+  border: 1px solid var(--panel-edge); border-radius: 8px;
   background: #0d1426; padding: 8px 10px; text-align: center;
 }
 .bd-mini-ship-label { color: var(--ink-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
 .bd-mini-svg { max-height: 180px; width: 100%; }
+.bd-mini-side .bd-mini-svg { max-height: 46vh; }
 .bd-mini-svg polygon { transition: filter .1s ease; }
 .bd-mini-svg .bd-mini-hot {
   stroke: #fff; stroke-width: 2.4; filter: drop-shadow(0 0 6px rgba(255,255,255,.9));
@@ -221,3 +236,30 @@
 .bd-player-overlay .admin-status { min-height: 22px; margin-top: 12px; font-size: 13px; }
 .bd-player-overlay .admin-status.ok { color: #9fd8ae; }
 .bd-player-overlay .admin-status.err { color: #ff9a8a; white-space: pre-wrap; }
+
+/* lobby "Build New Content" button: twinkles until first clicked */
+#btn-build-content { position: relative; }
+#btn-build-content.bd-twinkle { animation: bd-twinkle 1.3s ease-in-out; }
+#btn-build-content.bd-twinkle::after {
+  content: "✦"; position: absolute; top: -9px; right: -5px; color: #ffe9a8;
+  font-size: 13px; animation: bd-twinkle-star 1.3s ease-in-out;
+}
+@keyframes bd-twinkle {
+  0%, 100% { box-shadow: none; transform: none; }
+  35% { box-shadow: 0 0 14px rgba(255, 215, 94, .85), 0 0 26px rgba(255, 215, 94, .35); transform: scale(1.05); }
+  65% { box-shadow: 0 0 8px rgba(255, 215, 94, .5); transform: scale(1.01); }
+}
+@keyframes bd-twinkle-star {
+  0%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); }
+  40% { opacity: 1; transform: scale(1.25) rotate(35deg); }
+  70% { opacity: .7; transform: scale(.9) rotate(60deg); }
+}
+
+/* first-time builder how-to sits above the designer overlay (z-index 60) */
+.bd-howto-overlay { z-index: 70; }
+.bd-howto-overlay .picker, .bd-intro-actions + .picker { max-width: 620px; }
+.bd-intro-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+
+/* print controls: ship scale slider */
+#bd-print-zoom { flex: 1; min-width: 90px; accent-color: var(--gold); }
+#bd-print-zoom-value { color: var(--ink); min-width: 42px; text-align: right; }

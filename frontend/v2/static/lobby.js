@@ -48,6 +48,7 @@
     if (leaderboardTimer) clearInterval(leaderboardTimer);
     leaderboardTimer = setInterval(advanceLeaderboard, 10000);
     Tutorial.offerIfNew();
+    window.BossDesigner?.offerBuildContentIntro?.();
   }
 
   function leave() {

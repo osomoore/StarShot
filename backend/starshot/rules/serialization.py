@@ -474,7 +474,9 @@ def _lane_preference(value) -> int | None:
         lane = int(value)
     except (TypeError, ValueError):
         return None
-    return lane if 2 <= lane <= 8 else None
+    # Designed bosses may have up to 12 lanes (rolls 2-13); a preference past
+    # the target area's die is harmless — the engine ignores unusable lanes.
+    return lane if 2 <= lane <= 13 else None
 
 
 def selection_from_dict(data: dict) -> OrderCardSelection:

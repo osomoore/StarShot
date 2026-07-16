@@ -83,6 +83,26 @@ class NormalizeTests(unittest.TestCase):
         with self.assertRaises(boss_designs.BossDesignError):
             boss_designs.normalize_design(raw)
 
+    def test_lane_count_defaults_and_bounds(self):
+        design = boss_designs.normalize_design(make_design())
+        self.assertEqual(design["shield_regions"][0]["lane_count"], 7)
+        raw = make_design()
+        raw["shield_regions"][0]["lane_count"] = 12
+        raw["shield_regions"][0]["lanes"].append({"roll": 13, "q": 1, "r": 0, "facing": 1})
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(design["shield_regions"][0]["lane_count"], 12)
+        self.assertEqual(design["shield_regions"][0]["lanes"][-1]["roll"], 13)
+        raw["shield_regions"][0]["lane_count"] = 13
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+
+    def test_lane_roll_must_fit_lane_count(self):
+        raw = make_design()
+        raw["shield_regions"][0]["lane_count"] = 3
+        # roll 8 needs at least 7 lanes; with lane_count 3 only 2-4 are legal
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+
     def test_rejects_breacher_link_without_core_or_round(self):
         raw = make_design()
         raw["progression"]["steps"] = [{"kind": "breacher_link"}]

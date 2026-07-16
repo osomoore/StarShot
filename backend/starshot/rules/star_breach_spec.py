@@ -72,6 +72,8 @@ def default_spec() -> dict:
             area: {str(roll): [list(hex_) for hex_ in lane] for roll, lane in lanes.items()}
             for area, lanes in sb_data.BOSS_DAMAGE_LANES.items()
         },
+        # Sides of the damage-lane die per area (roll 1 is a glancing blow).
+        "lane_die": {area: 8 for area in sb_data.AREAS},
         "initial_shield_hp": dict(sb_data.INITIAL_SHIELD_HP),
         "shield_max": dict(sb_data.INITIAL_SHIELD_HP),
         "shield_generator_hex": generator_hex,
@@ -296,6 +298,9 @@ def spec_from_design(design: dict) -> dict:
         "area_hexes": area_hexes,
         "components": components,
         "damage_lanes": damage_lanes,
+        "lane_die": {
+            str(region["number"]): int(region.get("lane_count", 7)) + 1 for region in regions
+        },
         "initial_shield_hp": {str(region["number"]): region["charges"] for region in regions},
         "shield_max": {str(region["number"]): region["max_charges"] for region in regions},
         "shield_generator_hex": generator_hex,
@@ -336,6 +341,12 @@ def area_has_intact_hull(spec: dict, area: str, destroyed: set[tuple[int, int]])
     return any(
         (hex_[0], hex_[1]) not in destroyed for hex_ in spec["area_hexes"].get(area, ())
     )
+
+
+def lane_die(spec: dict, area: str) -> int:
+    """Sides of the damage-lane die for an area (roll 1 is a glancing blow).
+    Specs saved before lane counts were configurable default to the d8."""
+    return int((spec.get("lane_die") or {}).get(area, 8))
 
 
 def first_intact_lane_hex(

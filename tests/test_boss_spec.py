@@ -137,6 +137,19 @@ class DesignSpecTests(unittest.TestCase):
         spec = sb_spec.spec_from_design(design)
         self.assertEqual(sorted(spec["damage_lanes"]["1"].keys()), ["2", "3"])
 
+    def test_lane_die_follows_region_lane_count(self):
+        # Default: 7 lanes -> d8, matching the stock scenario.
+        spec = sb_spec.spec_from_design(playable_design())
+        self.assertEqual(sb_spec.lane_die(spec, "1"), 8)
+        # 12 lanes -> a 13-sided die (1 still misses).
+        raw = make_design()
+        raw["shield_regions"][0]["lane_count"] = 12
+        spec = sb_spec.spec_from_design(normalize_design(raw))
+        self.assertEqual(sb_spec.lane_die(spec, "1"), 13)
+        # Specs saved before lane counts existed fall back to the d8.
+        self.assertEqual(sb_spec.lane_die({"lane_die": {}}, "1"), 8)
+        self.assertEqual(sb_spec.lane_die(sb_spec.default_spec(), "nose"), 8)
+
     def test_fleet_and_actions(self):
         spec = sb_spec.spec_from_design(playable_design())
         self.assertEqual(len(spec["fleet"]), 2)

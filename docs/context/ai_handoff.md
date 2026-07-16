@@ -101,8 +101,11 @@ Admin tools:
 
 - Boss Ship Designer (admin console tab "Boss Designer"): hex editor for custom
   StarBreach-style bosses — hull tiles (generic / shield gen / firing computer /
-  fuel tank / core), shield regions with a powering generator and seven d8
-  damage lanes (rolls 2-8, each with an entry face), and a progression track
+  fuel tank / core), shield regions with a powering generator and a
+  configurable number of damage lanes (1-12 per region via a number ticker,
+  default 7; the die is lane_count + 1 sides with roll 1 always a glancing
+  blow — `region.lane_count` in the design, `lane_die` in the compiled spec;
+  each lane has an entry face), and a progression track
   (triggers + filler/action-link/breacher-link/ability-trigger steps).
   Also: per-region shield start/max charges, a Behavior tab (boss AI —
   hunter-killer only for now; fleet craft count/type/HP/AI and a tick-box
@@ -115,13 +118,25 @@ Admin tools:
   `tests/test_boss_designer.py`. Lane assignment supports a "Renumber lanes
   left-to-right" button, an "allow a second lane on a laned hex" tick box
   (two lanes may share a hex with different rolls/faces), and partial lane
-  sets: regions need at least one lane, and unassigned d8 numbers are
+  sets: regions need at least one lane, and unassigned lane numbers are
   rerolled at runtime (see the reroll loop in `_resolve_volley_vs_boss`).
   An "Action Stacks" mode shows one column per boss stack (0.5-3.5 +
-  StarBreach) with draggable cards for Firing Computers / Fuel Tanks /
-  action-link steps (drop on a column to reassign the stack) plus a
-  draggable progression strip; progression rows also drag-reorder via the
-  ⠿ handle.
+  StarBreach) with draggable, equal-height columns of cards for Firing
+  Computers / Fuel Tanks / action-link steps (drop on a column to reassign
+  the stack); the progression track sits above it as two balanced columns
+  joined by a wrap-around arrow, chips drag-reorder, hovering a chip lights
+  up its stack card, and hovering a stack header lights up that stack's
+  components in the mini ship view (right side panel). Progression rows in
+  the Progression tab also drag-reorder via the ⠿ handle. The player-facing
+  designer opens from the lobby "🛠 Build New Content" topbar button (also
+  the "My Bosses" button in the StarBreach lobby options); the button
+  twinkles until first clicked, a one-time lobby popup introduces it, and a
+  one-time how-to overlay shows on first entry (localStorage flags
+  `ss_build_content_*` / `ss_bossdesigner_howto_seen`). Print Sheets mode
+  has tone (color/B&W), a hex-coordinate toggle, a ship-scale slider
+  (50-200%), and per-type card markings (C/P/F/B badges; B&W uses hatch/dot/
+  crosshatch pattern fills to tell component / progression / fleet /
+  breacher abilities apart).
 - Designed bosses are playable: `backend/starshot/rules/star_breach_spec.py`
   compiles a design into a JSON "boss spec" (hull, areas = shield regions,
   damage-lane rays, phases from firing computers / fuel tanks / progression

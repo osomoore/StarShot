@@ -31,8 +31,16 @@ TILE_TYPES = ("generic", "shield_gen", "firing_computer", "fuel_tank", "core")
 # Boss action stacks a Firing Computer / Fuel Tank / action-link step can feed.
 ACTION_STACKS = ("0.5", "1.5", "2.5", "3.5", "starbreach")
 
-# d8 rolls that hit a damage lane (1 is a miss).
-LANE_ROLLS = tuple(range(2, 9))
+# Die rolls that hit a damage lane (1 is always a miss). A region with N
+# lanes uses an (N+1)-sided die: rolls 2..N+1 are lanes. The default of 7
+# lanes matches the stock scenario's d8.
+DEFAULT_LANE_COUNT = 7
+MAX_LANE_COUNT = 12
+LANE_ROLLS = tuple(range(2, DEFAULT_LANE_COUNT + 2))
+
+
+def lane_rolls(lane_count: int) -> tuple[int, ...]:
+    return tuple(range(2, int(lane_count) + 2))
 
 STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger", "spawn_fleet")
 ACTION_TYPES = ("move", "shoot")
@@ -153,16 +161,22 @@ def _normalize_region(raw, index: int) -> dict:
     generator = raw.get("generator")
     if generator is not None:
         generator = list(_as_hex(generator, f"{label}.generator"))
+    lane_count = _as_int(raw.get("lane_count", DEFAULT_LANE_COUNT), f"{label}.lane_count")
+    if not 1 <= lane_count <= MAX_LANE_COUNT:
+        raise BossDesignError(f"{label}.lane_count must be 1-{MAX_LANE_COUNT}.")
     lanes = raw.get("lanes", [])
     if not isinstance(lanes, list):
         raise BossDesignError(f"{label}.lanes must be a list.")
+    valid_rolls = lane_rolls(lane_count)
     normalized_lanes = []
     for i, lane in enumerate(lanes):
         if not isinstance(lane, dict):
             raise BossDesignError(f"{label}.lanes[{i}] must be an object.")
         roll = _as_int(lane.get("roll"), f"{label}.lanes[{i}].roll")
-        if roll not in LANE_ROLLS:
-            raise BossDesignError(f"{label}.lanes[{i}].roll must be 2-8.")
+        if roll not in valid_rolls:
+            raise BossDesignError(
+                f"{label}.lanes[{i}].roll must be 2-{valid_rolls[-1]} (its lane_count is {lane_count})."
+            )
         q, r = _as_hex((lane.get("q"), lane.get("r")), f"{label}.lanes[{i}]")
         facing = _as_int(lane.get("facing"), f"{label}.lanes[{i}].facing")
         if not 0 <= facing <= 5:
@@ -178,6 +192,7 @@ def _normalize_region(raw, index: int) -> dict:
         "number": number,
         "hexes": seen,
         "generator": generator,
+        "lane_count": lane_count,
         "lanes": normalized_lanes,
         "charges": charges,
         "max_charges": max_charges,
