@@ -730,24 +730,11 @@ class AdminTests(unittest.TestCase):
         outsider = make_client()
         register(outsider, "admin_snoop")
         self.assertEqual(outsider.get("/api/v2/admin/deck").status_code, 403)
-        self.assertEqual(outsider.get("/api/v2/admin/build-info").status_code, 403)
         self.assertEqual(outsider.get("/api/v2/admin/download").status_code, 403)
         self.assertEqual(
             outsider.post("/api/v2/admin/keywords", json={"name": "x", "pattern": "y", "code": "spec=1"}).status_code,
             403,
         )
-
-    def test_build_info_reports_frontend_and_backend_timestamps(self) -> None:
-        client = self.admin_client()
-        response = client.get("/api/v2/admin/build-info")
-        self.assertEqual(response.status_code, 200, response.text)
-        payload = response.json()
-        self.assertIn("generated_at", payload)
-        for key in ("frontend", "backend"):
-            self.assertIn(key, payload)
-            self.assertRegex(payload[key]["built_at"], r"^\d{4}-\d{2}-\d{2}T")
-            self.assertGreater(payload[key]["file_count"], 0)
-            self.assertIsInstance(payload[key]["latest_file"], str)
 
     def test_deck_roundtrip_and_validation(self) -> None:
         client = self.admin_client()

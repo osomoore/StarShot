@@ -700,49 +700,10 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
     }
 
 
-_BUILD_FRONTEND_SUFFIXES = {".html", ".css", ".js"}
-_BUILD_BACKEND_SUFFIXES = {".py", ".toml"}
-_BUILD_EXCLUDE_DIRS = {"__pycache__", ".pytest_cache"}
-
-
-def _latest_source_mtime(root: Path, suffixes: set[str]) -> dict:
-    latest_path: Path | None = None
-    latest_mtime = 0.0
-    file_count = 0
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix not in suffixes:
-            continue
-        if set(path.relative_to(root).parts[:-1]) & _BUILD_EXCLUDE_DIRS:
-            continue
-        file_count += 1
-        mtime = path.stat().st_mtime
-        if latest_path is None or mtime > latest_mtime:
-            latest_path = path
-            latest_mtime = mtime
-    if latest_path is None:
-        return {"built_at": None, "latest_file": None, "file_count": 0}
-    return {
-        "built_at": datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "latest_file": str(latest_path.relative_to(ROOT)).replace("\\", "/"),
-        "file_count": file_count,
-    }
-
-
-@admin_router.get("/build-info")
-def build_info(request: Request) -> dict:
-    _admin_user(request)
-    return {
-        "generated_at": _now_iso(),
-        "frontend": _latest_source_mtime(ROOT / "frontend" / "v2", _BUILD_FRONTEND_SUFFIXES),
-        "backend": _latest_source_mtime(ROOT / "backend" / "starshot", _BUILD_BACKEND_SUFFIXES),
-    }
-
-
 @admin_router.post("/server-update")
 def server_update(request: Request) -> dict:
     _admin_user(request)
     flag_path = ROOT / ".starshot" / "pull_flag"
-    flag_path.parent.mkdir(exist_ok=True)
     flag_path.write_text("1")
     return {"ok": True, "note": "Server update requested. The container will pull and restart within 60 seconds."}
 

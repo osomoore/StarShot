@@ -171,33 +171,6 @@
 }
 
 .site-settings { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
-.build-info {
-  display: grid;
-  gap: 8px;
-  max-width: 760px;
-}
-.build-row {
-  background: #0d1426;
-  border: 1px solid var(--panel-edge);
-  border-radius: 8px;
-  display: grid;
-  gap: 3px;
-  grid-template-columns: 110px minmax(0, 1fr);
-  margin: 0;
-  padding: 9px 11px;
-}
-.build-row b { color: var(--gold-bright); }
-.build-row span { color: var(--ink); }
-.build-row small {
-  color: var(--ink-dim);
-  font-size: 11px;
-  grid-column: 2;
-  overflow-wrap: anywhere;
-}
-.build-row.generated {
-  background: transparent;
-  border-color: rgba(42, 53, 84, .58);
-}
 .setting-row { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; }
 .setting-row textarea {
   width: 100%; background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
