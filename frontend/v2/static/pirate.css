@@ -53,19 +53,14 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 .build-footer {
-  position: fixed;
-  left: 12px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
-  z-index: 90;
-  max-width: min(720px, calc(100vw - 24px));
-  padding: 5px 9px;
-  border: 1px solid rgba(212, 167, 72, 0.28);
-  border-radius: 6px;
-  background: rgba(7, 11, 22, 0.74);
+  flex: 0 0 auto;
+  margin: 8px auto 14px;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
   color: var(--ink-dim);
   font-size: 11px;
   line-height: 1.35;
-  pointer-events: none;
+  text-align: center;
 }
 
 /* ── buttons ─────────────────────────────── */
@@ -145,11 +140,61 @@ h1, h2, .brand, .poster-title, .banner-text {
   backdrop-filter: blur(4px);
   flex: 0 0 auto;
 }
+#screen-lobby .topbar {
+  display: grid;
+  align-items: center;
+  gap: 8px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .brand { font-size: 26px; color: var(--gold-bright); }
 .brand-skull { filter: drop-shadow(0 0 8px rgba(212,167,72,.7)); }
 .brand-tag { font-family: "Space Grotesk"; font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+.topbar-admin-row {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+.topbar-account {
+  justify-self: end;
+  position: relative;
+}
 .user-chip { color: var(--gold); font-weight: 600; }
+.user-menu-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+.hamburger {
+  color: var(--gold-bright);
+  font-size: 15px;
+  line-height: 1;
+}
+.user-popup {
+  background: rgba(7, 11, 22, 0.98);
+  border: 1px solid rgba(212, 167, 72, 0.38);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 95;
+}
+.user-popup .btn {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
 
 /* ── lobby ───────────────────────────────── */
 .lobby-grid {
@@ -189,6 +234,44 @@ h1, h2, .brand, .poster-title, .banner-text {
 .ai-pick.picked { border-color: var(--gold); box-shadow: 0 0 10px rgba(212,167,72,.35); }
 .open-seats-label { color: var(--ink-dim); font-size: 13px; }
 .open-seats-label select { background: #0d1426; color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 4px 6px; }
+.ai-level-label,
+.open-seats-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-level-label #ai-level,
+.open-seats-label #open-seats {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.choice-button {
+  background: #0d1426;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  color: var(--ink-dim);
+  cursor: pointer;
+  font: 700 12px "Space Grotesk", sans-serif;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+.choice-button.active {
+  background: rgba(212, 167, 72, 0.18);
+  border-color: rgba(212, 167, 72, 0.7);
+  color: var(--gold-bright);
+  box-shadow: 0 0 0 1px rgba(212, 167, 72, 0.18) inset;
+}
+.choice-buttons.compact .choice-button {
+  min-width: 38px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
 
 .match-list { display: flex; flex-direction: column; gap: 8px; }
 .match-row {
@@ -346,6 +429,21 @@ h1, h2, .brand, .poster-title, .banner-text {
 .expansion-title { color: var(--gold); font-size: 11px; text-transform: uppercase; margin-bottom: 6px; }
 .expansion-toggle { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }
 .expansion-toggle input { accent-color: var(--gold); }
+.expansion-toggle {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+.expansion-toggle.active {
+  background: rgba(212, 167, 72, 0.12);
+  border-color: rgba(212, 167, 72, 0.42);
+  color: var(--gold-bright);
+}
+.expansion-toggle input {
+  flex: 0 0 auto;
+  height: 18px;
+  width: 18px;
+}
 .tutorial-steps { display: grid; gap: 10px; text-align: left; color: var(--ink-dim); font-size: 13px; line-height: 1.4; }
 
 .log-actions {
@@ -754,6 +852,18 @@ h1, h2, .brand, .poster-title, .banner-text {
   width: min(300px, 78vw);
   z-index: 1000;
 }
+.slot-shot-preview.mobile-popup {
+  opacity: 1;
+  pointer-events: auto;
+  position: relative;
+  transform: none;
+  transition: none;
+  visibility: visible;
+  width: 100%;
+}
+.shot-preview-picker {
+  max-width: 420px;
+}
 
 .order-slot:nth-child(2) .slot-shot-preview {
   left: 50%;
@@ -996,6 +1106,161 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 @media (max-width: 760px), (any-pointer: coarse) and (max-width: 1366px) {
+  :root[data-device="phone"] {
+    --mobile-hud-space: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  :root[data-device="phone"] body {
+    overflow: hidden;
+  }
+
+  :root[data-device="phone"] .screen {
+    min-height: 100dvh;
+  }
+
+  :root[data-device="phone"] #screen-auth {
+    justify-content: flex-start;
+    padding: calc(18px + env(safe-area-inset-top)) 0 calc(14px + env(safe-area-inset-bottom));
+  }
+
+  :root[data-device="phone"] .auth-poster {
+    margin: auto 0;
+    padding: 34px 24px 28px;
+    width: min(390px, 88vw);
+  }
+
+  :root[data-device="phone"] .poster-title {
+    font-size: 52px;
+  }
+
+  :root[data-device="phone"] #screen-lobby .topbar {
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: calc(10px + env(safe-area-inset-top)) 10px 10px;
+  }
+
+  :root[data-device="phone"] .topbar-actions {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  :root[data-device="phone"] .topbar-actions .btn,
+  :root[data-device="phone"] .topbar-admin-row .btn,
+  :root[data-device="phone"] .user-menu-button {
+    min-height: 34px;
+    padding-left: 8px;
+    padding-right: 8px;
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .topbar-admin-row {
+    justify-content: stretch;
+  }
+
+  :root[data-device="phone"] .user-popup {
+    min-width: min(220px, 70vw);
+  }
+
+  :root[data-device="phone"] .lobby-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px;
+  }
+
+  :root[data-device="phone"] .panel {
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  :root[data-device="phone"] .sail-row,
+  :root[data-device="phone"] .crew-controls,
+  :root[data-device="phone"] .challenge-banner,
+  :root[data-device="phone"] .match-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  :root[data-device="phone"] .ai-pick {
+    min-height: 68px;
+    width: 100%;
+  }
+
+  :root[data-device="phone"] #ai-pickers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .ai-pick {
+    padding: 7px 4px;
+  }
+
+  :root[data-device="phone"] .ai-pick .ai-face {
+    font-size: 17px;
+  }
+
+  :root[data-device="phone"] .ai-pick .ai-name {
+    font-size: 10px;
+    line-height: 1.18;
+  }
+
+  :root[data-device="phone"] .ai-pick .ai-count {
+    font-size: 12px;
+  }
+
+  :root[data-device="phone"] .ai-level-label,
+  :root[data-device="phone"] .open-seats-label {
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .choice-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .choice-buttons.compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  :root[data-device="phone"] .choice-button {
+    min-height: 44px;
+    padding: 10px 6px;
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .expansion-box {
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .expansion-toggle {
+    align-items: center;
+    background: rgba(13, 20, 38, 0.72);
+    border-color: rgba(42, 53, 84, 0.9);
+    min-height: 52px;
+    padding: 12px;
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .expansion-toggle input {
+    height: 28px;
+    width: 28px;
+  }
+
+  :root[data-device="phone"] .btn.big {
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .build-footer {
+    margin-bottom: calc(14px + env(safe-area-inset-bottom));
+    padding: 6px 12px;
+  }
+
   :root[data-device="phone"] #screen-game {
     height: 100dvh;
     overflow: hidden;
@@ -1029,7 +1294,8 @@ h1, h2, .brand, .poster-title, .banner-text {
 
   :root[data-device="phone"] .game-grid {
     display: block;
-    inset: 0;
+    flex: 1 1 auto;
+    inset: 0 0 var(--mobile-hud-space) 0;
     padding: 0;
     position: fixed;
   }
@@ -1037,14 +1303,17 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .board-wrap {
     border: 0;
     border-radius: 0;
-    height: 100dvh;
-    inset: 0;
+    bottom: var(--mobile-hud-space);
+    height: auto;
+    left: 0;
     position: fixed;
+    right: 0;
+    top: 0;
     width: 100vw;
   }
 
   :root[data-device="phone"] #board {
-    height: 100dvh;
+    height: 100%;
     touch-action: none;
     width: 100vw;
   }
@@ -1072,7 +1341,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .orders-panel,
   :root[data-device="phone"] .fleet-panel {
     border-radius: 10px 10px 0 0;
-    bottom: calc(66px + env(safe-area-inset-bottom));
+    bottom: var(--mobile-hud-space);
     box-shadow: 0 -18px 52px rgba(0, 0, 0, 0.58);
     left: 0;
     max-height: min(72dvh, calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
@@ -1147,20 +1416,12 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .slot-shot-preview {
-    box-shadow: none;
-    font-size: 10px;
-    left: auto;
-    opacity: 1;
-    order: 3;
-    padding: 6px;
-    position: relative;
-    right: auto;
-    top: auto;
-    transform: none;
-    transition: none;
-    visibility: visible;
-    width: 100%;
-    z-index: 1;
+    display: none;
+  }
+
+  :root[data-device="phone"] .slot-shot-preview.mobile-popup {
+    display: grid;
+    font-size: 13px;
   }
 
   :root[data-device="phone"] .shot-preview-kicker {
@@ -1217,7 +1478,7 @@ h1, h2, .brand, .poster-title, .banner-text {
     background: rgba(7, 11, 22, 0.92);
     border: 1px solid rgba(212, 167, 72, 0.36);
     border-radius: 10px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(10px + env(safe-area-inset-bottom));
     box-shadow: var(--shadow);
     display: grid;
     gap: 7px;
@@ -1237,7 +1498,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .overlay {
     align-items: end;
     background: rgba(4, 7, 14, 0.42);
-    padding: calc(70px + env(safe-area-inset-top)) 10px calc(18px + env(safe-area-inset-bottom));
+    padding: calc(70px + env(safe-area-inset-top)) 10px var(--mobile-hud-space);
     place-items: end center;
   }
 

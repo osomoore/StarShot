@@ -1,17 +1,10 @@
 /* Lobby: quick match queue, crew builder, open raids, leaderboard, profile. */
 (function () {
   const AI_META = {
-    bauble_runner: { face: "💰", name: "Salvage Capt. Morrigan", blurb: "chases the loot" },
-    hunter_killer: { face: "🗡", name: "Corsair Blackvane", blurb: "marks one prey" },
-    blaster: { face: "💥", name: "Gunner Redbeard", blurb: "shoots what's near" },
+    bauble_runner: { face: "BR", name: "Bauble Runner", blurb: "chases the loot" },
+    hunter_killer: { face: "BH", name: "Bounty Hunter", blurb: "marks one prey" },
+    blaster: { face: "BL", name: "Blaster", blurb: "shoots what's near" },
   };
-
-  Object.keys(AI_META).forEach((key) => delete AI_META[key]);
-  Object.assign(AI_META, {
-    bauble_runner: { face: "SR", name: "Salvage Captain", blurb: "chases the loot" },
-    hunter_killer: { face: "CS", name: "Corsair", blurb: "marks one prey" },
-    blaster: { face: "GN", name: "Gunner", blurb: "shoots what's near" },
-  });
 
   let pollTimer = null;
   let leaderboardTimer = null;
@@ -101,8 +94,9 @@
       currentUser = me.user;
       renderProfile(me.user);
       renderLeaderboardBundle(board);
-      document.getElementById("lobby-user").textContent = "☠ " + me.user.username;
+      document.getElementById("lobby-user").textContent = me.user.username;
       document.getElementById("lobby-admin-link").classList.toggle("hidden", !me.is_admin);
+      document.querySelector(".topbar-admin-row")?.classList.toggle("hidden", !me.is_admin);
     } catch (err) { /* transient */ }
   }
 
@@ -142,15 +136,64 @@
         <option value="deck_hand">Deck Hand</option>
         <option value="buccaneer">Buccaneer</option>
         <option value="pirate_king">Pirate King</option>
-      </select>`;
+      </select>
+      <div class="choice-buttons" data-choice-for="ai-level" aria-label="AI smartness"></div>`;
     pickers.after(label);
     label.querySelector("select").value = aiLevel;
     label.querySelector("select").addEventListener("change", (event) => {
       aiLevel = event.target.value || "deck_hand";
+      syncChoiceButtons("ai-level");
+    });
+    buildChoiceButtons("ai-level");
+    ensureOpenSeatsButtons();
+  }
+
+  function buildChoiceButtons(selectId) {
+    const select = document.getElementById(selectId);
+    const group = document.querySelector(`[data-choice-for="${selectId}"]`);
+    if (!select || !group || group.dataset.boundChoiceButtons === "1") return;
+    group.dataset.boundChoiceButtons = "1";
+    group.innerHTML = "";
+    [...select.options].forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "choice-button";
+      button.dataset.value = option.value;
+      button.textContent = option.textContent;
+      button.addEventListener("click", () => {
+        select.value = option.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      group.appendChild(button);
+    });
+    syncChoiceButtons(selectId);
+  }
+
+  function syncChoiceButtons(selectId) {
+    const select = document.getElementById(selectId);
+    const group = document.querySelector(`[data-choice-for="${selectId}"]`);
+    if (!select || !group) return;
+    group.querySelectorAll(".choice-button").forEach((button) => {
+      const active = button.dataset.value === select.value;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
     });
   }
 
+  function ensureOpenSeatsButtons() {
+    const select = document.getElementById("open-seats");
+    const label = select?.closest(".open-seats-label");
+    if (!select || !label || label.querySelector('[data-choice-for="open-seats"]')) return;
+    const group = document.createElement("div");
+    group.className = "choice-buttons compact";
+    group.dataset.choiceFor = "open-seats";
+    group.setAttribute("aria-label", "Open seats for humans");
+    label.appendChild(group);
+    buildChoiceButtons("open-seats");
+  }
+
   function updateCrewUI() {
+    ensureOpenSeatsButtons();
     document.querySelectorAll(".ai-pick").forEach((node) => {
       const type = node.querySelector(".ai-count").dataset.type;
       const count = crew.filter((entry) => entry === type).length;
@@ -158,6 +201,8 @@
       node.classList.toggle("picked", count > 0);
     });
     const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
+    syncChoiceButtons("open-seats");
+    syncChoiceButtons("ai-level");
     const total = 1 + crew.length + openSeats;
     const minShips = starBreachActive ? 1 : 2;
     updateStarBreachPreyPicker();
@@ -169,9 +214,15 @@
 
   function renderExpansionToggle() {
     const toggle = document.getElementById("exp-star-command");
-    if (toggle) toggle.checked = starCommandActive;
+    if (toggle) {
+      toggle.checked = starCommandActive;
+      toggle.closest(".expansion-toggle")?.classList.toggle("active", starCommandActive);
+    }
     const breachToggle = document.getElementById("exp-star-breach");
-    if (breachToggle) breachToggle.checked = starBreachActive;
+    if (breachToggle) {
+      breachToggle.checked = starBreachActive;
+      breachToggle.closest(".expansion-toggle")?.classList.toggle("active", starBreachActive);
+    }
   }
 
   function ensureStarBreachPreyPicker() {
@@ -792,11 +843,13 @@
     document.getElementById("btn-queue-leave").addEventListener("click", async () => {
       try { await API.queue("leave"); refresh(); } catch (error) { App.toast(error.message); }
     });
+    ensureOpenSeatsButtons();
     document.getElementById("open-seats").addEventListener("change", updateCrewUI);
     const expToggle = document.getElementById("exp-star-command");
     if (expToggle) {
       expToggle.addEventListener("change", (event) => {
         starCommandActive = !!event.target.checked;
+        renderExpansionToggle();
         if (starCommandActive) maybeShowStarCommandTutorial();
       });
     }
@@ -804,6 +857,7 @@
     if (breachToggle) {
       breachToggle.addEventListener("change", (event) => {
         starBreachActive = !!event.target.checked;
+        renderExpansionToggle();
         updateCrewUI();
         if (starBreachActive) maybeShowStarBreachTutorial();
       });
@@ -827,8 +881,23 @@
     });
     document.getElementById("btn-tutorial").addEventListener("click", () => Tutorial.start());
     document.getElementById("btn-feedback-lobby").addEventListener("click", () => openFeedback());
+    const userMenu = document.getElementById("lobby-user-menu");
+    const userPopup = document.getElementById("lobby-user-popup");
+    userMenu?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = userPopup.classList.toggle("hidden") === false;
+      userMenu.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (event) => {
+      if (!userPopup || userPopup.classList.contains("hidden")) return;
+      if (event.target.closest("#lobby-user-popup") || event.target.closest("#lobby-user-menu")) return;
+      userPopup.classList.add("hidden");
+      userMenu?.setAttribute("aria-expanded", "false");
+    });
     document.getElementById("btn-logout").addEventListener("click", async () => {
       try { await API.logout(); } catch (err) {}
+      userPopup?.classList.add("hidden");
+      userMenu?.setAttribute("aria-expanded", "false");
       leave();
       App.showScreen("auth");
     });

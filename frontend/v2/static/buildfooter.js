@@ -38,25 +38,31 @@
   }
 
   function render() {
-    const node = document.getElementById("build-footer");
-    if (!node) return;
-    node.textContent = `${line("Front end", state.frontend)} | ${line("Back end", state.backend)}`;
+    const nodes = document.querySelectorAll(".build-footer");
+    if (!nodes.length) return;
+    const meta = [];
+    if (state.version) meta.push(`Version ${state.version}`);
+    if (state.buildId) meta.push(`Build ${state.buildId}`);
+    const text = `${meta.join(" | ")}${meta.length ? " | " : ""}${line("Front end", state.frontend)} | ${line("Back end", state.backend)}`;
+    nodes.forEach((node) => { node.textContent = text; });
   }
 
   async function loadBuildInfo() {
-    const node = document.getElementById("build-footer");
-    if (!node) return;
+    const nodes = document.querySelectorAll(".build-footer");
+    if (!nodes.length) return;
     try {
       const response = await fetch("/api/v2/build-info", { credentials: "same-origin" });
       if (!response.ok) throw new Error(`Request failed (${response.status})`);
       const payload = await response.json();
+      state.version = payload?.version || "";
+      state.buildId = payload?.build_id || "";
       state.frontend = parseTime(payload?.frontend?.built_at);
       state.backend = parseTime(payload?.backend?.built_at);
       render();
       clearInterval(timer);
       timer = setInterval(render, 60000);
     } catch (error) {
-      node.textContent = "Build time unavailable";
+      nodes.forEach((node) => { node.textContent = "Build time unavailable"; });
       console.warn("[StarShot build footer]", error);
     }
   }

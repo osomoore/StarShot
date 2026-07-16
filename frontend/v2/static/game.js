@@ -1275,8 +1275,13 @@
       details.querySelector(".seal-details-button").setAttribute("aria-label", "Shot details");
       details.querySelector(".seal-details-button").addEventListener("click", (event) => {
         event.stopPropagation();
+        if (document.documentElement.dataset.device === "phone") {
+          showShotPreviewPopup(index);
+        }
       });
-      details.appendChild(shotPreview);
+      if (document.documentElement.dataset.device !== "phone") {
+        details.appendChild(shotPreview);
+      }
       seal.appendChild(details);
     }
     node.appendChild(seal);
@@ -1284,11 +1289,18 @@
   }
 
   function slotShotPreviewEl(index) {
-    const projections = attackProjectionsForSlot(index);
-    if (!projections.length) return null;
+    const html = slotShotPreviewHtml(index);
+    if (!html) return null;
     const node = document.createElement("div");
     node.className = "slot-shot-preview";
-    node.innerHTML = `
+    node.innerHTML = html;
+    return node;
+  }
+
+  function slotShotPreviewHtml(index) {
+    const projections = attackProjectionsForSlot(index);
+    if (!projections.length) return "";
+    return `
       <div class="shot-preview-kicker">Shot Preview</div>
       ${projections.map((projection) => `
         <div class="shot-preview-row">
@@ -1302,7 +1314,23 @@
           : "Overdrive combines eligible card values into this volley.")}</div>`
         : ""}
     `;
-    return node;
+  }
+
+  function showShotPreviewPopup(index) {
+    const html = slotShotPreviewHtml(index);
+    const overlay = els["picker-overlay"];
+    if (!html || !overlay) return;
+    overlay.innerHTML = "";
+    overlay.classList.remove("hidden");
+    const box = document.createElement("div");
+    box.className = "picker shot-preview-picker";
+    box.innerHTML = `
+      <h3>Action ${index + 1} Shot Preview</h3>
+      <div class="slot-shot-preview mobile-popup">${html}</div>
+      <button class="btn ghost picker-cancel" type="button">Close</button>
+    `;
+    box.querySelector(".picker-cancel").addEventListener("click", hidePicker);
+    overlay.appendChild(box);
   }
 
   function useTag(selection) {

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=32">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=35">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=6">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
 </head>
@@ -32,19 +32,29 @@
     </form>
     <div id="auth-error" class="auth-error"></div>
   </div>
+  <footer class="build-footer" aria-live="polite">Build time loading...</footer>
 </section>
 
 <!-- ═══════════════ LOBBY ═══════════════ -->
 <section id="screen-lobby" class="screen hidden">
   <header class="topbar">
     <div class="brand"><span class="brand-skull">☠</span> StarShot <span class="brand-tag">v2 · core 0.3</span></div>
-    <div class="topbar-right">
-      <button id="btn-tutorial" class="btn ghost small">📖 How to Play</button>
+    <div class="topbar-account">
+      <button id="lobby-user-menu" class="btn ghost small user-menu-button" type="button" aria-haspopup="true" aria-expanded="false">
+        <span id="lobby-user" class="user-chip"></span>
+        <span class="hamburger" aria-hidden="true">☰</span>
+      </button>
+      <div id="lobby-user-popup" class="user-popup hidden">
+        <button id="btn-logout" class="btn ghost small" type="button">Abandon Ship</button>
+      </div>
+    </div>
+    <div class="topbar-actions">
       <button id="btn-feedback-lobby" class="btn gold small">Feedback and Bugs</button>
-      <a id="lobby-admin-link" class="btn ghost small hidden" href="/v2/admin">⚙ Admin</a>
+      <button id="btn-tutorial" class="btn ghost small">📖 How to Play</button>
       <button id="btn-build-content" class="btn gold small" title="Design yer own StarBreach bosses and battle them">🛠 Build New Content</button>
-      <span id="lobby-user" class="user-chip"></span>
-      <button id="btn-logout" class="btn ghost small">Abandon Ship</button>
+    </div>
+    <div class="topbar-admin-row hidden">
+      <a id="lobby-admin-link" class="btn ghost small hidden" href="/v2/admin">⚙ Admin</a>
     </div>
   </header>
   <div class="lobby-grid">
@@ -58,7 +68,6 @@
       </div>
       <h3 class="panel-sub">Raise a Crew</h3>
       <div class="crew-builder">
-        <div class="crew-slot self">You</div>
         <div id="crew-slots"></div>
         <div class="crew-controls">
           <label>Foes:</label>
@@ -95,6 +104,7 @@
       <div id="profile-card" class="profile-card"></div>
     </div>
   </div>
+  <footer class="build-footer" aria-live="polite">Build time loading...</footer>
 </section>
 
 <!-- ═══════════════ GAME ═══════════════ -->
@@ -155,7 +165,6 @@
 </section>
 
 <div id="toast" class="toast hidden"></div>
-<footer id="build-footer" class="build-footer" aria-live="polite">Build time loading...</footer>
 
 <script src="/v2/static/api.js?v=11"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
@@ -165,9 +174,9 @@
 <script src="/v2/static/cards.js?v=7"></script>
 <script src="/v2/static/tutorial.js?v=7"></script>
 <script src="/v2/static/bossdesigner.js?v=15"></script>
-<script src="/v2/static/lobby.js?v=21"></script>
-<script src="/v2/static/game.js?v=47"></script>
-<script src="/v2/static/app.js?v=7"></script>
-<script src="/v2/static/buildfooter.js?v=1"></script>
+<script src="/v2/static/lobby.js?v=23"></script>
+<script src="/v2/static/game.js?v=48"></script>
+<script src="/v2/static/app.js?v=8"></script>
+<script src="/v2/static/buildfooter.js?v=2"></script>
 </body>
 </html>

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from starshot import __version__
 from starshot.rules import RulesError
 from starshot.rules.expansion_modules import installed_expansion_ids
 from starshot.v2 import security
@@ -129,11 +131,32 @@ def _iso_from_mtime(mtime: float | None) -> str | None:
     return datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _git_build_id() -> str | None:
+    env_build = os.environ.get("STARSHOT_BUILD_ID") or os.environ.get("STARSHOT_BUILD_NUMBER")
+    if env_build:
+        return env_build
+    git_dir = ROOT / ".git"
+    head_path = git_dir / "HEAD"
+    try:
+        head = head_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if head.startswith("ref: "):
+        ref_path = git_dir / head[5:].strip()
+        try:
+            head = ref_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+    return head[:12] if head else None
+
+
 @router.get("/build-info")
 def build_info() -> dict:
     backend_mtime = _latest_mtime(BACKEND_ROOT, {".py"})
     frontend_mtime = _latest_mtime(FRONTEND_ROOT, {".html", ".css", ".js"})
     return {
+        "version": __version__,
+        "build_id": _git_build_id(),
         "backend": {"built_at": _iso_from_mtime(backend_mtime)},
         "frontend": {"built_at": _iso_from_mtime(frontend_mtime)},
         "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),

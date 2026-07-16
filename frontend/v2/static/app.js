@@ -7,6 +7,25 @@
     return Boolean(window.matchMedia?.(query)?.matches);
   }
 
+  function isPhoneUser() {
+    const coarsePointer = mediaMatches("(pointer: coarse)");
+    const anyCoarsePointer = mediaMatches("(any-pointer: coarse)");
+    const narrow = mediaMatches("(max-width: 760px)");
+    const tabletViewport = mediaMatches("(max-width: 1366px)");
+    const compactHeight = mediaMatches("(max-height: 620px)");
+    const mobileAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent || "");
+    const touchCapable = (navigator.maxTouchPoints || 0) > 0;
+    return Boolean(
+      ((coarsePointer || anyCoarsePointer || touchCapable) && tabletViewport)
+      || (mobileAgent && (narrow || compactHeight)),
+    );
+  }
+
+  function applyDeviceMode(reason) {
+    document.documentElement.dataset.device = isPhoneUser() ? "phone" : "desktop";
+    reportDeviceDiagnostics(reason);
+  }
+
   function collectDeviceDiagnostics(reason) {
     return {
       app: "v2",
@@ -98,10 +117,10 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    reportDeviceDiagnostics("v2-dom-content-loaded");
-    window.addEventListener("resize", () => reportDeviceDiagnostics("v2-resize"));
+    applyDeviceMode("v2-dom-content-loaded");
+    window.addEventListener("resize", () => applyDeviceMode("v2-resize"));
     window.addEventListener("orientationchange", () => {
-      setTimeout(() => reportDeviceDiagnostics("v2-orientationchange"), 150);
+      setTimeout(() => applyDeviceMode("v2-orientationchange"), 150);
     });
 
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
@@ -137,5 +156,5 @@
     }
   });
 
-  window.App = { showScreen, toast, reportDeviceDiagnostics };
+  window.App = { showScreen, toast, reportDeviceDiagnostics, applyDeviceMode };
 })();
