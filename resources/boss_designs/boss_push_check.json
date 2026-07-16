@@ -1,0 +1,21 @@
+{
+  "id": "boss_push_check",
+  "name": "Boss push check",
+  "description": "",
+  "tiles": [],
+  "shield_regions": [],
+  "progression": {
+    "triggers": [],
+    "steps": []
+  },
+  "behavior": {
+    "boss_ai": "hunter_killer",
+    "fleet": {
+      "count": 0,
+      "kind": "hunter_killer",
+      "hp": 3,
+      "ai": "hunter_killer",
+      "actions": []
+    }
+  }
+}
