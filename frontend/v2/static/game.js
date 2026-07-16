@@ -613,14 +613,14 @@
   // hull tells you which action each tile powers (matching the chip colors).
   const COMPONENT_TYPE_COLOR = {
     cannon: "#ff8d6b", engine: "#9dff8a", shield_generator: "#59c8ff", core: "#d9a6ff",
-    signal_jammer: "#78f0cd", targeting_sensors: "#ff96d2",
+    docking_bay: "#ff7ad0", signal_jammer: "#78f0cd", targeting_sensors: "#ff96d2",
   };
   // A font guaranteed to carry the ☄ ➤ ◉ 🛡 glyphs — the decorative body font
   // renders them as "?", so SVG symbol labels pin this explicitly.
   const SYMBOL_FONT = "'Space Grotesk', 'Segoe UI Symbol', sans-serif";
   const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
   const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
-  const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉", signal_jammer: "J", targeting_sensors: "T" };
+  const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉", docking_bay: "▣", signal_jammer: "J", targeting_sensors: "T" };
   // Which boss phase has already resolved by the time the player is acting.
   const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_baubles: "3.5" };
 
@@ -1494,7 +1494,9 @@
       // In component-color mode the tile is tinted by what it is (so the shield
       // arcs alone carry the region grouping); otherwise tiles carry the region
       // color the way the target picker needs.
-      const typeColor = component && COMPONENT_TYPE_COLOR[component.type];
+      const typeColor = component && component.type === "shield_generator" && (component.shield_arcs || []).length
+        ? palette.stroke(component.shield_arcs[0])
+        : component && COMPONENT_TYPE_COLOR[component.type];
       const useTypeColor = opts.componentColors && typeColor;
       const tint = cell.area ? palette.fill(cell.area) : "150,150,150";
       const pts = [];
@@ -1821,7 +1823,7 @@
       </div>
       <div class="boss-modal-bottom">
         <div class="boss-modal-side">
-          <h4>Shield Regions</h4>
+          <h4>Ship Regions</h4>
           <table>${shields}</table>
         </div>
         <div class="boss-modal-center">
@@ -2052,6 +2054,27 @@
   /* Pick a shield region on the boss hull (with confirm), and — for the
      Fighting Ace — optionally call a preferred damage lane in that region.
      Resolves {target: "boss:<area>", lane: <2-8>|null} or null. */
+  function aceLaneMemoryKey() {
+    const sb = view?.star_breach || {};
+    return `ss_ace_lane_${you || "player"}_${sb.scenario_id || "starbreach"}`;
+  }
+
+  function rememberedAceLane(area) {
+    try {
+      const data = JSON.parse(localStorage.getItem(aceLaneMemoryKey()) || "{}");
+      return Number.isInteger(data[area]) ? data[area] : null;
+    } catch (err) { return null; }
+  }
+
+  function rememberAceLane(area, lane) {
+    try {
+      const data = JSON.parse(localStorage.getItem(aceLaneMemoryKey()) || "{}");
+      if (lane == null) delete data[area];
+      else data[area] = lane;
+      localStorage.setItem(aceLaneMemoryKey(), JSON.stringify(data));
+    } catch (err) {}
+  }
+
   function showBossRegionPicker({ preselect = null } = {}) {
     return new Promise((resolve) => {
       const sb = view.star_breach;
@@ -2059,7 +2082,7 @@
       const alive = bossAliveAreas();
       const isAce = myRoles().includes("fighting_ace");
       let selected = preselect && alive[preselect] ? preselect : null;
-      let lanePref = null;
+      let lanePref = selected && isAce ? rememberedAceLane(selected) : null;
       const overlay = els["picker-overlay"];
       overlay.innerHTML = "";
       overlay.classList.remove("hidden");
@@ -2093,7 +2116,7 @@
           </div>` : "";
         box.innerHTML = `
           <h3>☄ Target the ${esc(sb.boss_name || "StarBreacher")}</h3>
-          <div class="opt-sub">Click a shield region on the hull (or a button), then confirm.</div>
+          <div class="opt-sub">Click a ship region on the hull (or a button), then confirm.</div>
           <div class="boss-region-map">
             <svg viewBox="${parts.minX} ${parts.minY} ${parts.maxX - parts.minX} ${parts.maxY - parts.minY}" style="width:100%;max-height:300px">
               <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
@@ -2115,7 +2138,7 @@
           node.addEventListener("click", () => {
             const area = node.dataset.area;
             if (!alive[area]) return;
-            if (selected !== area) { selected = area; lanePref = null; }
+            if (selected !== area) { selected = area; lanePref = isAce ? rememberedAceLane(area) : null; }
             render();
           });
         });
@@ -2128,7 +2151,10 @@
         });
         box.querySelector("#brp-cancel").addEventListener("click", () => finish(null));
         box.querySelector("#brp-confirm").addEventListener("click", () => {
-          if (selected) finish({ target: "boss:" + selected, lane: lanePref });
+          if (selected) {
+            if (isAce) rememberAceLane(selected, lanePref);
+            finish({ target: "boss:" + selected, lane: lanePref });
+          }
         });
       };
       render();
@@ -2150,7 +2176,7 @@
       options.push({
         icon: "☄", value: "__boss__",
         label: sb.boss_name || "The StarBreacher",
-        sub: `pick a shield region · shields ${shields}`,
+        sub: `pick a ship region · shields ${shields}`,
       });
     }
     for (const craft of sb.fleet || []) {

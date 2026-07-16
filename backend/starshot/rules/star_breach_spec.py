@@ -140,6 +140,7 @@ def _design_component_id(tile: dict) -> str:
         "firing_computer": "c",
         "fuel_tank": "e",
         "core": "core",
+        "docking_bay": "db",
         "signal_jammer": "sj",
         "targeting_sensors": "ts",
     }[tile["type"]]
@@ -231,6 +232,8 @@ def spec_from_design(design: dict) -> dict:
             component["name"] = f"Cannon {sequence}"
         elif tile_type == "engine":
             component["name"] = f"Engine {sequence}"
+        elif tile_type == "docking_bay":
+            component["name"] = f"Docking Bay {sequence}"
         elif tile_type == "signal_jammer":
             component["name"] = f"Signal Jammer {sequence}"
         elif tile_type == "targeting_sensors":
@@ -253,8 +256,15 @@ def spec_from_design(design: dict) -> dict:
             phase_slots[tile["stack"]].append(
                 {"slot": "component", "component_id": _design_component_id(tile), "kind": "move"}
             )
+        elif _tile_type(tile) == "docking_bay":
+            phase_slots[tile["stack"]].append(
+                {"slot": "component", "component_id": _design_component_id(tile), "kind": "spawn"}
+            )
     steps = design["progression"]["steps"]
     fleet_config = design["behavior"]["fleet"]
+    docking_bay_tile = next((tile for tile in tiles if _tile_type(tile) == "docking_bay"), None)
+    docking_bay_stack = docking_bay_tile["stack"] if docking_bay_tile else "starbreach"
+    docking_bay_component_id = _design_component_id(docking_bay_tile) if docking_bay_tile else None
     tier_labels: dict[str, dict] = {}
     tier_spawns: dict[str, dict] = {}
     tier_abilities: dict[str, str] = {}
@@ -277,13 +287,24 @@ def spec_from_design(design: dict) -> dict:
             phase_slots["starbreach"].append(slot)
             tier_labels[str(tier)] = {"kind": "breacher", "stack": "starbreach"}
         elif step["kind"] == "spawn_fleet":
-            tier_spawns[str(tier)] = {
+            spawn = {
                 "count": step["count"],
                 "location": step["location"],
                 "kind": fleet_config["kind"],
                 "hp": fleet_config["hp"],
             }
-            tier_labels[str(tier)] = {"kind": "spawn", "stack": None}
+            tier_spawns[str(tier)] = spawn
+            phase_slots[docking_bay_stack].append(
+                {
+                    "slot": "tier",
+                    "tier": tier,
+                    "kind": "spawn",
+                    "spawn": dict(spawn),
+                    "requires_component_type": "docking_bay",
+                    "requires_component_id": docking_bay_component_id,
+                }
+            )
+            tier_labels[str(tier)] = {"kind": "spawn", "stack": docking_bay_stack}
         elif step["kind"] == "ability_link":
             tier_abilities[str(tier)] = step["ability"]
             tier_labels[str(tier)] = {"kind": "ability", "stack": None, "ability": step["ability"]}
@@ -492,6 +513,15 @@ def slot_is_active(
     if slot["slot"] == "tier":
         if slot["tier"] not in active_tiers:
             return False
+        required_component_id = slot.get("requires_component_id")
+        if required_component_id is not None and required_component_id in destroyed_component_ids(spec, destroyed_hexes):
+            return False
+        required_type = slot.get("requires_component_type")
+        if required_type is not None and not any(
+            component["type"] == required_type and (component["q"], component["r"]) not in destroyed_hexes
+            for component in spec["components"]
+        ):
+            return False
         core_hex = slot.get("core_hex")
         if core_hex is not None and (core_hex[0], core_hex[1]) in destroyed_hexes:
             return False
@@ -550,7 +580,7 @@ def tier_labels(spec: dict) -> dict[str, dict]:
                 kind = "breacher"
             labels[tier] = {"kind": kind, "stack": stack}
     for tier in spec.get("tier_spawns", {}):
-        labels[str(tier)] = {"kind": "spawn", "stack": None}
+        labels.setdefault(str(tier), {"kind": "spawn", "stack": None})
     return labels
 
 

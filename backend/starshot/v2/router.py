@@ -473,6 +473,11 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         from starshot.v2.settings import default_starbreach_boss_design_id
 
         boss_design_id = default_starbreach_boss_design_id() or None
+    if "star_breach" in active_expansions and not boss_design_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Pick a battle-ready StarBreach boss design before launching.",
+        )
     if boss_design_id:
         from starshot.v2.service import _load_playable_boss_design, parse_boss_design_ref
         from starshot.v2.settings import allowed_starbreach_boss_design_ids

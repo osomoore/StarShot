@@ -157,6 +157,38 @@ def delete_boss_design(design_id: str, request: Request) -> dict:
     return {"ok": True}
 
 
+@boss_designer_router.post("/{design_id}/publish")
+def publish_boss_design(design_id: str, request: Request) -> dict:
+    """Make a battle-ready global design public and the default StarBreach boss."""
+    _admin_user(request)
+    from starshot.v2.settings import (
+        ALLOWED_STARBREACH_BOSSES_KEY,
+        DEFAULT_STARBREACH_BOSS_KEY,
+        allowed_starbreach_boss_design_ids,
+        invalidate_cache,
+    )
+    from starshot.v2.store import get_v2_store
+
+    try:
+        design = boss_designs.load_design(design_id)
+    except boss_designs.BossDesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if design is None:
+        raise HTTPException(status_code=404, detail="No boss design with that id.")
+    problems = boss_designs.validate_design(design)
+    if problems:
+        raise HTTPException(status_code=400, detail=f"Boss is not battle-ready: {problems[0]}")
+
+    all_valid = {entry["id"] for entry in boss_designs.list_designs() if entry["valid"]}
+    public = set(allowed_starbreach_boss_design_ids()) or all_valid
+    public.add(design["id"])
+    store = get_v2_store()
+    store.set_setting(ALLOWED_STARBREACH_BOSSES_KEY, ",".join(sorted(public)))
+    store.set_setting(DEFAULT_STARBREACH_BOSS_KEY, design["id"])
+    invalidate_cache()
+    return {"ok": True, "design": design, "default_design_id": design["id"], "allowed_design_ids": sorted(public)}
+
+
 # --------------------------------------------------------------------------
 # Player-owned boss designs (any signed-in user; play against your own)
 # --------------------------------------------------------------------------

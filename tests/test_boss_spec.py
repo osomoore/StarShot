@@ -166,6 +166,7 @@ class DesignSpecTests(unittest.TestCase):
 
     def test_spawn_fleet_step_compiles_and_spawns_on_tier_activation(self):
         raw = make_design()
+        raw["tiles"][6] = {"q": 0, "r": 1, "type": "docking_bay", "stack": "2.5"}
         raw["behavior"] = {
             "boss_ai": "hunter_killer",
             "fleet": {"count": 0, "kind": "hunter_killer", "hp": 4, "ai": "hunter_killer", "actions": []},
@@ -178,7 +179,7 @@ class DesignSpecTests(unittest.TestCase):
             spec["tier_spawns"][spawn_tier],
             {"count": 2, "location": "fang", "kind": "hunter_killer", "hp": 4},
         )
-        self.assertEqual(spec["tier_labels"][spawn_tier], {"kind": "spawn", "stack": None})
+        self.assertEqual(spec["tier_labels"][spawn_tier], {"kind": "spawn", "stack": "2.5"})
         state = create_initial_state(
             GameConfig(
                 player_ids=("alice", "bob"),
@@ -187,16 +188,25 @@ class DesignSpecTests(unittest.TestCase):
                 star_breach_boss_design=design,
             )
         )
-        from starshot.rules.star_breach_engine import _activate_star_breach_tiers
+        from starshot.rules.star_breach_engine import _activate_star_breach_tiers, _resolve_boss_phase
 
         sb = state.star_breach
         before = len(sb.fleet)
         sb.progress = int(spawn_tier)
         _activate_star_breach_tiers(state)
-        self.assertEqual(len(sb.fleet), before + 2)
+        self.assertEqual(len(sb.fleet), before)
+        _resolve_boss_phase(state, "2.5")
+        self.assertEqual(len(sb.fleet), before + 3)
         events = [event for event in state.event_log if event["type"] == "boss_fleet_spawned"]
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["location"], "fang")
+        self.assertEqual(len(events), 2)
+        self.assertTrue(any(event["location"] == "fang" and len(event["craft"]) == 2 for event in events))
+
+        for tile in raw["tiles"]:
+            if tile["type"] == "docking_bay":
+                sb.destroyed_hexes.add((tile["q"], tile["r"]))
+        before = len(sb.fleet)
+        _resolve_boss_phase(state, "2.5")
+        self.assertEqual(len(sb.fleet), before)
 
     def test_missing_tier_labels_infer_fillers_from_phase_slots(self):
         spec = sb_spec.spec_from_design(playable_design())

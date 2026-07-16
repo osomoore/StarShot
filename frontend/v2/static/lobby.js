@@ -268,7 +268,7 @@
     const label = document.createElement("label");
     label.className = "open-seats-label star-breach-boss-label hidden";
     label.innerHTML = `StarBreach Boss:
-      <select id="star-breach-boss"><option value="">The StarBreacher (default)</option></select>
+      <select id="star-breach-boss"><option value="">Loading boss designs...</option></select>
       <button type="button" class="btn ghost small" id="btn-my-bosses" title="Design yer own StarBreach bosses (up to 10) and battle them">🛠 My Bosses</button>`;
     box.appendChild(label);
     label.querySelector("select").addEventListener("change", (event) => {
@@ -291,18 +291,22 @@
     try {
       const data = await API.bossDesigns();
       const current = starBreachBossSelection || data.default_design_id || "";
-      select.innerHTML = '<option value="">The StarBreacher (default)</option>';
+      select.innerHTML = "";
       for (const entry of data.designs || []) {
         const option = document.createElement("option");
         option.value = entry.id;
-        option.textContent = entry.name.endsWith("(yours)") ? entry.name : entry.name + " (custom)";
+        option.textContent = entry.name.endsWith("(yours)") ? entry.name : entry.name;
         select.appendChild(option);
       }
-      if ([...select.options].some((option) => option.value === current)) {
+      const options = [...select.options];
+      if (options.some((option) => option.value === current)) {
         select.value = current;
         starBreachBossSelection = current;
+      } else if (options.length) {
+        select.value = options[0].value;
+        starBreachBossSelection = options[0].value;
       } else {
-        select.value = "";
+        select.innerHTML = '<option value="">No public boss designs yet</option>';
         starBreachBossSelection = "";
       }
     } catch (err) { bossDesignsLoaded = false; /* transient; retry next toggle */ }

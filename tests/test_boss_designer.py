@@ -358,6 +358,7 @@ class StorageTests(unittest.TestCase):
 class SpawnStepTests(unittest.TestCase):
     def test_spawn_fleet_step_normalizes(self):
         raw = make_design()
+        raw["tiles"][6] = {"q": 0, "r": 1, "type": "docking_bay", "stack": "2.5"}
         raw["progression"]["steps"].append({"kind": "spawn_fleet", "count": 2, "location": "bauble"})
         design = boss_designs.normalize_design(raw)
         self.assertEqual(design["progression"]["steps"][-1], {"kind": "spawn_fleet", "count": 2, "location": "bauble"})

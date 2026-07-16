@@ -2,6 +2,17 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 17:10:42 -05:00
+
+- Title: StarBreach docking bays and public bosses
+- Build ID: `39022dbc038e`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Added Docking Bay boss components. Docking Bays launch enemy craft during their linked action stack; progression spawn steps now launch during the linked Docking Bay stack and require both an active tier and at least one intact Docking Bay.
+  - Hid the stock StarBreacher from new-game selection. StarBreach match creation now requires a battle-ready boss design or configured default, and admins can mark the current global boss design as public/default from the Boss Designer.
+  - Renamed visible Shield Regions language to Ship Regions, added an Unshielded region shortcut, color-coded battle-board shield generators by their powered region, and remembered Fighting Ace lane preferences per boss region.
+  - Verified with `python -m unittest discover -s tests` (256 tests) and `node --check` for `bossdesigner.js`, `game.js`, `lobby.js`, and `admin.js`; bumped v2 cache strings for changed frontend scripts.
+
 ## 2026-07-16 16:25:51 -05:00
 
 - Title: StarBreach roles, previews, print layout, passive boss components

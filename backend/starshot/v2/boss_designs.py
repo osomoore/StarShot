@@ -30,7 +30,16 @@ AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 # Half of the editable grid width; hexes must satisfy the axial-disk bound.
 GRID_RADIUS = 7
 
-TILE_TYPES = ("generic", "shield_gen", "cannon", "engine", "core", "signal_jammer", "targeting_sensors")
+TILE_TYPES = (
+    "generic",
+    "shield_gen",
+    "cannon",
+    "engine",
+    "core",
+    "docking_bay",
+    "signal_jammer",
+    "targeting_sensors",
+)
 LEGACY_TILE_TYPES = {"firing_computer": "cannon", "fuel_tank": "engine"}
 
 # Passive component abilities: no action-stack element, active while the
@@ -147,7 +156,7 @@ def _normalize_tile(raw, index: int) -> dict:
         if not 1 <= number <= 9:
             raise BossDesignError(f"{label}.number must be 1-9.")
         tile["number"] = number
-    if tile_type in ("cannon", "engine"):
+    if tile_type in ("cannon", "engine", "docking_bay"):
         stack = str(raw.get("stack", ""))
         if stack not in ACTION_STACKS:
             raise BossDesignError(f"{label}.stack must be one of {', '.join(ACTION_STACKS)}.")
@@ -488,6 +497,10 @@ def validate_design(design: dict) -> list[str]:
     fleet = design["behavior"]["fleet"]
     if fleet["count"] > 0 and not fleet["actions"]:
         problems.append("The fleet has craft but no action counts — it would never move or shoot.")
+
+    spawn_steps = [step for step in steps if step["kind"] == "spawn_fleet"]
+    if spawn_steps and not any(tile["type"] == "docking_bay" for tile in tiles):
+        problems.append("Spawn fleet steps need at least one Docking Bay component.")
 
     return problems
 

@@ -256,11 +256,6 @@ def _activate_star_breach_tiers(state: GameState) -> None:
             "progress": sb.progress,
         }
     )
-    spawns = sb_spec.tier_spawns(sb_spec.spec_for(sb))
-    for tier in newly_active:
-        spawn = spawns.get(tier)
-        if spawn:
-            _spawn_fleet_craft(state, tier, spawn)
 
 
 _SPAWN_COLORS = ("red", "purple", "orange", "blue", "green", "yellow")
@@ -308,7 +303,7 @@ def _nearest_free_hexes(state: GameState, center: tuple[int, int], count: int) -
     return found
 
 
-def _spawn_fleet_craft(state: GameState, tier: int, spawn: dict) -> None:
+def _spawn_fleet_craft(state: GameState, tier: int | str, spawn: dict) -> dict:
     """A spawn_fleet progression step: new craft join the boss's fleet."""
     sb = state.star_breach
     assert sb is not None
@@ -339,6 +334,7 @@ def _spawn_fleet_craft(state: GameState, tier: int, spawn: dict) -> None:
             "craft": spawned,
         }
     )
+    return {"spawned": spawned, "location": spawn.get("location", "boss_front")}
 
 
 def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
@@ -522,8 +518,17 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
     for slot in active_slots:
         entry = dict(slot)
         entry["amount"] = 1
-        if slot.get("kind", kind) == "move":
+        slot_kind = slot.get("kind", kind)
+        if slot_kind == "move":
             entry["movement"] = _move_boss_toward_prey(state, 1)
+        elif slot_kind == "spawn":
+            spawn = slot.get("spawn") or {
+                "count": 1,
+                "location": "boss_front",
+                "kind": "hunter_killer",
+                "hp": sb_data.HUNTER_KILLER_HP,
+            }
+            entry["spawn"] = _spawn_fleet_craft(state, slot.get("tier", slot.get("component_id", "docking_bay")), spawn)
         else:
             entry["attacks"] = [_boss_attack(state)]
         slot_results.append(entry)

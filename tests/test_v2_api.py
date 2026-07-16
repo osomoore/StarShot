@@ -313,19 +313,32 @@ class AiMatchTests(unittest.TestCase):
     def test_star_breach_host_can_choose_ai_prey(self) -> None:
         client = make_client()
         register(client, "prey_picker")
-        created = client.post(
-            "/api/v2/matches",
-            json={
-                "ai_types": ["hunter_killer", "blaster"],
-                "open_seats": 0,
-                "active_expansions": ["star_breach"],
-                "star_breach_prey_player_id": "__ai__:1",
-            },
-        )
-        self.assertEqual(created.status_code, 200, created.text)
-        game_id = created.json()["game_id"]
-        state = client.get(f"/api/v2/games/{game_id}/view").json()["state"]
-        self.assertEqual(state["star_breach"]["prey_player_id"], "ai:blaster:1")
+        tempdir = tempfile.TemporaryDirectory()
+        old_bundled = boss_designs.DESIGNS_DIR
+        old_runtime = boss_designs.RUNTIME_DESIGNS_DIR
+        root = Path(tempdir.name)
+        boss_designs.DESIGNS_DIR = root / "bundled"
+        boss_designs.RUNTIME_DESIGNS_DIR = root / "runtime"
+        try:
+            boss_designs.save_design(make_design(id="prey_test_boss", name="Prey Test Boss"))
+            created = client.post(
+                "/api/v2/matches",
+                json={
+                    "ai_types": ["hunter_killer", "blaster"],
+                    "open_seats": 0,
+                    "active_expansions": ["star_breach"],
+                    "star_breach_prey_player_id": "__ai__:1",
+                    "star_breach_boss_design_id": "prey_test_boss",
+                },
+            )
+            self.assertEqual(created.status_code, 200, created.text)
+            game_id = created.json()["game_id"]
+            state = client.get(f"/api/v2/games/{game_id}/view").json()["state"]
+            self.assertEqual(state["star_breach"]["prey_player_id"], "ai:blaster:1")
+        finally:
+            boss_designs.DESIGNS_DIR = old_bundled
+            boss_designs.RUNTIME_DESIGNS_DIR = old_runtime
+            tempdir.cleanup()
 
 
 class SecurityTests(unittest.TestCase):

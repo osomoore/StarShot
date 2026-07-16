@@ -827,7 +827,7 @@
     const defaultSelect = document.getElementById("setting-starbreach-default-boss");
     const allowedBox = document.getElementById("setting-starbreach-allowed-bosses");
     if (!defaultSelect || !allowedBox) return;
-    defaultSelect.innerHTML = '<option value="">The StarBreacher (stock)</option>' + bosses.map((boss) =>
+    defaultSelect.innerHTML = '<option value="">No default selected</option>' + bosses.map((boss) =>
       `<option value="${esc(boss.id)}">${esc(boss.name)} (${esc(boss.id)})</option>`
     ).join("");
     defaultSelect.value = starBreach.default_boss_design_id || "";

@@ -45,6 +45,7 @@
     { type: "shield_gen", label: "Shield Gen", badge: "SG" },
     { type: "cannon", label: "Cannon", badge: "C" },
     { type: "engine", label: "Engine", badge: "E" },
+    { type: "docking_bay", label: "Docking Bay", badge: "D" },
     { type: "core", label: "Core", badge: "◉" },
     { type: "signal_jammer", label: "Sig. Jammer", badge: "J" },
     { type: "targeting_sensors", label: "Targeting", badge: "T" },
@@ -52,7 +53,7 @@
   ];
   const TILE_FILL = {
     generic: "154,163,184", shield_gen: "120,190,255", cannon: "255,140,120",
-    engine: "255,205,110", core: "222,160,255",
+    engine: "255,205,110", docking_bay: "255,122,208", core: "222,160,255",
     signal_jammer: "120,240,205", targeting_sensors: "255,150,210",
   };
   // Passive abilities: no action-stack element; active while the component is
@@ -83,7 +84,7 @@
   let dirty = false;
   let mode = "structure";  // structure | shields | progression
   let tool = { type: "generic", number: 1, stack: "0.5" };
-  let currentRegion = null; // shield region number being edited
+  let currentRegion = null; // ship region number being edited
   let shieldSub = "hexes";  // hexes | lanes
   let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
   let printTone = "color";  // color | bw
@@ -138,7 +139,7 @@
   /* Components auto-number per type in placement order (matches the game
      engine), so the organizer can say "Engine 1" instead of coordinates. */
   const COMPONENT_LABEL = {
-    cannon: "Cannon", engine: "Engine", shield_gen: "Shield Gen", core: "Core",
+    cannon: "Cannon", engine: "Engine", docking_bay: "Docking Bay", shield_gen: "Shield Gen", core: "Core",
     signal_jammer: "Signal Jammer", targeting_sensors: "Targeting Sensors",
   };
   function componentNumbers() {
@@ -217,6 +218,7 @@
     const n = (numbers || componentNumbers())[key(tile.q, tile.r)] || "";
     if (tile.type === "cannon") return "C" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
     if (tile.type === "engine") return "E" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
+    if (tile.type === "docking_bay") return "D" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
     if (tile.type === "signal_jammer") return "J" + n;
     if (tile.type === "targeting_sensors") return "T" + n;
     return "";
@@ -370,7 +372,7 @@
     if (tool.type === "erase") return removeTile(q, r);
     const tile = { q, r, type: tool.type };
     if (tool.type === "shield_gen" || tool.type === "core") tile.number = tool.number;
-    if (tool.type === "cannon" || tool.type === "engine") tile.stack = tool.stack;
+    if (tool.type === "cannon" || tool.type === "engine" || tool.type === "docking_bay") tile.stack = tool.stack;
     design.tiles = design.tiles.filter((t) => !(t.q === q && t.r === r));
     design.tiles.push(tile);
     scrubMissingHexes();
@@ -394,7 +396,7 @@
 
   function shieldsClick(q, r) {
     const region = regionByNumber(currentRegion);
-    if (!region) { setStatus("Add a shield region first.", false); return; }
+    if (!region) { setStatus("Add a ship region first.", false); return; }
     const tile = tileAt(q, r);
     if (!tile) return;
     if (shieldSub === "hexes") {
@@ -424,7 +426,7 @@
      (a different roll) instead of cycling the existing one. */
   function laneClick(region, q, r) {
     if (!region.hexes.some(([hq, hr]) => hq === q && hr === r)) {
-      setStatus("That hex is not in this shield region — add it in Protected Hexes first.", false);
+      setStatus("That hex is not in this ship region — add it in Protected Hexes first.", false);
       return;
     }
     const facings = edgeFacings(q, r, footprintSet());
@@ -573,6 +575,11 @@
           kind: "move", label: componentLabel(tile, numbers), source: "component",
           q: tile.q, r: tile.r,
         });
+      } else if (tile.type === "docking_bay") {
+        byStack[tile.stack].push({
+          kind: "spawn", label: componentLabel(tile, numbers), source: "component",
+          q: tile.q, r: tile.r,
+        });
       }
     }
     design.progression.steps.forEach((step, index) => {
@@ -675,7 +682,7 @@
   /* Light up every mini-ship cell whose component has a slot in `stack`. */
   function highlightStackHexes(stack, on) {
     for (const tile of design.tiles) {
-      if (tile.stack === stack && (tile.type === "cannon" || tile.type === "engine")) {
+      if (tile.stack === stack && (tile.type === "cannon" || tile.type === "engine" || tile.type === "docking_bay")) {
         highlightMiniHex(tile.q, tile.r, on);
       }
     }
@@ -805,6 +812,8 @@
           addItem(`${esc(componentLabel(tile, numbers))} <span class="bd-stack-symbol">${ACTION_SYMBOL.attack}</span>`, "", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack", [tile.q, tile.r]);
         } else if (tile.type === "engine") {
           addItem(`${esc(componentLabel(tile, numbers))} <span class="bd-stack-symbol">${ACTION_SYMBOL.move}</span>`, "", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move", [tile.q, tile.r]);
+        } else if (tile.type === "docking_bay") {
+          addItem(`${esc(componentLabel(tile, numbers))} <span class="bd-stack-symbol">${ACTION_SYMBOL.spawn}</span>`, "", { type: "tile", q: tile.q, r: tile.r }, "bd-item-spawn", [tile.q, tile.r]);
         }
       }
       design.progression.steps.forEach((step, index) => {
@@ -863,6 +872,7 @@
       const tint = TILE_FILL[tile.type];
       const badge = tile.type === "cannon" ? "C" + numbers[key(tile.q, tile.r)]
         : tile.type === "engine" ? "E" + numbers[key(tile.q, tile.r)]
+        : tile.type === "docking_bay" ? "D" + numbers[key(tile.q, tile.r)]
         : tile.type === "shield_gen" ? "S" + tile.number
         : tile.type === "core" ? "◉"
         : tile.type === "signal_jammer" ? "J" + numbers[key(tile.q, tile.r)]
@@ -914,6 +924,7 @@
   function printTileFill(tile, colors) {
     if (tile.type === "cannon") return colors.attack;
     if (tile.type === "engine") return colors.move;
+    if (tile.type === "docking_bay") return colors.spawn || "#ff7ad0";
     if (tile.type === "shield_gen") return colors.shieldGen;
     if (tile.type === "core") return colors.core;
     if (tile.type === "signal_jammer") return colors.jammer;
@@ -960,6 +971,7 @@
     const componentBadge = (tile) => {
       if (tile.type === "cannon") return "C" + numbers[key(tile.q, tile.r)];
       if (tile.type === "engine") return "E" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "docking_bay") return "D" + numbers[key(tile.q, tile.r)];
       if (tile.type === "shield_gen") return "SG" + tile.number;
       if (tile.type === "core") return "◎" + tile.number;
       if (tile.type === "signal_jammer") return "J" + numbers[key(tile.q, tile.r)];
@@ -1402,11 +1414,11 @@
     root().querySelectorAll(".bd-tool").forEach((button) =>
       button.classList.toggle("active", button.dataset.tool === tool.type));
     const numbered = tool.type === "shield_gen" || tool.type === "core";
-    const stacked = tool.type === "cannon" || tool.type === "engine";
+    const stacked = tool.type === "cannon" || tool.type === "engine" || tool.type === "docking_bay";
     el("bd-tool-number-wrap").classList.toggle("hidden", !numbered);
     el("bd-tool-stack-wrap").classList.toggle("hidden", !stacked);
     el("bd-tool-number-label").textContent =
-      tool.type === "core" ? "Core number" : "Shield region number";
+      tool.type === "core" ? "Core number" : "Ship region number";
   }
 
   function renderShieldPanel() {
@@ -1415,7 +1427,7 @@
     for (const region of design.shield_regions) {
       const option = document.createElement("option");
       option.value = region.number;
-      option.textContent = `Region ${region.number} — ${region.hexes.length} hexes, ${region.lanes.length}/${regionLaneCount(region)} lanes`;
+      option.textContent = `Region ${region.number} - ${region.hexes.length} hexes, ${region.lanes.length}/${regionLaneCount(region)} lanes`;
       if (region.number === currentRegion) option.selected = true;
       select.appendChild(option);
     }
@@ -1427,7 +1439,7 @@
     const region = regionByNumber(currentRegion);
     const info = el("bd-region-info");
     if (!region) {
-      info.innerHTML = '<span class="admin-note">No shield region selected. Add one to begin.</span>';
+      info.innerHTML = '<span class="admin-note">No ship region selected. Add one to begin.</span>';
       return;
     }
     const generatorText = region.generator
@@ -1444,6 +1456,7 @@
       <div class="bd-charges-row">
         <label>Start charges <input id="bd-region-charges" type="number" min="0" max="9" value="${region.charges ?? 3}"></label>
         <label>Max charges <input id="bd-region-maxcharges" type="number" min="0" max="9" value="${region.max_charges ?? 3}"></label>
+        ${shieldSub === "hexes" ? '<button class="btn ghost small" id="bd-region-unshielded" type="button">Unshielded</button>' : ""}
       </div>
       <div class="bd-charges-row">
         <label>Damage lanes <input id="bd-region-lanecount" type="number" min="1" max="${META.max_lane_count || 12}" value="${laneCount}"></label>
@@ -1464,6 +1477,13 @@
     };
     chargesInput.addEventListener("change", applyCharges);
     maxInput.addEventListener("change", applyCharges);
+    info.querySelector("#bd-region-unshielded")?.addEventListener("click", () => {
+      region.charges = 0;
+      region.max_charges = 0;
+      markDirty();
+      renderShieldPanel();
+      renderBoard();
+    });
     info.querySelector("#bd-region-lanecount").addEventListener("change", (event) => {
       const next = Math.max(1, Math.min(META.max_lane_count || 12, parseInt(event.target.value, 10) || laneCount));
       region.lane_count = next;
@@ -1716,12 +1736,26 @@
   }
 
   // ── boot / markup ────────────────────────────────────────────────────────
+  async function publishDefaultDesign() {
+    if (!isAdmin || !design) return;
+    if (dirty) {
+      setStatus("Save this boss before publishing it as public/default.", false);
+      return;
+    }
+    try {
+      const result = await call("/" + encodeURIComponent(design.id) + "/publish", { method: "POST", body: "{}" });
+      setStatus(`✔ "${result.design.name}" is public and the default StarBreach boss.`, true);
+      await refreshList(design.id);
+    } catch (error) { setStatus("✘ " + error.message, false); }
+  }
+
   function buildMarkup() {
     const transferTools = isAdmin ? `
         <span class="deck-set-sep">|</span>
         <button class="btn ghost small" id="bd-download">⬇ Download</button>
         <input id="bd-import-file" type="file" accept=".json,application/json">
         <button class="btn ghost small" id="bd-upload">⬆ Upload</button>` : "";
+    const publishButton = isAdmin ? '<button class="btn gold" id="bd-publish-default">Public + Default</button>' : "";
     const playerLibrary = isAdmin ? `
       <div class="bd-designbar bd-player-library">
         <span class="bd-strip-label">Player bosses:</span>
@@ -1747,13 +1781,14 @@
           <label>Name <input id="bd-name" maxlength="80"></label>
           <div class="bd-modes">
             <button class="btn ghost bd-mode active" data-mode="structure">⬡ Structure</button>
-            <button class="btn ghost bd-mode" data-mode="shields">🛡 Shields &amp; Lanes</button>
+            <button class="btn ghost bd-mode" data-mode="shields">🛡 Ship Regions</button>
             <button class="btn ghost bd-mode" data-mode="progression">📈 Progression</button>
             <button class="btn ghost bd-mode" data-mode="stacks">🗂 Action Stacks</button>
             <button class="btn ghost bd-mode" data-mode="behavior">⚙ Behavior</button>
             <button class="btn ghost bd-mode" data-mode="print">Print Sheets</button>
           </div>
           <button class="btn gold" id="bd-save">💾 Save design</button>
+          ${publishButton}
         </div>
         <div class="bd-grid">
           <div class="bd-board-wrap">
@@ -1775,12 +1810,12 @@
                 <select id="bd-tool-stack">${META.action_stacks.map((stack) => `<option>${stack}</option>`).join("")}</select>
               </label>
               <p class="admin-note">Click a hex to place the selected tile (overwrites).
-                Right-click or use the eraser to remove. Shield Gens number a shield region;
-                Cannons grant an attack and Engines grant a move in their action stack;
+                Right-click or use the eraser to remove. Shield Gens number a ship region;
+                Cannons grant an attack, Engines grant a move, and Docking Bays launch enemies in their action stack;
                 Cores anchor Breacher-stack abilities.</p>
             </div>
             <div id="bd-panel-shields" class="hidden">
-              <h3 class="panel-sub">Shield regions</h3>
+              <h3 class="panel-sub">Ship Regions</h3>
               <div class="bd-regionbar">
                 <select id="bd-region-select"></select>
                 <button class="btn ghost small" id="bd-region-add">＋ Region</button>
@@ -1897,6 +1932,7 @@
       } catch (error) { setStatus("✘ " + error.message, false); }
     });
     el("bd-save").addEventListener("click", saveDesign);
+    el("bd-publish-default")?.addEventListener("click", publishDefaultDesign);
     el("bd-name").addEventListener("change", markDirty);
 
     root().querySelectorAll(".bd-mode").forEach((button) => {
@@ -2167,8 +2203,8 @@
       <div class="picker">
         <h3>🛠 StarBreach Ship Builder — how it works</h3>
         <div class="tutorial-steps">
-          <div><b>1.</b> Name a new boss and hit <b>＋ New design</b>, then paint hull tiles in <b>Structure</b>. Cannons grant attacks, Engines grant moves, Shield Gens power shield regions, Cores anchor Breacher abilities.</div>
-          <div><b>2.</b> In <b>Shields &amp; Lanes</b>, group hexes into shield regions and give each one damage lanes — the numbered arrows attackers roll against.</div>
+          <div><b>1.</b> Name a new boss and hit <b>＋ New design</b>, then paint hull tiles in <b>Structure</b>. Cannons grant attacks, Engines grant moves, Docking Bays launch enemies, Shield Gens power ship regions, Cores anchor Breacher abilities.</div>
+          <div><b>2.</b> In <b>Ship Regions</b>, group hexes into ship regions and give each one damage lanes — the numbered arrows attackers roll against.</div>
           <div><b>3.</b> <b>Progression</b> builds the boss's power-up track; <b>Action Stacks</b> shows which stack each ability feeds — drag cards between columns to reassign them.</div>
           <div><b>4.</b> <b>Save</b> your design, then pick it as the StarBreach Boss when you launch a raid. You can also export a printable sheet from <b>Print Sheets</b>.</div>
         </div>
