@@ -1,0 +1,127 @@
+generated_id_prefix = "desp_"
+
+[[cards]]
+name = "Afterburners"
+copies = 5
+side_a_type = "Desperate"
+side_a_1 = "Move 3"
+side_b_type = "Desperate"
+side_b_1 = "Turn Right, Move 3"
+side_b_2 = "Turn Left, Move 3"
+
+[[cards]]
+name = "Crack Shot"
+copies = 5
+side_a_type = "Desperate"
+side_a_1 = "Targeted Attack Aim +1"
+
+[[cards]]
+name = "Reconfigure"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Reconfigure 1"
+
+[[cards]]
+name = "Hull Repair"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Restore 1 Component"
+
+[[cards]]
+name = "Steady Shot"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Attack Aim +2, Damage +1"
+
+[[cards]]
+name = "Side Slip"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Move 4 Right"
+side_b_2 = "Move 4 Left"
+
+[[cards]]
+name = "Drift King"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Move 4, Turn Right, Turn Right"
+side_b_2 = "Move 4, Turn Left, Turn Left"
+
+[[cards]]
+name = "Thrust Ions"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Move 4"
+
+[[cards]]
+name = "Turbo Ions"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Move 8"
+
+[[cards]]
+name = "NightJammer"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Warp behind VP leader, Defense +5"
+
+[[cards]]
+name = "Holdo Maneuver"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Move 3, Collide 3 damage all"
+
+[[cards]]
+name = "StarShot"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Attack Aim +999"
+
+[[cards]]
+name = "Lead the Target"
+copies = 1
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "Attack Damage +1, Lead the Target"
+
+[[cards]]
+name = "Crazy Ivan"
+copies = 3
+side_a_type = "Basic"
+side_a_1 = "Move 2"
+side_a_2 = "Attack Damage +1"
+side_b_type = "Desperate"
+side_b_1 = "U-Turn, Move 3"
+side_b_2 = "U-Turn, Attack Damage +1"

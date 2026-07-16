@@ -2,6 +2,15 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 11:01:00 -05:00
+
+- Title: Logged deck rework
+- Build ID: `56c5763d5965`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Added this changelog note for the user's new deck rework.
+  - No code changes or verification were performed for this entry.
+
 ## 2026-07-16 10:42:44 -05:00
 
 - Title: Standardized changelog titles
