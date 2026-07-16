@@ -18,6 +18,17 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 - `docs/rules/`: canonical rules PDF, extracted text, and implementation checklist.
 - `resources/decks/core_0_2/`: default human-editable TOML deck data.
 
+## AI Change Log
+
+- After every AI-agent update to this repo, append a short entry to
+  `docs/context/ai_changelog.md`.
+- Each entry should include date/time, build id, AI agent name, and a concise
+  summary of what changed and how it was verified.
+- Use the same build id shown by `/api/v2/build-info` and the v2 build footer
+  status line at the bottom of pages.
+- Keep entries newest-first. The admin console exposes this file in the "AI
+  Change Log" tab via `/api/v2/admin/ai-changelog`.
+
 ## How To Run
 
 Windows shortcuts:
@@ -108,8 +119,8 @@ Admin tools:
   each lane has an entry face), and a progression track
   (triggers + filler/action-link/breacher-link/ability-trigger steps).
   Also: per-region shield start/max charges, a Behavior tab (boss AI —
-  hunter-killer only for now; fleet craft count/type/HP/AI and a tick-box
-  grid of fleet actions per boss stage), JSON download/upload of designs,
+  hunter-killer only for now; fleet craft count/type/HP/AI and numeric
+  move/shoot counts for fleet actions per boss stage), JSON download/upload of designs,
   and delete-with-confirmation. Designs are JSON documents in
   `resources/boss_designs/`. Kept insulated: schema/validation/storage in
   `backend/starshot/v2/boss_designs.py` (no FastAPI), routes in
@@ -182,7 +193,7 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 227 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 245 tests passing as of last session (2 API test modules require `fastapi` installed).
 - Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
   `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
   where units actually stood at that moment.

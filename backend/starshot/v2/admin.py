@@ -37,6 +37,7 @@ from starshot.v2.service import CORE_0_3_PATH
 from starshot.v2.store import get_v2_store
 
 ROOT = Path(__file__).resolve().parents[3]
+AI_CHANGELOG_PATH = ROOT / "docs" / "context" / "ai_changelog.md"
 
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["v2-admin"])
 
@@ -97,6 +98,22 @@ def _serialize_toml_table(data: dict) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _admin_build_id() -> str | None:
+    env_build = os.environ.get("STARSHOT_BUILD_ID") or os.environ.get("STARSHOT_BUILD_NUMBER")
+    if env_build:
+        return env_build
+    git_dir = ROOT / ".git"
+    head_path = git_dir / "HEAD"
+    try:
+        head = head_path.read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref_path = git_dir / head.split(" ", 1)[1]
+            head = ref_path.read_text(encoding="utf-8").strip()
+        return head[:12] if head else None
+    except OSError:
+        return None
 
 
 def _read_manifest(path: Path) -> dict:
@@ -857,6 +874,26 @@ def feedback_for_user(user_id: int, request: Request) -> dict:
 
 
 # ── project download ───────────────────────────────────────────────────────
+
+@admin_router.get("/ai-changelog")
+def ai_changelog(request: Request) -> dict:
+    _admin_user(request)
+    try:
+        text = AI_CHANGELOG_PATH.read_text(encoding="utf-8")
+        modified_at = datetime.fromtimestamp(
+            AI_CHANGELOG_PATH.stat().st_mtime,
+            tz=timezone.utc,
+        ).isoformat().replace("+00:00", "Z")
+    except OSError:
+        text = ""
+        modified_at = None
+    return {
+        "path": str(AI_CHANGELOG_PATH.relative_to(ROOT)),
+        "build_id": _admin_build_id(),
+        "modified_at": modified_at,
+        "text": text,
+    }
+
 
 _ZIP_EXCLUDE_DIRS = {".git", ".starshot", ".local", ".cache", ".config", ".claude",
                      ".pytest_cache", ".tmp_pdf_extract", "__pycache__", "node_modules"}

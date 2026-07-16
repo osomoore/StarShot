@@ -32,7 +32,7 @@ def playable_design(**overrides) -> dict:
             "hp": 2,
             "ai": "hunter_killer",
             "actions": [
-                {"stack": "0.5", "action": "shoot"},
+                {"stack": "0.5", "action": "shoot", "count": 2},
                 {"stack": "1.5", "action": "move"},
             ],
         },
@@ -154,7 +154,7 @@ class DesignSpecTests(unittest.TestCase):
         spec = sb_spec.spec_from_design(playable_design())
         self.assertEqual(len(spec["fleet"]), 2)
         self.assertTrue(all(craft["hp"] == 2 for craft in spec["fleet"]))
-        self.assertEqual(sb_spec.fleet_action_kinds(spec, "0.5"), ["attack"])
+        self.assertEqual(sb_spec.fleet_action_kinds(spec, "0.5"), ["attack", "attack"])
         self.assertEqual(sb_spec.fleet_action_kinds(spec, "1.5"), ["move"])
         self.assertEqual(sb_spec.fleet_action_kinds(spec, "2.5"), [])
 

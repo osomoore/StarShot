@@ -58,6 +58,7 @@ BOSS_AIS = ("hunter_killer",)
 FLEET_KINDS = ("hunter_killer",)
 FLEET_AIS = ("hunter_killer",)
 FLEET_MAX_COUNT = 6
+FLEET_MAX_ACTION_COUNT = 9
 # Fleet craft act during the numbered boss stacks (not the StarBreach stack).
 FLEET_STACKS = ("0.5", "1.5", "2.5", "3.5")
 
@@ -226,7 +227,7 @@ def _normalize_behavior(raw) -> dict:
     actions_raw = fleet_raw.get("actions", [])
     if not isinstance(actions_raw, list):
         raise BossDesignError("behavior.fleet.actions must be a list.")
-    actions: list[dict] = []
+    action_counts: dict[tuple[str, str], int] = {}
     for index, entry in enumerate(actions_raw):
         if not isinstance(entry, dict):
             raise BossDesignError(f"behavior.fleet.actions[{index}] must be an object.")
@@ -236,9 +237,18 @@ def _normalize_behavior(raw) -> dict:
         action = entry.get("action")
         if action not in ACTION_TYPES:
             raise BossDesignError(f"behavior.fleet.actions[{index}].action must be 'move' or 'shoot'.")
-        normalized = {"stack": stack, "action": action}
-        if normalized not in actions:
-            actions.append(normalized)
+        action_count = _as_int(entry.get("count", 1), f"behavior.fleet.actions[{index}].count")
+        if not 0 <= action_count <= FLEET_MAX_ACTION_COUNT:
+            raise BossDesignError(f"behavior.fleet.actions[{index}].count must be 0-{FLEET_MAX_ACTION_COUNT}.")
+        if action_count:
+            key = (stack, action)
+            action_counts[key] = min(FLEET_MAX_ACTION_COUNT, action_counts.get(key, 0) + action_count)
+    actions = [
+        {"stack": stack, "action": action, "count": action_counts[(stack, action)]}
+        for stack in FLEET_STACKS
+        for action in ACTION_TYPES
+        if (stack, action) in action_counts
+    ]
     return {
         "boss_ai": boss_ai,
         "fleet": {"count": count, "kind": kind, "hp": hp, "ai": ai, "actions": actions},
@@ -462,7 +472,7 @@ def validate_design(design: dict) -> list[str]:
 
     fleet = design["behavior"]["fleet"]
     if fleet["count"] > 0 and not fleet["actions"]:
-        problems.append("The fleet has craft but no ticked actions — it would never move or shoot.")
+        problems.append("The fleet has craft but no action counts — it would never move or shoot.")
 
     return problems
 

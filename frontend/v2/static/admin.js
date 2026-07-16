@@ -95,7 +95,7 @@
       document.getElementById("admin-user").textContent = "⚙ " + me.user.username;
       document.getElementById("admin-locked").classList.add("hidden");
       document.getElementById("admin-main").classList.remove("hidden");
-      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadFeedback()]);
+      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadFeedback(), loadChangelog()]);
     } catch (err) {
       showLocked("Sign in as the admiral to enter.");
     }
@@ -785,6 +785,28 @@
   }
 
   document.getElementById("feedback-filter").addEventListener("input", renderFeedback);
+
+  async function loadChangelog() {
+    const textNode = document.getElementById("changelog-text");
+    if (!textNode) return;
+    try {
+      const data = await get("/admin/ai-changelog");
+      textNode.textContent = data.text || "No AI change log entries yet.";
+      const meta = document.getElementById("changelog-meta");
+      meta.textContent = [
+        data.path,
+        data.build_id ? `Build ${data.build_id}` : "",
+        data.modified_at ? `updated ${shortDateTime(data.modified_at)}` : "",
+      ].filter(Boolean).join(" | ");
+      status("changelog-status", "", true);
+    } catch (error) {
+      textNode.textContent = "";
+      status("changelog-status", error.message, false);
+    }
+  }
+
+  const changelogRefresh = document.getElementById("changelog-refresh");
+  if (changelogRefresh) changelogRefresh.addEventListener("click", loadChangelog);
 
   async function loadSettings() {
     try {

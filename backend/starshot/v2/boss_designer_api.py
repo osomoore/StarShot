@@ -38,6 +38,7 @@ def _designer_meta() -> dict:
         "trigger_types": list(boss_designs.TRIGGER_TYPES),
         "spawn_locations": list(boss_designs.SPAWN_LOCATIONS),
         "spawn_max_count": boss_designs.SPAWN_MAX_COUNT,
+        "fleet_max_action_count": boss_designs.FLEET_MAX_ACTION_COUNT,
         "player_design_limit": boss_designs.PLAYER_DESIGN_LIMIT,
     }
 

@@ -299,7 +299,8 @@ def spec_from_design(design: dict) -> dict:
     ]
     fleet_actions: dict[str, list[str]] = {key: [] for key in _STACK_KEYS}
     for entry in fleet_config["actions"]:
-        fleet_actions[entry["stack"]].append("attack" if entry["action"] == "shoot" else "move")
+        kind = "attack" if entry["action"] == "shoot" else "move"
+        fleet_actions[entry["stack"]].extend([kind] * int(entry.get("count", 1)))
 
     return {
         "source": f"design:{design['id']}",

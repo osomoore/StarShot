@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=18">
-<link rel="stylesheet" href="/v2/static/admin.css?v=13">
+<link rel="stylesheet" href="/v2/static/admin.css?v=14">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=6">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
@@ -43,6 +43,7 @@
       <button class="btn ghost admin-tab" data-tab="battle">⚔ AI Battles</button>
       <button class="btn ghost admin-tab" data-tab="bossdesign">☄ Boss Designer</button>
       <button class="btn ghost admin-tab" data-tab="feedback">Feedback and Bugs</button>
+      <button class="btn ghost admin-tab" data-tab="changelog">AI Change Log</button>
       <button class="btn ghost admin-tab" data-tab="account">🛠 Account & Project</button>
     </nav>
 
@@ -197,6 +198,18 @@
         </div>
       </div>
 
+      <!-- AI change log -->
+      <div id="tab-changelog" class="admin-tabpage hidden">
+        <h2 class="panel-title">AI Change Log</h2>
+        <p class="admin-note">This mirrors <code>docs/context/ai_changelog.md</code>. AI agents should append a dated summary after every repo update.</p>
+        <div class="changelog-head">
+          <div id="changelog-meta" class="deck-set-meta"></div>
+          <button class="btn ghost small" id="changelog-refresh">Refresh</button>
+        </div>
+        <pre id="changelog-text" class="ai-changelog">Loading...</pre>
+        <div id="changelog-status" class="admin-status"></div>
+      </div>
+
       <!-- account / project -->
       <div id="tab-account" class="admin-tabpage hidden">
         <h2 class="panel-title">Account & Project</h2>
@@ -253,7 +266,7 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=17"></script>
+<script src="/v2/static/admin.js?v=18"></script>
 <script src="/v2/static/bossdesigner.js?v=15"></script>
 </body>
 </html>

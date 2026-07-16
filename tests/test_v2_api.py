@@ -730,11 +730,23 @@ class AdminTests(unittest.TestCase):
         outsider = make_client()
         register(outsider, "admin_snoop")
         self.assertEqual(outsider.get("/api/v2/admin/deck").status_code, 403)
+        self.assertEqual(anonymous.get("/api/v2/admin/ai-changelog").status_code, 401)
+        self.assertEqual(outsider.get("/api/v2/admin/ai-changelog").status_code, 403)
         self.assertEqual(outsider.get("/api/v2/admin/download").status_code, 403)
         self.assertEqual(
             outsider.post("/api/v2/admin/keywords", json={"name": "x", "pattern": "y", "code": "spec=1"}).status_code,
             403,
         )
+
+    def test_ai_changelog_visible_to_admin(self) -> None:
+        client = self.admin_client()
+        response = client.get("/api/v2/admin/ai-changelog")
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertTrue(payload["path"].replace("\\", "/").endswith("docs/context/ai_changelog.md"))
+        self.assertIn("StarShot AI Change Log", payload["text"])
+        self.assertIn("Codex", payload["text"])
+        self.assertTrue(payload["build_id"])
 
     def test_deck_roundtrip_and_validation(self) -> None:
         client = self.admin_client()

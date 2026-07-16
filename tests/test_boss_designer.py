@@ -83,6 +83,47 @@ class NormalizeTests(unittest.TestCase):
         with self.assertRaises(boss_designs.BossDesignError):
             boss_designs.normalize_design(raw)
 
+    def test_fleet_action_counts_normalize_and_legacy_entries_count_as_one(self):
+        raw = make_design()
+        raw["behavior"] = {
+            "boss_ai": "hunter_killer",
+            "fleet": {
+                "count": 2,
+                "kind": "hunter_killer",
+                "hp": 3,
+                "ai": "hunter_killer",
+                "actions": [
+                    {"stack": "0.5", "action": "shoot", "count": 2},
+                    {"stack": "0.5", "action": "shoot"},
+                    {"stack": "1.5", "action": "move", "count": 0},
+                    {"stack": "2.5", "action": "move", "count": 1},
+                ],
+            },
+        }
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(
+            design["behavior"]["fleet"]["actions"],
+            [
+                {"stack": "0.5", "action": "shoot", "count": 3},
+                {"stack": "2.5", "action": "move", "count": 1},
+            ],
+        )
+
+    def test_rejects_bad_fleet_action_count(self):
+        raw = make_design()
+        raw["behavior"] = {
+            "boss_ai": "hunter_killer",
+            "fleet": {
+                "count": 1,
+                "kind": "hunter_killer",
+                "hp": 3,
+                "ai": "hunter_killer",
+                "actions": [{"stack": "0.5", "action": "shoot", "count": 10}],
+            },
+        }
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+
     def test_lane_count_defaults_and_bounds(self):
         design = boss_designs.normalize_design(make_design())
         self.assertEqual(design["shield_regions"][0]["lane_count"], 7)

@@ -36,6 +36,7 @@
     ],
     spawn_locations: ["boss_front", "bauble", "fang"],
     spawn_max_count: 3,
+    fleet_max_action_count: 9,
     player_design_limit: 10,
   };
 
@@ -55,6 +56,7 @@
     "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
   const STACK_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
   const FLEET_STACKS = ["0.5", "1.5", "2.5", "3.5"];
+  const FLEET_MAX_ACTION_COUNT = 9;
   const TRIGGER_LABELS = {
     bauble_pickup_boss: "Bauble pickup — boss",
     bauble_pickup_fleet: "Bauble pickup — boss fleet",
@@ -62,6 +64,7 @@
     prey_hull_damage_fleet: "Prey hull damage — boss fleet",
     player_kill: "Kill a player ship",
   };
+  const ACTION_SYMBOL = { attack: "☄", move: "➤", shoot: "☄", breacher: "◉", spawn: "□", ability: "⚡", filler: "·" };
 
   // ── state ────────────────────────────────────────────────────────────────
   let booted = false;
@@ -579,9 +582,11 @@
     if (fleet.count > 0) {
       for (const entry of fleet.actions || []) {
         if (byStack[entry.stack]) {
+          const count = Math.max(1, parseInt(entry.count, 10) || 1);
+          const symbol = entry.action === "shoot" ? ACTION_SYMBOL.shoot : ACTION_SYMBOL.move;
           byStack[entry.stack].push({
             kind: "fleet", action: entry.action,
-            label: `Fleet x${fleet.count}: ${entry.action}`, source: "behavior",
+            label: `Fleet ${Array.from({ length: count }, () => symbol).join(" ")}`, source: "behavior",
           });
         }
       }
@@ -735,7 +740,7 @@
         const item = document.createElement("div");
         item.className = "bd-stack-item" + (extraClass ? " " + extraClass : "");
         if (stepIndex !== undefined) item.dataset.step = stepIndex;
-        item.innerHTML = `<div>${label}</div>${sub ? `<div class="bd-item-sub">${sub}</div>` : ""}`;
+        item.innerHTML = `<div class="bd-stack-line">${label}</div>${sub ? `<div class="bd-item-sub">${sub}</div>` : ""}`;
         if (payload) {
           item.draggable = true;
           item.addEventListener("dragstart", () => { dragPayload = payload; });
@@ -753,16 +758,16 @@
       for (const tile of design.tiles) {
         if (tile.stack !== stack) continue;
         if (tile.type === "cannon") {
-          addItem(esc(componentLabel(tile, numbers)), "component · attack", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack", [tile.q, tile.r]);
+          addItem(`${esc(componentLabel(tile, numbers))} <span class="bd-stack-symbol">${ACTION_SYMBOL.attack}</span>`, "", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack", [tile.q, tile.r]);
         } else if (tile.type === "engine") {
-          addItem(esc(componentLabel(tile, numbers)), "component · move", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move", [tile.q, tile.r]);
+          addItem(`${esc(componentLabel(tile, numbers))} <span class="bd-stack-symbol">${ACTION_SYMBOL.move}</span>`, "", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move", [tile.q, tile.r]);
         }
       }
       design.progression.steps.forEach((step, index) => {
         if (step.kind === "action_link" && step.stack === stack) {
           addItem(
-            `Step ${index + 1} — ${step.action}`,
-            `progression · unlocks at ${index + 1}`,
+            `Track ${index + 1} <span class="bd-stack-symbol">${ACTION_SYMBOL[step.action]}</span>`,
+            "",
             { type: "step", index },
             step.action === "shoot" ? "bd-item-attack" : "bd-item-move",
             null,
@@ -773,8 +778,8 @@
           if (step.core !== undefined) bits.push(`core ${step.core}`);
           if (step.round !== undefined) bits.push(`round ≥ ${step.round}`);
           addItem(
-            `Step ${index + 1} — Breacher`,
-            `progression · unlocks at ${index + 1}${bits.length ? " · " + bits.join(" · ") : ""}`,
+            `Track ${index + 1} <span class="bd-stack-symbol">${ACTION_SYMBOL.breacher}</span>`,
+            "",
             null,
             "bd-item-breacher",
             null,
@@ -784,9 +789,12 @@
       });
       const fleetKinds = (design.behavior.fleet.actions || [])
         .filter((entry) => entry.stack === stack)
-        .map((entry) => entry.action);
+        .flatMap((entry) => Array.from(
+          { length: Math.max(1, parseInt(entry.count, 10) || 1) },
+          () => entry.action === "shoot" ? ACTION_SYMBOL.shoot : ACTION_SYMBOL.move
+        ));
       if (design.behavior.fleet.count > 0 && fleetKinds.length) {
-        addItem(`Fleet ×${design.behavior.fleet.count}`, "fleet · " + fleetKinds.join(" + "), null, "bd-item-fleet");
+        addItem(`Fleet <span class="bd-stack-symbols">${fleetKinds.join(" ")}</span>`, "", null, "bd-item-fleet");
       }
       cols.appendChild(col);
     }
@@ -1263,18 +1271,23 @@
     for (const stack of FLEET_STACKS) {
       const row = document.createElement("tr");
       const cells = ["move", "shoot"].map((action) => {
-        const ticked = fleet.actions.some((entry) => entry.stack === stack && entry.action === action);
-        return `<td><input type="checkbox" data-stack="${stack}" data-action="${action}" ${ticked ? "checked" : ""}></td>`;
+        const entry = fleet.actions.find((item) => item.stack === stack && item.action === action);
+        const maxCount = META.fleet_max_action_count || FLEET_MAX_ACTION_COUNT;
+        const count = entry ? Math.max(1, parseInt(entry.count, 10) || 1) : 0;
+        return `<td><input type="number" min="0" max="${maxCount}" value="${count}" data-stack="${stack}" data-action="${action}"></td>`;
       });
       row.innerHTML = `<td>Action ${stack}</td>${cells.join("")}`;
       table.appendChild(row);
     }
-    table.querySelectorAll("input[type=checkbox]").forEach((box) => {
+    table.querySelectorAll("input[type=number]").forEach((box) => {
       box.addEventListener("change", () => {
-        const entry = { stack: box.dataset.stack, action: box.dataset.action };
+        const maxCount = META.fleet_max_action_count || FLEET_MAX_ACTION_COUNT;
+        const count = Math.max(0, Math.min(maxCount, parseInt(box.value, 10) || 0));
+        box.value = count;
+        const entry = { stack: box.dataset.stack, action: box.dataset.action, count };
         fleet.actions = fleet.actions.filter(
           (item) => !(item.stack === entry.stack && item.action === entry.action));
-        if (box.checked) fleet.actions.push(entry);
+        if (count > 0) fleet.actions.push(entry);
         markDirty();
       });
     });
@@ -1690,7 +1703,7 @@
                 <label>AI <select id="bd-fleet-ai"><option value="hunter_killer">Hunter-Killer</option></select></label>
               </div>
               <h3 class="panel-sub">Fleet actions per boss stage</h3>
-              <p class="admin-note">Tick which actions the fleet (as a unit) takes at each boss action stage.</p>
+              <p class="admin-note">Set how many times the fleet moves or shoots at each boss action stage.</p>
               <table class="bd-fleet-actions" id="bd-fleet-actions">
                 <tr><th>Stage</th><th>Move</th><th>Shoot</th></tr>
               </table>
