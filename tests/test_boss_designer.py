@@ -22,10 +22,10 @@ def make_design(**overrides) -> dict:
         "tiles": [
             {"q": 0, "r": 0, "type": "core", "number": 1},
             {"q": 1, "r": 0, "type": "shield_gen", "number": 1},
-            {"q": 1, "r": -1, "type": "firing_computer", "stack": "0.5"},
+            {"q": 1, "r": -1, "type": "cannon", "stack": "0.5"},
             {"q": 0, "r": -1, "type": "generic"},
             {"q": -1, "r": 0, "type": "generic"},
-            {"q": -1, "r": 1, "type": "fuel_tank", "stack": "1.5"},
+            {"q": -1, "r": 1, "type": "engine", "stack": "1.5"},
             {"q": 0, "r": 1, "type": "generic"},
         ],
         "shield_regions": [

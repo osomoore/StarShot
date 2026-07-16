@@ -28,8 +28,10 @@ Each player chooses one role.
 
 If playing with fewer than four players, one player may control multiple roles.
 
-Treasure Hunter
-No Overdrive draw penalty from Move-only Orders.
+Bauble Runner
+Move distances are doubled on basic movement.
+This doubling is not increased in Overdrive.
+Movement gives no defense bonus.
 Whenever this player collects a Bauble, every player draws one bonus card.
 Tank
 Begins with one additional Shield Charge.
@@ -157,19 +159,19 @@ Each generator provides a 3 HP shield to its assigned shield arc.
 
 Destroying a generator immediately removes that shield.
 
-Firing Computers
+Cannons
 
-Four Firing Computers control the StarBreacher's Attack action slots.
+Four Cannons control the StarBreacher's Attack action slots.
 
-Each computer is linked to one specific Boss Action Slot.
+Each cannon is linked to one specific Boss Action Slot.
 
 When destroyed, that action slot is permanently disabled.
 
-Fuel Tanks
+Engines
 
-Four Fuel Tanks control the StarBreacher's Move action slots.
+Four Engines control the StarBreacher's Move action slots.
 
-Each tank is linked to one specific Boss Action Slot.
+Each engine is linked to one specific Boss Action Slot.
 
 When destroyed, that action slot is permanently disabled.
 
@@ -258,23 +260,23 @@ The Bauble Breacher scenario begins with:
 
 Action 0.5 (Attack)
 Base
-Firing Computer A
-Firing Computer B
+Cannon A
+Cannon B
 Tier 1
 Action 1.5 (Move)
 Base
-Fuel Tank A
-Fuel Tank B
+Engine A
+Engine B
 Tier 2
 Action 2.5 (Move)
 Base
-Fuel Tank C
-Fuel Tank D
+Engine C
+Engine D
 Tier 3
 Action 3.5 (Attack)
 Base
-Firing Computer C
-Firing Computer D
+Cannon C
+Cannon D
 Tier 4
 StarBreach
 Tier 5

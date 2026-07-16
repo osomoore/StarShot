@@ -166,7 +166,7 @@ class PlayerState:
     captain_options: tuple[str, ...] = ()
     # StarBreach cooperative roles held by this player (empty outside StarBreach).
     roles: tuple[str, ...] = ()
-    # Extra cards owed on the next Draw (Treasure Hunter bauble bonus).
+    # Extra cards owed on the next Draw.
     bonus_draws_pending: int = 0
 
 
@@ -228,6 +228,7 @@ class StarBreachState:
     fleet: list[FleetCraftState] = field(default_factory=list)
     boss_movement_this_action: int = 0
     repaired_ship_ids_this_action: list[str] = field(default_factory=list)
+    progressed_source_ids_this_action: list[str] = field(default_factory=list)
     # Compiled boss spec for designed bosses (see rules/star_breach_spec.py);
     # None means the stock Bauble Breacher scenario.
     boss_spec: dict | None = None

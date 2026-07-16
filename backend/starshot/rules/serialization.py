@@ -118,6 +118,7 @@ def star_breach_to_dict(sb: StarBreachState, *, round_number: int = 1) -> dict:
         "fleet": [fleet_craft_to_dict(craft) for craft in sb.fleet],
         "boss_movement_this_action": sb.boss_movement_this_action,
         "repaired_ship_ids_this_action": list(sb.repaired_ship_ids_this_action),
+        "progressed_source_ids_this_action": list(sb.progressed_source_ids_this_action),
         "boss_layout": sb_spec.boss_layout_to_dict(spec),
         "roles": {role.id: sb_data.role_to_dict(role) for role in sb_data.ROLES},
         "boss_spec": sb.boss_spec,
@@ -138,6 +139,7 @@ def star_breach_from_dict(data: dict) -> StarBreachState:
         fleet=[fleet_craft_from_dict(craft) for craft in data.get("fleet", [])],
         boss_movement_this_action=data.get("boss_movement_this_action", 0),
         repaired_ship_ids_this_action=list(data.get("repaired_ship_ids_this_action", [])),
+        progressed_source_ids_this_action=list(data.get("progressed_source_ids_this_action", [])),
         boss_spec=data.get("boss_spec"),
     )
 

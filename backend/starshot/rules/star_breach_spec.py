@@ -131,8 +131,19 @@ def _lane_ray(design_footprint: set[tuple[int, int]], q: int, r: int, facing: in
 
 
 def _design_component_id(tile: dict) -> str:
-    short = {"shield_gen": "sg", "firing_computer": "fc", "fuel_tank": "ft", "core": "core"}[tile["type"]]
+    short = {
+        "shield_gen": "sg",
+        "cannon": "c",
+        "engine": "e",
+        "firing_computer": "c",
+        "fuel_tank": "e",
+        "core": "core",
+    }[tile["type"]]
     return f"{short}_{tile['q']}_{tile['r']}"
+
+
+def _tile_type(tile: dict) -> str:
+    return {"firing_computer": "cannon", "fuel_tank": "engine"}.get(tile["type"], tile["type"])
 
 
 def spec_from_design(design: dict) -> dict:
@@ -190,30 +201,31 @@ def spec_from_design(design: dict) -> dict:
     for tile in tiles:
         if tile["type"] == "generic":
             continue
-        type_counts[tile["type"]] = type_counts.get(tile["type"], 0) + 1
-        sequence = type_counts[tile["type"]]
+        tile_type = _tile_type(tile)
+        type_counts[tile_type] = type_counts.get(tile_type, 0) + 1
+        sequence = type_counts[tile_type]
         component = {
             "id": _design_component_id(tile),
-            "name": tile["type"].replace("_", " ").title(),
-            "type": {"shield_gen": "shield_generator"}.get(tile["type"], tile["type"]),
+            "name": tile_type.replace("_", " ").title(),
+            "type": {"shield_gen": "shield_generator"}.get(tile_type, tile_type),
             "q": tile["q"],
             "r": tile["r"],
             "number": sequence,
             "shield_arcs": [],
             "linked_phase": tile.get("stack"),
         }
-        if tile["type"] == "shield_gen":
+        if tile_type == "shield_gen":
             component["name"] = f"Shield Generator {tile['number']}"
             component["number"] = tile["number"]
             component["shield_arcs"] = [
                 area for area, gen in generator_hex.items() if gen == [tile["q"], tile["r"]]
             ]
-        elif tile["type"] == "core":
+        elif tile_type == "core":
             component["name"] = f"Core {tile['number']}"
             component["number"] = tile["number"]
-        elif tile["type"] == "firing_computer":
+        elif tile_type == "cannon":
             component["name"] = f"Cannon {sequence}"
-        elif tile["type"] == "fuel_tank":
+        elif tile_type == "engine":
             component["name"] = f"Engine {sequence}"
         components.append(component)
 
@@ -221,15 +233,15 @@ def spec_from_design(design: dict) -> dict:
         tile["number"]: [tile["q"], tile["r"]] for tile in tiles if tile["type"] == "core"
     }
 
-    # Action phases: firing computers / fuel tanks feed their stack; progression
+    # Action phases: cannons / engines feed their stack; progression
     # steps add tier slots (tier N = step N, unlocked at progress >= N).
     phase_slots: dict[str, list[dict]] = {key: [] for key in _STACK_KEYS}
     for tile in tiles:
-        if tile["type"] == "firing_computer":
+        if _tile_type(tile) == "cannon":
             phase_slots[tile["stack"]].append(
                 {"slot": "component", "component_id": _design_component_id(tile), "kind": "attack"}
             )
-        elif tile["type"] == "fuel_tank":
+        elif _tile_type(tile) == "engine":
             phase_slots[tile["stack"]].append(
                 {"slot": "component", "component_id": _design_component_id(tile), "kind": "move"}
             )

@@ -381,6 +381,60 @@ def _overdrive_exempt_by_expansion(state: GameState, player: PlayerState, stack:
     return False
 
 
+def _move_distance_multiplier_by_expansion(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    selection: OrderCardSelection,
+    card: Card,
+    *,
+    overdrive_copy: bool,
+) -> int:
+    multiplier = 1
+    for module in _active_expansion_modules(state):
+        move_distance_multiplier = getattr(module, "move_distance_multiplier", None)
+        if move_distance_multiplier is not None:
+            multiplier *= int(
+                move_distance_multiplier(
+                    state,
+                    player,
+                    stack,
+                    selection,
+                    card,
+                    overdrive_copy=overdrive_copy,
+                )
+            )
+    return max(1, multiplier)
+
+
+def _move_defense_distance_by_expansion(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    selection: OrderCardSelection,
+    card: Card,
+    distance: int,
+    *,
+    overdrive_copy: bool,
+) -> int:
+    defense_distance = distance
+    for module in _active_expansion_modules(state):
+        move_defense_distance = getattr(module, "move_defense_distance", None)
+        if move_defense_distance is not None:
+            defense_distance = int(
+                move_defense_distance(
+                    state,
+                    player,
+                    stack,
+                    selection,
+                    card,
+                    defense_distance,
+                    overdrive_copy=overdrive_copy,
+                )
+            )
+    return max(0, defense_distance)
+
+
 def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
     module = expansion_module(STAR_BREACH_ID)
     return module.overdrive_exempt(state, player, stack)
@@ -546,6 +600,23 @@ def _resolve_stack_movement(
                     distance += 1
                 if _active_starfall(state, "gusty_winds"):
                     distance += 1
+                distance *= _move_distance_multiplier_by_expansion(
+                    state,
+                    player,
+                    stack,
+                    selection,
+                    card,
+                    overdrive_copy=overdrive_copy,
+                )
+            defense_distance = _move_defense_distance_by_expansion(
+                state,
+                player,
+                stack,
+                selection,
+                card,
+                0 if move_effect.movement_disabled or move_effect.warp_destination else distance,
+                overdrive_copy=overdrive_copy,
+            )
             before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
             attempted_q = player.ship.q
             attempted_r = player.ship.r
@@ -562,7 +633,7 @@ def _resolve_stack_movement(
                 player.ship.facing = turn_right(turn_right(player.ship.facing))
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_effect.double_turn_after_move:
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
@@ -570,31 +641,31 @@ def _resolve_stack_movement(
                     player.ship.facing = turn_left(turn_left(player.ship.facing))
                 else:
                     player.ship.facing = turn_right(turn_right(player.ship.facing))
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_effect.u_turn_move:
                 player.ship.facing = u_turn(player.ship.facing)
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_effect.side_slip_direction:
                 slip_facing = (player.ship.facing + (_SLIP_RIGHT_OFFSET if move_choice == "slip_right" else _SLIP_LEFT_OFFSET)) % 6
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, slip_facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_choice == "forward":
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_choice == "turn_left":
                 player.ship.facing = turn_left(player.ship.facing)
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             elif move_choice == "turn_right":
                 player.ship.facing = turn_right(player.ship.facing)
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
-                player.ship.movement_this_action += distance
+                player.ship.movement_this_action += defense_distance
             else:
                 raise RulesError(f"Unsupported move orientation: {move_choice}")
 

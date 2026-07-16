@@ -315,8 +315,8 @@
         <div class="tutorial-steps">
           <div><b>1.</b> Everyone is on the same side against the StarBreacher and its Hunter-Killer fleet.</div>
           <div><b>2.</b> One captain is <b>The Prey</b>. Win by ending Round 6 inside The Fang. If The Prey is destroyed, everyone loses.</div>
-          <div><b>3.</b> Each captain has a role: Treasure Hunter, Tank, Engineer, or Fighting Ace.</div>
-          <div><b>4.</b> The boss acts between your actions. Hitting The Prey advances its Progress Track — destroy Firing Computers and Fuel Tanks to slow it down.</div>
+          <div><b>3.</b> Each captain has a role: Bauble Runner, Tank, Engineer, or Fighting Ace.</div>
+          <div><b>4.</b> The boss acts between your actions. Hitting The Prey advances its Progress Track — destroy Cannons and Engines to slow it down.</div>
         </div>
         <button class="btn gold picker-cancel" id="star-breach-tutorial-ok">Got it</button>
       </div>`;

@@ -5,9 +5,9 @@ axial hexes with the Breacher Core at (0, 0); the boss is placed on the board
 at (anchor_q, anchor_r) and every hull hex is anchor + local.
 
 The layout is a code translation of docs/rules/starbreach_boss_scenario_01.jpg:
-a radius-3 central body, plus a port wing (LC1/LC2 firing computers) and a
-starboard wing (RC1/RC2), shield generators across the bow, and four fuel
-tanks (E1-E4) along the stern.
+a radius-3 central body, plus a port wing (LC1/LC2 cannons) and a starboard
+wing (RC1/RC2), shield generators across the bow, and four engines (E1-E4)
+along the stern.
 """
 
 from __future__ import annotations
@@ -70,9 +70,9 @@ class StarBreachRole:
 
 ROLES: tuple[StarBreachRole, ...] = (
     StarBreachRole(
-        "treasure_hunter",
-        "Treasure Hunter",
-        "No Overdrive draw penalty on Move-only orders. When this player collects a Bauble, every player draws one bonus card.",
+        "bauble_runner",
+        "Bauble Runner",
+        "Move distances are doubled on basic movement. This doubling is not increased in Overdrive, and movement gives no defense bonus. When this player collects a Bauble, every player draws one bonus card.",
     ),
     StarBreachRole(
         "tank",
@@ -94,7 +94,7 @@ ROLES: tuple[StarBreachRole, ...] = (
 ROLES_BY_ID = {role.id: role for role in ROLES}
 
 # First player is The Prey; roles deal round-robin so every role is in play.
-ROLE_ASSIGN_ORDER = ("treasure_hunter", "tank", "fighting_ace", "engineer")
+ROLE_ASSIGN_ORDER = ("bauble_runner", "tank", "fighting_ace", "engineer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +106,7 @@ class BossComponent:
     r: int
     # Shield arcs this generator powers (shield generators only).
     shield_arcs: tuple[str, ...] = ()
-    # Boss action phase whose slot this component drives (computers/tanks only).
+    # Boss action phase whose slot this component drives (cannons/engines only).
     linked_phase: str | None = None
 
 
@@ -114,14 +114,14 @@ BOSS_COMPONENTS: tuple[BossComponent, ...] = (
     BossComponent("sg_left", "Shield Generator L", "shield_generator", -2, -1, shield_arcs=("port",)),
     BossComponent("sg_center", "Shield Generator C", "shield_generator", 0, -2, shield_arcs=("rear",)),
     BossComponent("sg_right", "Shield Generator R", "shield_generator", 2, -3, shield_arcs=("starboard",)),
-    BossComponent("fc_a", "Firing Computer LC1", "firing_computer", -5, 1, linked_phase="0.5"),
-    BossComponent("fc_b", "Firing Computer LC2", "firing_computer", -5, 2, linked_phase="0.5"),
-    BossComponent("fc_c", "Firing Computer RC1", "firing_computer", 5, -4, linked_phase="3.5"),
-    BossComponent("fc_d", "Firing Computer RC2", "firing_computer", 5, -3, linked_phase="3.5"),
-    BossComponent("fuel_a", "Fuel Tank E1", "fuel_tank", -2, 3, linked_phase="1.5"),
-    BossComponent("fuel_b", "Fuel Tank E2", "fuel_tank", -1, 3, linked_phase="1.5"),
-    BossComponent("fuel_c", "Fuel Tank E3", "fuel_tank", 1, 2, linked_phase="2.5"),
-    BossComponent("fuel_d", "Fuel Tank E4", "fuel_tank", 2, 1, linked_phase="2.5"),
+    BossComponent("fc_a", "Cannon LC1", "cannon", -5, 1, linked_phase="0.5"),
+    BossComponent("fc_b", "Cannon LC2", "cannon", -5, 2, linked_phase="0.5"),
+    BossComponent("fc_c", "Cannon RC1", "cannon", 5, -4, linked_phase="3.5"),
+    BossComponent("fc_d", "Cannon RC2", "cannon", 5, -3, linked_phase="3.5"),
+    BossComponent("fuel_a", "Engine E1", "engine", -2, 3, linked_phase="1.5"),
+    BossComponent("fuel_b", "Engine E2", "engine", -1, 3, linked_phase="1.5"),
+    BossComponent("fuel_c", "Engine E3", "engine", 1, 2, linked_phase="2.5"),
+    BossComponent("fuel_d", "Engine E4", "engine", 2, 1, linked_phase="2.5"),
     BossComponent("core", "Breacher Core", "core", 0, 0),
 )
 

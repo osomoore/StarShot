@@ -7,8 +7,8 @@
  *   - player (full-screen overlay on the main app, /api/v2/my/boss-designs,
  *     capped library — players may fight their own creations)
  * Edit modes over one SVG hex board:
- *   structure     — paint hull tiles (generic / shield gen / firing computer /
- *                   fuel tank / core)
+ *   structure     — paint hull tiles (generic / shield gen / cannon /
+ *                   engine / core)
  *   shields+lanes — per shield region: protected hexes, powering generator,
  *                   and the seven d8 damage lanes (rolls 2-8)
  *   progression   — progression triggers and the step track
@@ -42,14 +42,14 @@
   const TILE_TOOLS = [
     { type: "generic", label: "Generic", badge: "" },
     { type: "shield_gen", label: "Shield Gen", badge: "SG" },
-    { type: "firing_computer", label: "Firing Computer", badge: "FC" },
-    { type: "fuel_tank", label: "Fuel Tank", badge: "FT" },
+    { type: "cannon", label: "Cannon", badge: "C" },
+    { type: "engine", label: "Engine", badge: "E" },
     { type: "core", label: "Core", badge: "◉" },
     { type: "erase", label: "Eraser", badge: "✕" },
   ];
   const TILE_FILL = {
-    generic: "154,163,184", shield_gen: "120,190,255", firing_computer: "255,140,120",
-    fuel_tank: "255,205,110", core: "222,160,255",
+    generic: "154,163,184", shield_gen: "120,190,255", cannon: "255,140,120",
+    engine: "255,205,110", core: "222,160,255",
   };
   const REGION_COLORS = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0",
     "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
@@ -124,7 +124,7 @@
 
   /* Components auto-number per type in placement order (matches the game
      engine), so the organizer can say "Engine 1" instead of coordinates. */
-  const COMPONENT_LABEL = { firing_computer: "Cannon", fuel_tank: "Engine", shield_gen: "Shield Gen", core: "Core" };
+  const COMPONENT_LABEL = { cannon: "Cannon", engine: "Engine", shield_gen: "Shield Gen", core: "Core" };
   function componentNumbers() {
     const counts = {};
     const map = {};
@@ -199,8 +199,8 @@
     if (tile.type === "shield_gen") return "SG" + tile.number;
     if (tile.type === "core") return "◉" + tile.number;
     const n = (numbers || componentNumbers())[key(tile.q, tile.r)] || "";
-    if (tile.type === "firing_computer") return "C" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
-    if (tile.type === "fuel_tank") return "E" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
+    if (tile.type === "cannon") return "C" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
+    if (tile.type === "engine") return "E" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
     return "";
   }
 
@@ -352,7 +352,7 @@
     if (tool.type === "erase") return removeTile(q, r);
     const tile = { q, r, type: tool.type };
     if (tool.type === "shield_gen" || tool.type === "core") tile.number = tool.number;
-    if (tool.type === "firing_computer" || tool.type === "fuel_tank") tile.stack = tool.stack;
+    if (tool.type === "cannon" || tool.type === "engine") tile.stack = tool.stack;
     design.tiles = design.tiles.filter((t) => !(t.q === q && t.r === r));
     design.tiles.push(tile);
     scrubMissingHexes();
@@ -545,12 +545,12 @@
     for (const stack of META.action_stacks) byStack[stack] = [];
     for (const tile of design.tiles) {
       if (!tile.stack || !byStack[tile.stack]) continue;
-      if (tile.type === "firing_computer") {
+      if (tile.type === "cannon") {
         byStack[tile.stack].push({
           kind: "attack", label: componentLabel(tile, numbers), source: "component",
           q: tile.q, r: tile.r,
         });
-      } else if (tile.type === "fuel_tank") {
+      } else if (tile.type === "engine") {
         byStack[tile.stack].push({
           kind: "move", label: componentLabel(tile, numbers), source: "component",
           q: tile.q, r: tile.r,
@@ -626,7 +626,7 @@
   /* Light up every mini-ship cell whose component has a slot in `stack`. */
   function highlightStackHexes(stack, on) {
     for (const tile of design.tiles) {
-      if (tile.stack === stack && (tile.type === "firing_computer" || tile.type === "fuel_tank")) {
+      if (tile.stack === stack && (tile.type === "cannon" || tile.type === "engine")) {
         highlightMiniHex(tile.q, tile.r, on);
       }
     }
@@ -752,9 +752,9 @@
       const numbers = componentNumbers();
       for (const tile of design.tiles) {
         if (tile.stack !== stack) continue;
-        if (tile.type === "firing_computer") {
+        if (tile.type === "cannon") {
           addItem(esc(componentLabel(tile, numbers)), "component · attack", { type: "tile", q: tile.q, r: tile.r }, "bd-item-attack", [tile.q, tile.r]);
-        } else if (tile.type === "fuel_tank") {
+        } else if (tile.type === "engine") {
           addItem(esc(componentLabel(tile, numbers)), "component · move", { type: "tile", q: tile.q, r: tile.r }, "bd-item-move", [tile.q, tile.r]);
         }
       }
@@ -809,8 +809,8 @@
     for (const tile of design.tiles) {
       const [x, y] = mxy(tile.q, tile.r);
       const tint = TILE_FILL[tile.type];
-      const badge = tile.type === "firing_computer" ? "C" + numbers[key(tile.q, tile.r)]
-        : tile.type === "fuel_tank" ? "E" + numbers[key(tile.q, tile.r)]
+      const badge = tile.type === "cannon" ? "C" + numbers[key(tile.q, tile.r)]
+        : tile.type === "engine" ? "E" + numbers[key(tile.q, tile.r)]
         : tile.type === "shield_gen" ? "S" + tile.number
         : tile.type === "core" ? "◉" : "";
       body += `<g><polygon data-hex="${tile.q},${tile.r}" points="${hexPoints(x, y, size - 0.5)}"
@@ -858,8 +858,8 @@
   }
 
   function printTileFill(tile, colors) {
-    if (tile.type === "firing_computer") return colors.attack;
-    if (tile.type === "fuel_tank") return colors.move;
+    if (tile.type === "cannon") return colors.attack;
+    if (tile.type === "engine") return colors.move;
     if (tile.type === "shield_gen") return colors.shieldGen;
     if (tile.type === "core") return colors.core;
     return colors.generic;
@@ -900,8 +900,8 @@
     };
     const tileMap = new Map(design.tiles.map((tile) => [key(tile.q, tile.r), tile]));
     const componentBadge = (tile) => {
-      if (tile.type === "firing_computer") return "C" + numbers[key(tile.q, tile.r)];
-      if (tile.type === "fuel_tank") return "E" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "cannon") return "C" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "engine") return "E" + numbers[key(tile.q, tile.r)];
       if (tile.type === "shield_gen") return "SG" + tile.number;
       if (tile.type === "core") return "CORE " + tile.number;
       return "";
@@ -1284,7 +1284,7 @@
     root().querySelectorAll(".bd-tool").forEach((button) =>
       button.classList.toggle("active", button.dataset.tool === tool.type));
     const numbered = tool.type === "shield_gen" || tool.type === "core";
-    const stacked = tool.type === "firing_computer" || tool.type === "fuel_tank";
+    const stacked = tool.type === "cannon" || tool.type === "engine";
     el("bd-tool-number-wrap").classList.toggle("hidden", !numbered);
     el("bd-tool-stack-wrap").classList.toggle("hidden", !stacked);
     el("bd-tool-number-label").textContent =
@@ -1651,7 +1651,7 @@
               </label>
               <p class="admin-note">Click a hex to place the selected tile (overwrites).
                 Right-click or use the eraser to remove. Shield Gens number a shield region;
-                Firing Computers grant an attack and Fuel Tanks a move in their action stack;
+                Cannons grant an attack and Engines grant a move in their action stack;
                 Cores anchor Breacher-stack abilities.</p>
             </div>
             <div id="bd-panel-shields" class="hidden">
@@ -2042,7 +2042,7 @@
       <div class="picker">
         <h3>🛠 StarBreach Ship Builder — how it works</h3>
         <div class="tutorial-steps">
-          <div><b>1.</b> Name a new boss and hit <b>＋ New design</b>, then paint hull tiles in <b>Structure</b>. Firing Computers grant attacks, Fuel Tanks grant moves, Shield Gens power shield regions, Cores anchor Breacher abilities.</div>
+          <div><b>1.</b> Name a new boss and hit <b>＋ New design</b>, then paint hull tiles in <b>Structure</b>. Cannons grant attacks, Engines grant moves, Shield Gens power shield regions, Cores anchor Breacher abilities.</div>
           <div><b>2.</b> In <b>Shields &amp; Lanes</b>, group hexes into shield regions and give each one damage lanes — the numbered arrows attackers roll against.</div>
           <div><b>3.</b> <b>Progression</b> builds the boss's power-up track; <b>Action Stacks</b> shows which stack each ability feeds — drag cards between columns to reassign them.</div>
           <div><b>4.</b> <b>Save</b> your design, then pick it as the StarBreach Boss when you launch a raid. You can also export a printable sheet from <b>Print Sheets</b>.</div>

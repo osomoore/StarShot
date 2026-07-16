@@ -82,8 +82,8 @@ class DesignSpecTests(unittest.TestCase):
         spec = sb_spec.spec_from_design(playable_design())
         self.assertEqual(spec["areas"], ["1"])
         self.assertEqual(spec["initial_shield_hp"], {"1": 3})
-        # 0.5 holds the firing computer plus the step-2 action link; 1.5 the
-        # fuel tank. Designed bosses have no free base slots.
+        # 0.5 holds the cannon plus the step-2 action link; 1.5 the engine.
+        # Designed bosses have no free base slots.
         slots_05 = sb_spec.phase_slots(spec, "0.5")
         self.assertEqual([slot["slot"] for slot in slots_05], ["component", "tier"])
         self.assertEqual([slot["kind"] for slot in slots_05], ["attack", "attack"])

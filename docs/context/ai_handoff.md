@@ -100,8 +100,8 @@ Implemented expansions:
 Admin tools:
 
 - Boss Ship Designer (admin console tab "Boss Designer"): hex editor for custom
-  StarBreach-style bosses — hull tiles (generic / shield gen / firing computer /
-  fuel tank / core), shield regions with a powering generator and a
+  StarBreach-style bosses — hull tiles (generic / shield gen / cannon /
+  engine / core), shield regions with a powering generator and a
   configurable number of damage lanes (1-12 per region via a number ticker,
   default 7; the die is lane_count + 1 sides with roll 1 always a glancing
   blow — `region.lane_count` in the design, `lane_die` in the compiled spec;
@@ -122,7 +122,7 @@ Admin tools:
   rerolled at runtime (see the reroll loop in `_resolve_volley_vs_boss`).
   An "Action Stacks" mode shows one column per boss stack (0.5-3.5 +
   StarBreach) with draggable, equal-height columns of cards for Firing
-  Computers / Fuel Tanks / action-link steps (drop on a column to reassign
+  Cannons / Engines / action-link steps (drop on a column to reassign
   the stack); the progression track sits above it as two balanced columns
   joined by a wrap-around arrow, chips drag-reorder, hovering a chip lights
   up its stack card, and hovering a stack header lights up that stack's
@@ -139,7 +139,7 @@ Admin tools:
   breacher abilities apart).
 - Designed bosses are playable: `backend/starshot/rules/star_breach_spec.py`
   compiles a design into a JSON "boss spec" (hull, areas = shield regions,
-  damage-lane rays, phases from firing computers / fuel tanks / progression
+  damage-lane rays, phases from cannons / engines / progression
   steps, fleet, triggers); `star_breach_engine.py` and serialization read all
   boss data through its accessors. `spec_for(sb)` returns the stock scenario
   when `StarBreachState.boss_spec` is None, so base games are untouched. The

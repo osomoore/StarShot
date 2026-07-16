@@ -26,9 +26,10 @@ AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 # Half of the editable grid width; hexes must satisfy the axial-disk bound.
 GRID_RADIUS = 7
 
-TILE_TYPES = ("generic", "shield_gen", "firing_computer", "fuel_tank", "core")
+TILE_TYPES = ("generic", "shield_gen", "cannon", "engine", "core")
+LEGACY_TILE_TYPES = {"firing_computer": "cannon", "fuel_tank": "engine"}
 
-# Boss action stacks a Firing Computer / Fuel Tank / action-link step can feed.
+# Boss action stacks a Cannon / Engine / action-link step can feed.
 ACTION_STACKS = ("0.5", "1.5", "2.5", "3.5", "starbreach")
 
 # Die rolls that hit a damage lane (1 is always a miss). A region with N
@@ -126,7 +127,7 @@ def _normalize_tile(raw, index: int) -> dict:
         raise BossDesignError(f"tiles[{index}] must be an object.")
     label = f"tiles[{index}]"
     q, r = _as_hex((raw.get("q"), raw.get("r")), label)
-    tile_type = raw.get("type")
+    tile_type = LEGACY_TILE_TYPES.get(raw.get("type"), raw.get("type"))
     if tile_type not in TILE_TYPES:
         raise BossDesignError(f"{label}.type must be one of {', '.join(TILE_TYPES)}.")
     tile: dict = {"q": q, "r": r, "type": tile_type}
@@ -135,7 +136,7 @@ def _normalize_tile(raw, index: int) -> dict:
         if not 1 <= number <= 9:
             raise BossDesignError(f"{label}.number must be 1-9.")
         tile["number"] = number
-    if tile_type in ("firing_computer", "fuel_tank"):
+    if tile_type in ("cannon", "engine"):
         stack = str(raw.get("stack", ""))
         if stack not in ACTION_STACKS:
             raise BossDesignError(f"{label}.stack must be one of {', '.join(ACTION_STACKS)}.")

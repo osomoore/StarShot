@@ -52,9 +52,12 @@ def before_player_action(state: GameState, action_number: int) -> None:
     _resolve_boss_phase(state, sb_data.BOSS_PHASES_BY_PLAYER_ACTION[action_number])
     if state.star_breach is not None:
         state.star_breach.repaired_ship_ids_this_action = []
+        state.star_breach.progressed_source_ids_this_action = []
 
 
 def before_award_baubles(state: GameState) -> None:
+    if state.star_breach is not None:
+        state.star_breach.progressed_source_ids_this_action = []
     _resolve_boss_phase(state, "3.5")
     if state.phase == GamePhase.COMPLETE:
         return
@@ -62,9 +65,9 @@ def before_award_baubles(state: GameState) -> None:
 
 
 def bauble_awarded(state: GameState, player: PlayerState, award: dict) -> bool:
-    if "treasure_hunter" not in player.roles:
+    if "bauble_runner" not in player.roles:
         return False
-    award["treasure_hunter_bonus_draw"] = True
+    award["bauble_runner_bonus_draw"] = True
     return True
 
 
@@ -78,6 +81,33 @@ def activate_round(state: GameState) -> None:
 
 def overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
     return _star_breach_overdrive_exempt(state, player, stack)
+
+
+def move_distance_multiplier(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    selection: OrderCardSelection,
+    card: Card,
+    *,
+    overdrive_copy: bool,
+) -> int:
+    return _star_breach_move_distance_multiplier(state, player, stack, selection, card, overdrive_copy=overdrive_copy)
+
+
+def move_defense_distance(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    selection: OrderCardSelection,
+    card: Card,
+    distance: int,
+    *,
+    overdrive_copy: bool,
+) -> int:
+    if state.star_breach is not None and "bauble_runner" in player.roles:
+        return 0
+    return distance
 
 
 def validate_target(state: GameState, player: PlayerState, target: str) -> None:
@@ -307,11 +337,26 @@ def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: 
         _selected_card_family(card_by_id(selection.card_id), selection)
         for selection in stack.cards
     }
-    if "treasure_hunter" in player.roles and families == {CardFamily.MOVE}:
-        return True
     if "fighting_ace" in player.roles and families == {CardFamily.ATTACK}:
         return True
     return False
+
+
+def _star_breach_move_distance_multiplier(
+    state: GameState,
+    player: PlayerState,
+    stack: ActionStack,
+    selection: OrderCardSelection,
+    card: Card,
+    *,
+    overdrive_copy: bool,
+) -> int:
+    if state.star_breach is None or "bauble_runner" not in player.roles or overdrive_copy:
+        return 1
+    effect = _card_effect(card, selection, stack.seal_mode)
+    if effect.family == CardFamily.MOVE and effect.move is not None and not effect.is_desperate_face:
+        return 2
+    return 1
 
 
 def _validate_star_breach_target(state: GameState, player: PlayerState, target: str) -> None:
@@ -436,6 +481,7 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
     sb = state.star_breach
     if sb is None or state.result is not None:
         return
+    sb.progressed_source_ids_this_action = []
     sb.boss_movement_this_action = 0
     for craft in sb.fleet:
         craft.movement_this_action = 0
@@ -649,9 +695,12 @@ def _resolve_enemy_shot(
     sb = state.star_breach
     if sb is not None:
         triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
+        source_key = str(attacker_label)
         if triggers is None:
-            # Stock scenario rules: any hit on The Prey advances the track.
-            if hit and target.id == sb.prey_player_id:
+            # Stock scenario rules: hitting The Prey's shields or hull advances
+            # once per enemy source per player action.
+            if hit and target.id == sb.prey_player_id and source_key not in sb.progressed_source_ids_this_action:
+                sb.progressed_source_ids_this_action.append(source_key)
                 _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_HIT)
                 if target.ship.destroyed:
                     _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_KILL - sb_data.PROGRESS_PER_PREY_HIT)
@@ -1287,4 +1336,3 @@ def _repair_one_component(target: PlayerState) -> str | None:
         target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
         return component.id
     return None
-

@@ -613,7 +613,7 @@
   const KIND_COLORS = { attack: "#ff8d6b", move: "#9dff8a", breacher: "#d9a6ff", spawn: "#ff7ad0", ability: "#ffd75e", filler: "#9aa3b8" };
   const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
   const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
-  const COMPONENT_SYMBOL = { firing_computer: "☄", fuel_tank: "➤", shield_generator: "🛡", core: "◉" };
+  const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉" };
   // Which boss phase has already resolved by the time the player is acting.
   const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_baubles: "3.5" };
 
@@ -1416,7 +1416,7 @@
   // colors by position in the layout's area list.
   const EXTRA_FILL = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
   const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
-  const COMPONENT_BADGE = { shield_generator: "SG", firing_computer: "☄", fuel_tank: "➤", core: "◉" };
+  const COMPONENT_BADGE = { shield_generator: "SG", cannon: "☄", engine: "➤", core: "◉" };
 
   function areaPalette(sb) {
     const layoutAreas = (sb.boss_layout || {}).areas || [];

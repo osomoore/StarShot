@@ -186,55 +186,55 @@
     {
       "q": 5,
       "r": -7,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "0.5"
     },
     {
       "q": -7,
       "r": 6,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "3.5"
     },
     {
       "q": -6,
       "r": 6,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "2.5"
     },
     {
       "q": -3,
       "r": 0,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "3.5"
     },
     {
       "q": -2,
       "r": -1,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "2.5"
     },
     {
       "q": -1,
       "r": -2,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "1.5"
     },
     {
       "q": 0,
       "r": -3,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "0.5"
     },
     {
       "q": 1,
       "r": -4,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "0.5"
     },
     {
       "q": -4,
       "r": 1,
-      "type": "firing_computer",
+      "type": "cannon",
       "stack": "3.5"
     },
     {
@@ -250,37 +250,37 @@
     {
       "q": 3,
       "r": 2,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "2.5"
     },
     {
       "q": 2,
       "r": 3,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "2.5"
     },
     {
       "q": 1,
       "r": 4,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "2.5"
     },
     {
       "q": -2,
       "r": 7,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "3.5"
     },
     {
       "q": -3,
       "r": 7,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "3.5"
     },
     {
       "q": -4,
       "r": 7,
-      "type": "fuel_tank",
+      "type": "engine",
       "stack": "3.5"
     },
     {
