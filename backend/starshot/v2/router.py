@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -33,6 +35,9 @@ router = APIRouter(prefix="/api/v2", tags=["v2"])
 
 SESSION_COOKIE = "starshot_v2_session"
 SESSION_MAX_AGE = 30 * 24 * 3600
+ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = ROOT / "backend" / "starshot"
+FRONTEND_ROOT = ROOT / "frontend" / "v2"
 
 
 # --------------------------------------------------------------------------
@@ -99,6 +104,40 @@ def _validated_expansions(active_expansions: list[str]) -> list[str]:
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=20)
     password: str = Field(min_length=security.MIN_PASSWORD_LENGTH, max_length=128)
+
+
+def _latest_mtime(root: Path, suffixes: set[str]) -> float | None:
+    latest: float | None = None
+    if not root.exists():
+        return None
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in suffixes:
+            continue
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        latest = mtime if latest is None else max(latest, mtime)
+    return latest
+
+
+def _iso_from_mtime(mtime: float | None) -> str | None:
+    if mtime is None:
+        return None
+    return datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+@router.get("/build-info")
+def build_info() -> dict:
+    backend_mtime = _latest_mtime(BACKEND_ROOT, {".py"})
+    frontend_mtime = _latest_mtime(FRONTEND_ROOT, {".html", ".css", ".js"})
+    return {
+        "backend": {"built_at": _iso_from_mtime(backend_mtime)},
+        "frontend": {"built_at": _iso_from_mtime(frontend_mtime)},
+        "server_now": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 
 
 @router.post("/auth/register")

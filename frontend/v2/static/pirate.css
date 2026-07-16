@@ -52,6 +52,22 @@ h1, h2, .brand, .poster-title, .banner-text {
   letter-spacing: 0.04em;
 }
 
+.build-footer {
+  position: fixed;
+  left: 12px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 90;
+  max-width: min(720px, calc(100vw - 24px));
+  padding: 5px 9px;
+  border: 1px solid rgba(212, 167, 72, 0.28);
+  border-radius: 6px;
+  background: rgba(7, 11, 22, 0.74);
+  color: var(--ink-dim);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 /* ── buttons ─────────────────────────────── */
 .btn {
   font-family: "Space Grotesk", sans-serif;
