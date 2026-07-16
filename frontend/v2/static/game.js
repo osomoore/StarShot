@@ -566,8 +566,6 @@
       node = document.createElement("div");
       node.id = "starbreach-status";
       node.className = "starfall-status scenario-status";
-      node.style.cursor = "pointer";
-      node.addEventListener("click", showBossModal);
       statusStack().appendChild(node);
     }
     const shields = ["forward", "port", "rear", "starboard"]
@@ -578,8 +576,8 @@
     setScenarioStatus(node, "starbreach", "◎", `<b>☄ StarBreacher</b>
       <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}
       · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}
-      · <u>damage board</u></span>`);
-    node.title = "Click for the StarBreacher's damage board.";
+      </span>`);
+    node.title = "StarBreach status.";
     renderBossBattleBoardMini();
     renderPauseToggle();
   }
@@ -837,10 +835,14 @@
     if (document.getElementById("sb-pause-toggle")) return;
     const label = document.createElement("label");
     label.id = "sb-pause-toggle";
-    label.className = "sb-pause-toggle";
-    label.innerHTML = `<input type="checkbox" ${pauseAfterActions() ? "checked" : ""}> ⏸ Pause after each player action`;
+    label.className = "sb-pause-toggle scenario-status";
+    label.dataset.icon = "⏸";
+    label.innerHTML = `<input type="checkbox" ${pauseAfterActions() ? "checked" : ""}>
+      <b>Replay Pause</b><span>Pause after each player action</span>`;
     label.querySelector("input").addEventListener("change", (event) => {
       try { localStorage.setItem("ss_sb_pause", event.target.checked ? "1" : "0"); } catch (err) {}
+      label.classList.add("status-expanded");
+      window.setTimeout(() => label.classList.remove("status-expanded"), 1600);
     });
     statusStack().appendChild(label);
   }

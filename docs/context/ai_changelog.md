@@ -2,6 +2,28 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 13:35:53 -05:00
+
+- Title: Mobile controls right align
+- Build ID: `68122f9a8bd2`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Right-aligned the phone battle-board top control row while keeping center, replay, and Feedback together.
+  - Bumped the v2 pirate stylesheet cache string.
+  - Verified with `git diff --check`.
+
+## 2026-07-16 13:28:02 -05:00
+
+- Title: StarBreach mobile print fixes
+- Build ID: `68122f9a8bd2`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - StarBreach status rollup no longer opens the boss board; the boss activity tracker remains the damage-board entry point.
+  - Mobile battle controls now put center, replay, and Feedback in one top row; the pause-after-actions control uses the same square rollup style as the scenario info chips.
+  - Boss print sheets now default to lane arrows, action stacks, progression, and fleet aids only; action stacks print every item, core badges use a compact symbol, and the removed lane-helper text no longer appears.
+  - Progression action-link rows now use only action-number/action-type dropdowns with a single column header.
+  - Verified with `node --check frontend/v2/static/game.js`, `node --check frontend/v2/static/bossdesigner.js`, and `git diff --check`.
+
 ## 2026-07-16 12:48:31 -05:00
 
 - Title: Desktop battle board side stacks

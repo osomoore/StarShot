@@ -57,6 +57,11 @@
 .bd-trigger { color: var(--ink); font-size: 13px; display: flex; align-items: center; gap: 7px; }
 
 .bd-steps { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.bd-step-header {
+  display: grid; grid-template-columns: 18px 26px minmax(120px, auto) 1fr 100px; gap: 6px;
+  align-items: center; color: var(--ink-dim); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; padding: 0 8px;
+}
 .bd-step {
   display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   background: #0d1426; border: 1px solid var(--panel-edge); border-radius: 8px; padding: 6px 8px;

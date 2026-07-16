@@ -78,8 +78,8 @@
   let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
   let printTone = "color";  // color | bw
   let printOptions = {
-    lanes: true, laneList: true, stacks: true, stackLinks: true, coords: true,
-    components: true, progression: true, fleet: true,
+    lanes: true, laneList: false, stacks: true, stackLinks: false, coords: false,
+    components: false, progression: true, fleet: true,
   };
   let printZoom = 1; // ship-drawing scale multiplier (0.5 - 2.0)
 
@@ -879,7 +879,7 @@
     const numbers = componentNumbers();
     const stacks = actionStackItems();
     const pageW = 1400;
-    const pageH = 1900;
+    let pageH = 1900;
     const breachBox = { x: 55, y: 175, w: 640, h: 640 };
     const baseShipSize = 34;
     const baseXy = (q, r) => [baseShipSize * 1.5 * q, baseShipSize * SQ * (r + q / 2)];
@@ -911,7 +911,7 @@
       if (tile.type === "cannon") return "C" + numbers[key(tile.q, tile.r)];
       if (tile.type === "engine") return "E" + numbers[key(tile.q, tile.r)];
       if (tile.type === "shield_gen") return "SG" + tile.number;
-      if (tile.type === "core") return "CORE " + tile.number;
+      if (tile.type === "core") return "◎" + tile.number;
       return "";
     };
 
@@ -1078,19 +1078,21 @@
     const stackY = 875;
     const colW = 244;
     const colGap = 10;
-    const rowH = 38;
+    const rowH = 34;
+    const maxStackItems = Math.max(0, ...META.action_stacks.map((stack) => (stacks[stack] || []).length));
+    const stackHeight = Math.max(320, 54 + maxStackItems * rowH + 18);
     let stackSvg = "";
     if (printOptions.stacks) {
       META.action_stacks.forEach((stack, stackIndex) => {
         const x = stackX + stackIndex * (colW + colGap);
         const items = stacks[stack] || [];
         stackSvg += `<g>
-          <rect x="${x}" y="${stackY}" width="${colW}" height="320" rx="8" fill="${colors.generic}" stroke="${colors.line}" stroke-width="2"/>
+          <rect x="${x}" y="${stackY}" width="${colW}" height="${stackHeight}" rx="8" fill="${colors.generic}" stroke="${colors.line}" stroke-width="2"/>
           <text x="${x + colW / 2}" y="${stackY + 27}" text-anchor="middle" class="ps-stack-title">${stack === "starbreach" ? "StarBreach" : "Action " + stack}</text>`;
         if (!items.length) {
           stackSvg += `<text x="${x + colW / 2}" y="${stackY + 70}" text-anchor="middle" class="ps-small">empty</text>`;
         }
-        items.slice(0, 6).forEach((item, itemIndex) => {
+        items.forEach((item, itemIndex) => {
           const y = stackY + 48 + itemIndex * rowH;
           const cardH = rowH - 7;
           let sub = "";
@@ -1114,12 +1116,9 @@
               </circle>`;
           }
         });
-        if (items.length > 6) {
-          stackSvg += `<text x="${x + 14}" y="${stackY + 305}" class="ps-small">+ ${items.length - 6} more</text>`;
-        }
         stackSvg += "</g>";
       });
-      const legY = stackY + 342;
+      const legY = stackY + stackHeight + 22;
       stackSvg += `<g class="ps-legend">
         ${glyphMove(stackX + 9, legY, 8, true)}<text x="${stackX + 22}" y="${legY + 4}" class="ps-small">move</text>
         ${glyphShoot(stackX + 74, legY, 8, true)}<text x="${stackX + 87}" y="${legY + 4}" class="ps-small">shoot</text>
@@ -1197,10 +1196,10 @@
       sideY += 28;
       side += `<text x="760" y="${sideY}" class="ps-list">Fleet: ${fleet.count || 0} ${esc(fleet.kind || "craft")} at ${fleet.hp || 0} HP</text>`;
       sideY += 22;
-      side += `<text x="760" y="${sideY}" class="ps-list">Use the arrows only for shield-area damage lanes; shield arcs are intentionally omitted.</text>`;
-      sideY += 22;
-      side += `<text x="760" y="${sideY}" class="ps-list">Unassigned lane numbers reroll during play; a roll of 1 is a glancing blow.</text>`;
+      side += `<text x="760" y="${sideY}" class="ps-list">Roll 1 is a glancing blow.</text>`;
     }
+
+    pageH = Math.max(pageH, printOptions.stacks ? stackY + stackHeight + 140 : 0, sideY + 130);
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
       <defs>
@@ -1226,7 +1225,7 @@
       ${ship}
       ${stackSvg}
       ${side}
-      <text x="70" y="1810" class="ps-sub">Physical play checklist: boss sheet, a damage-lane die per region (lanes + 1 sides), component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
+      <text x="70" y="${pageH - 90}" class="ps-sub">Physical play checklist: boss sheet, a damage-lane die per region (lanes + 1 sides), component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
     </svg>`;
   }
 
@@ -1344,10 +1343,10 @@
         <label>Damage lanes <input id="bd-region-lanecount" type="number" min="1" max="${META.max_lane_count || 12}" value="${laneCount}"></label>
         <span class="admin-note" style="margin:0">d${laneCount + 1}: 1 misses, 2-${topRoll} are lanes</span>
       </div>
-      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · unassigned (rerolled in play): ${missing.join(", ")}` : ` · all ${laneCount}`}</div>
+      <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · ${used.length}/${laneCount}` : ` · all ${laneCount}`}</div>
       <div class="admin-note">${shieldSub === "hexes"
         ? "Click hull hexes to add/remove them from this region; click a Shield Gen tile to set the power source."
-        : `Click a region hex to assign the next lane (2-${topRoll}). Click again to rotate its entry face; past the last face, the lane is cleared. Fewer than ${laneCount} lanes is fine — unassigned numbers reroll. Tick the box to stack a second lane on a laned hex.`}</div>`;
+        : `Click a region hex to assign the next lane (2-${topRoll}). Click again to rotate its entry face; past the last face, the lane is cleared. Tick the box to stack a second lane on a laned hex.`}</div>`;
     const chargesInput = info.querySelector("#bd-region-charges");
     const maxInput = info.querySelector("#bd-region-maxcharges");
     const applyCharges = () => {
@@ -1398,7 +1397,8 @@
 
     const list = el("bd-steps");
     list.innerHTML = design.progression.steps.length
-      ? "" : '<div class="admin-note">No steps yet — the track is empty.</div>';
+      ? '<div class="bd-step-header"><span></span><span>#</span><span>Slot Type</span><span>Action Number / Type</span><span></span></div>'
+      : '<div class="admin-note">No steps yet — the track is empty.</div>';
     design.progression.steps.forEach((step, index) => list.appendChild(stepRow(step, index)));
   }
 
@@ -1411,11 +1411,11 @@
     let fields = "";
     if (step.kind === "action_link") {
       fields = `
-        <label>stack <select data-f="stack">${META.action_stacks.map((stack) =>
-          `<option ${step.stack === stack ? "selected" : ""}>${stack}</option>`).join("")}</select></label>
-        <label>action <select data-f="action">
+        <select data-f="stack" title="Action number">${META.action_stacks.map((stack) =>
+          `<option ${step.stack === stack ? "selected" : ""}>${stack}</option>`).join("")}</select>
+        <select data-f="action" title="Action type">
           <option ${step.action === "move" ? "selected" : ""}>move</option>
-          <option ${step.action === "shoot" ? "selected" : ""}>shoot</option></select></label>`;
+          <option ${step.action === "shoot" ? "selected" : ""}>shoot</option></select>`;
     } else if (step.kind === "breacher_link") {
       fields = `
         <label>core <select data-f="core"><option value="">—</option>${coreNumbers.map((number) =>
@@ -1720,14 +1720,14 @@
                     <option value="bw">Black and white</option>
                   </select>
                 </label>
-                <label><input type="checkbox" data-print-opt="lanes" checked> Damage lane arrows (on ship)</label>
-                <label><input type="checkbox" data-print-opt="laneList" checked> Damage lane list (sidebar)</label>
-                <label><input type="checkbox" data-print-opt="stacks" checked> Action stacks</label>
-                <label><input type="checkbox" data-print-opt="stackLinks" checked> Action stack links to ship</label>
-                <label><input type="checkbox" data-print-opt="coords" checked> Hex coordinates</label>
-                <label><input type="checkbox" data-print-opt="components" checked> Component legend</label>
-                <label><input type="checkbox" data-print-opt="progression" checked> Progression track</label>
-                <label><input type="checkbox" data-print-opt="fleet" checked> Fleet and table aids</label>
+                <label><input type="checkbox" data-print-opt="lanes" ${printOptions.lanes ? "checked" : ""}> Damage lane arrows (on ship)</label>
+                <label><input type="checkbox" data-print-opt="laneList" ${printOptions.laneList ? "checked" : ""}> Damage lane list (sidebar)</label>
+                <label><input type="checkbox" data-print-opt="stacks" ${printOptions.stacks ? "checked" : ""}> Action stacks</label>
+                <label><input type="checkbox" data-print-opt="stackLinks" ${printOptions.stackLinks ? "checked" : ""}> Action stack links to ship</label>
+                <label><input type="checkbox" data-print-opt="coords" ${printOptions.coords ? "checked" : ""}> Hex coordinates</label>
+                <label><input type="checkbox" data-print-opt="components" ${printOptions.components ? "checked" : ""}> Component legend</label>
+                <label><input type="checkbox" data-print-opt="progression" ${printOptions.progression ? "checked" : ""}> Progression track</label>
+                <label><input type="checkbox" data-print-opt="fleet" ${printOptions.fleet ? "checked" : ""}> Fleet and table aids</label>
                 <label>Ship scale
                   <input id="bd-print-zoom" type="range" min="50" max="200" step="5" value="100">
                   <span id="bd-print-zoom-value">100%</span>
