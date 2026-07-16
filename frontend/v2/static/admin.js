@@ -817,8 +817,33 @@
       document.getElementById("setting-mixed-stacks").checked = !!rules.allow_mixed_card_type_stacks;
       document.getElementById("setting-overdrive-style").value = rules.overdrive_style || "copy_action";
       document.getElementById("setting-overdrive-desperation").checked = !!rules.allow_overdrive_desperation;
+      renderStarBreachSettings(settings.star_breach || {});
     } catch (err) { /* not admin yet */ }
   }
+
+  function renderStarBreachSettings(starBreach) {
+    const bosses = starBreach.boss_designs || [];
+    const allowed = new Set(starBreach.allowed_boss_design_ids || []);
+    const defaultSelect = document.getElementById("setting-starbreach-default-boss");
+    const allowedBox = document.getElementById("setting-starbreach-allowed-bosses");
+    if (!defaultSelect || !allowedBox) return;
+    defaultSelect.innerHTML = '<option value="">The StarBreacher (stock)</option>' + bosses.map((boss) =>
+      `<option value="${esc(boss.id)}">${esc(boss.name)} (${esc(boss.id)})</option>`
+    ).join("");
+    defaultSelect.value = starBreach.default_boss_design_id || "";
+    allowedBox.innerHTML = bosses.length ? bosses.map((boss) => `
+      <label>
+        <input type="checkbox" value="${esc(boss.id)}" ${allowed.has(boss.id) ? "checked" : ""}>
+        <span>${esc(boss.name)} <span class="deck-set-meta">(${esc(boss.id)})</span></span>
+      </label>
+    `).join("") : '<div class="deck-set-meta">No battle-ready global boss designs yet.</div>';
+  }
+
+  function selectedAllowedStarBreachBosses() {
+    return Array.from(document.querySelectorAll("#setting-starbreach-allowed-bosses input[type='checkbox']:checked"))
+      .map((input) => input.value);
+  }
+
   document.getElementById("save-settings").addEventListener("click", async () => {
     try {
       const result = await post("/admin/settings", {
@@ -827,7 +852,10 @@
         allow_mixed_card_type_stacks: document.getElementById("setting-mixed-stacks").checked,
         overdrive_style: document.getElementById("setting-overdrive-style").value,
         allow_overdrive_desperation: document.getElementById("setting-overdrive-desperation").checked,
+        default_starbreach_boss_design_id: document.getElementById("setting-starbreach-default-boss").value,
+        allowed_starbreach_boss_design_ids: selectedAllowedStarBreachBosses(),
       });
+      renderStarBreachSettings(result.star_breach || {});
       status("settings-status",
         `✔ Saved. Password gate: ${result.site_auth ? "ON" : "OFF"} · ` +
         (result.maintenance ? `under construction: "${result.maintenance}"` : "site open to all"), true);

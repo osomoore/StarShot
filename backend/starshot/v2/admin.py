@@ -134,6 +134,45 @@ def _touch_deck_set(path: Path, *, uploaded: bool = False) -> dict:
     return manifest
 
 
+def _deck_set_slug_from_manifest(path: Path) -> str:
+    try:
+        manifest = _read_manifest(path)
+    except (OSError, tomllib.TOMLDecodeError):
+        return _safe_slug(path.name)
+    return _safe_slug(str(manifest.get("id") or path.name).removeprefix("custom_"))
+
+
+def _editable_active_deck_path() -> Path:
+    """Return a runtime deck-set path safe for admin writes.
+
+    Bundled deck sets remain developer content. If the active deck is bundled,
+    copy it into the runtime custom deck root and make that copy active before
+    writing.
+    """
+    from starshot.v2.service import CUSTOM_DECKS_ROOT, custom_decks_root
+    from starshot.v2.settings import ACTIVE_DECK_KEY, invalidate_cache
+
+    active = Path(str(CORE_0_3_PATH)).resolve()
+    runtime_root = custom_decks_root().resolve()
+    try:
+        active.relative_to(runtime_root)
+        return active
+    except ValueError:
+        pass
+
+    target = Path(str(CUSTOM_DECKS_ROOT)) / _deck_set_slug_from_manifest(active)
+    if not target.exists():
+        target.mkdir(parents=True, exist_ok=True)
+        for filename in DECK_SET_FILES:
+            shutil.copy(active / filename, target / filename)
+        custom_keywords = active / "custom_keywords.json"
+        if custom_keywords.exists():
+            shutil.copy(custom_keywords, target / "custom_keywords.json")
+    get_v2_store().set_setting(ACTIVE_DECK_KEY, str(target.resolve()))
+    invalidate_cache()
+    return target
+
+
 def _serialize_deck_toml(header: dict, cards: list[dict]) -> str:
     lines: list[str] = []
     for key, value in header.items():
@@ -163,15 +202,15 @@ def _serialize_deck_toml(header: dict, cards: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _read_deck_file(which: str) -> dict:
-    path = CORE_0_3_PATH / DECK_FILES[which]
+def _read_deck_file(which: str, deck_path: Path | None = None) -> dict:
+    path = (deck_path or Path(str(CORE_0_3_PATH))) / DECK_FILES[which]
     data = tomllib.loads(path.read_text())
     cards = data.pop("cards", [])
     return {"header": data, "cards": cards, "raw": path.read_text()}
 
 
-def _read_rules_config_file() -> dict:
-    path = CORE_0_3_PATH / "config.toml"
+def _read_rules_config_file(deck_path: Path | None = None) -> dict:
+    path = (deck_path or Path(str(CORE_0_3_PATH))) / "config.toml"
     try:
         data = tomllib.loads(path.read_text())
     except (OSError, tomllib.TOMLDecodeError):
@@ -184,8 +223,8 @@ def _read_rules_config_file() -> dict:
     }
 
 
-def _write_rules_config_file(config: dict) -> None:
-    path = CORE_0_3_PATH / "config.toml"
+def _write_rules_config_file(config: dict, deck_path: Path | None = None) -> None:
+    path = (deck_path or Path(str(CORE_0_3_PATH))) / "config.toml"
     text = (
         f"overheat_pile = {_toml_escape('yes' if config.get('overheat_pile') else 'no')}\n"
         f"allow_mixed_card_type_stacks = {_toml_escape('yes' if config.get('allow_mixed_card_type_stacks') else 'no')}\n"
@@ -195,12 +234,13 @@ def _write_rules_config_file(config: dict) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _validate_deck_candidate(which: str, toml_text: str) -> None:
+def _validate_deck_candidate(which: str, toml_text: str, deck_path: Path | None = None) -> None:
     """Validate by loading a scratch copy of the whole deck set."""
+    source = deck_path or Path(str(CORE_0_3_PATH))
     with tempfile.TemporaryDirectory() as temp:
         temp_path = Path(temp)
         for name in ("manifest.toml", "config.toml", *DECK_FILES.values()):
-            shutil.copy(CORE_0_3_PATH / name, temp_path / name)
+            shutil.copy(source / name, temp_path / name)
         (temp_path / DECK_FILES[which]).write_text(toml_text)
         load_deck_catalog(temp_path)  # raises ValueError with a precise message
 
@@ -216,7 +256,7 @@ def _deck_sets_payload() -> list[dict]:
 
 
 def _deck_set_by_id(deck_set_id: str) -> dict | None:
-    from starshot.v2.service import scan_deck_sets
+    from starshot.v2.service import materialize_runtime_deck_set, scan_deck_sets
 
     return next((deck_set for deck_set in scan_deck_sets() if deck_set["id"] == deck_set_id), None)
 
@@ -381,10 +421,13 @@ class DeckRename(BaseModel):
 @admin_router.post("/deck/rename")
 def deck_rename(body: DeckRename, request: Request) -> dict:
     """Rename a deck set for admin display; the stable deck-set id is unchanged."""
+    from starshot.v2.service import materialize_runtime_deck_set
+
     _admin_user(request)
     deck_set = _deck_set_by_id(body.id)
     if deck_set is None:
         raise HTTPException(status_code=404, detail="No deck set with that id.")
+    deck_set = materialize_runtime_deck_set(deck_set, force=True)
     deck_path = Path(deck_set["path"])
     try:
         manifest = _read_manifest(deck_path)
@@ -407,13 +450,14 @@ class DeckActivate(BaseModel):
 @admin_router.post("/deck/activate")
 def deck_activate(body: DeckActivate, request: Request) -> dict:
     """Choose the deck set NEW games use. Games in flight keep their own set."""
-    from starshot.v2.service import scan_deck_sets
+    from starshot.v2.service import materialize_runtime_deck_set, scan_deck_sets
     from starshot.v2.settings import ACTIVE_DECK_KEY, invalidate_cache
 
     _admin_user(request)
     match = next((s for s in scan_deck_sets() if s["id"] == body.id), None)
     if match is None:
         raise HTTPException(status_code=404, detail="No deck set with that id.")
+    match = materialize_runtime_deck_set(match)
     try:
         load_deck_catalog(Path(match["path"]))
     except ValueError as exc:
@@ -522,13 +566,14 @@ class DeckUpdate(BaseModel):
 @admin_router.put("/deck")
 def put_deck(body: DeckUpdate, request: Request) -> dict:
     _admin_user(request)
+    deck_path = _editable_active_deck_path()
     toml_text = _serialize_deck_toml(body.header, body.cards)
     try:
-        _validate_deck_candidate(body.which, toml_text)
+        _validate_deck_candidate(body.which, toml_text, deck_path)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    (CORE_0_3_PATH / DECK_FILES[body.which]).write_text(toml_text)
-    _touch_deck_set(Path(str(CORE_0_3_PATH)))
+    (deck_path / DECK_FILES[body.which]).write_text(toml_text)
+    _touch_deck_set(deck_path)
     clear_catalog_cache()
     return {"ok": True, "note": "Saved. New games use the updated deck; games already in flight that reference removed cards may fail to resolve."}
 
@@ -656,13 +701,29 @@ def test_keyword(body: KeywordTest, request: Request) -> dict:
 
 @admin_router.get("/settings")
 def get_settings(request: Request) -> dict:
-    from starshot.v2.settings import maintenance_message, site_auth_enabled
+    from starshot.v2 import boss_designs
+    from starshot.v2.settings import (
+        allowed_starbreach_boss_design_ids,
+        default_starbreach_boss_design_id,
+        maintenance_message,
+        site_auth_enabled,
+    )
 
     _admin_user(request)
+    playable_bosses = [
+        {"id": entry["id"], "name": entry["name"], "valid": entry["valid"]}
+        for entry in boss_designs.list_designs()
+        if entry["valid"]
+    ]
     return {
         "site_auth": site_auth_enabled(),
         "maintenance": maintenance_message(),
         "rules_config": _read_rules_config_file(),
+        "star_breach": {
+            "boss_designs": playable_bosses,
+            "default_boss_design_id": default_starbreach_boss_design_id(),
+            "allowed_boss_design_ids": sorted(allowed_starbreach_boss_design_ids()),
+        },
     }
 
 
@@ -672,11 +733,16 @@ class SettingsUpdate(BaseModel):
     allow_mixed_card_type_stacks: bool | None = None
     overdrive_style: str | None = Field(default=None, pattern="^(copy_action|combine_cards)$")
     allow_overdrive_desperation: bool | None = None
+    default_starbreach_boss_design_id: str | None = Field(default=None, max_length=80)
+    allowed_starbreach_boss_design_ids: list[str] | None = Field(default=None, max_length=200)
 
 
 @admin_router.post("/settings")
 def update_settings(body: SettingsUpdate, request: Request) -> dict:
+    from starshot.v2 import boss_designs
     from starshot.v2.settings import (
+        ALLOWED_STARBREACH_BOSSES_KEY,
+        DEFAULT_STARBREACH_BOSS_KEY,
         MAINTENANCE_KEY,
         SITE_AUTH_KEY,
         invalidate_cache,
@@ -690,30 +756,53 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
         store.set_setting(SITE_AUTH_KEY, "on" if body.site_auth else "off")
     if body.maintenance is not None:
         store.set_setting(MAINTENANCE_KEY, body.maintenance.strip())
+    valid_boss_ids = {entry["id"] for entry in boss_designs.list_designs() if entry["valid"]}
+    if body.allowed_starbreach_boss_design_ids is not None:
+        allowed = []
+        for boss_id in body.allowed_starbreach_boss_design_ids:
+            boss_id = str(boss_id).strip()
+            if not boss_id:
+                continue
+            if boss_id not in valid_boss_ids:
+                raise HTTPException(status_code=400, detail=f"Unknown playable StarBreach boss: {boss_id}")
+            if boss_id not in allowed:
+                allowed.append(boss_id)
+        store.set_setting(ALLOWED_STARBREACH_BOSSES_KEY, ",".join(allowed))
+    if body.default_starbreach_boss_design_id is not None:
+        default_boss = body.default_starbreach_boss_design_id.strip()
+        if default_boss and default_boss not in valid_boss_ids:
+            raise HTTPException(status_code=400, detail=f"Unknown playable StarBreach boss: {default_boss}")
+        allowed_raw = store.get_setting(ALLOWED_STARBREACH_BOSSES_KEY) or ""
+        allowed_now = {entry.strip() for entry in allowed_raw.split(",") if entry.strip()}
+        if default_boss and allowed_now and default_boss not in allowed_now:
+            raise HTTPException(status_code=400, detail="Default StarBreach boss must be in the allowed list.")
+        store.set_setting(DEFAULT_STARBREACH_BOSS_KEY, default_boss)
     if (
         body.allow_mixed_card_type_stacks is not None
         or body.overdrive_style is not None
         or body.allow_overdrive_desperation is not None
     ):
-        config = _read_rules_config_file()
+        deck_path = _editable_active_deck_path()
+        config = _read_rules_config_file(deck_path)
         if body.allow_mixed_card_type_stacks is not None:
             config["allow_mixed_card_type_stacks"] = body.allow_mixed_card_type_stacks
         if body.overdrive_style is not None:
             config["overdrive_style"] = body.overdrive_style
         if body.allow_overdrive_desperation is not None:
             config["allow_overdrive_desperation"] = body.allow_overdrive_desperation
-        _write_rules_config_file(config)
+        _write_rules_config_file(config, deck_path)
         try:
-            load_deck_catalog(Path(str(CORE_0_3_PATH)))
+            load_deck_catalog(deck_path)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"Rules config failed validation: {exc}") from exc
-        _touch_deck_set(Path(str(CORE_0_3_PATH)))
+        _touch_deck_set(deck_path)
         clear_catalog_cache()
     invalidate_cache()
     return {
         "site_auth": site_auth_enabled(),
         "maintenance": maintenance_message(),
         "rules_config": _read_rules_config_file(),
+        "star_breach": get_settings(request)["star_breach"],
     }
 
 

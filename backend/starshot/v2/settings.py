@@ -15,6 +15,8 @@ _cache: dict[str, tuple[float, str | None]] = {}
 SITE_AUTH_KEY = "site_auth"            # "on" | "off"; default from STARSHOT_SITE_AUTH env
 MAINTENANCE_KEY = "maintenance"        # non-empty string = under construction message
 ACTIVE_DECK_KEY = "active_deck_set_path"
+DEFAULT_STARBREACH_BOSS_KEY = "default_starbreach_boss_design_id"
+ALLOWED_STARBREACH_BOSSES_KEY = "allowed_starbreach_boss_design_ids"
 
 
 def _get(key: str) -> str | None:
@@ -49,3 +51,12 @@ def maintenance_message() -> str:
 
 def active_deck_setting() -> str | None:
     return _get(ACTIVE_DECK_KEY)
+
+
+def default_starbreach_boss_design_id() -> str:
+    return _get(DEFAULT_STARBREACH_BOSS_KEY) or ""
+
+
+def allowed_starbreach_boss_design_ids() -> set[str]:
+    raw = _get(ALLOWED_STARBREACH_BOSSES_KEY) or ""
+    return {entry.strip() for entry in raw.split(",") if entry.strip()}

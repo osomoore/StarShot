@@ -457,13 +457,21 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     active_expansions = _validated_expansions(body.active_expansions)
     prey_player_id = _resolve_requested_prey_id(body, user["username"]) if "star_breach" in active_expansions else None
     boss_design_id = body.star_breach_boss_design_id if "star_breach" in active_expansions else None
+    if "star_breach" in active_expansions and not boss_design_id:
+        from starshot.v2.settings import default_starbreach_boss_design_id
+
+        boss_design_id = default_starbreach_boss_design_id() or None
     if boss_design_id:
         from starshot.v2.service import _load_playable_boss_design, parse_boss_design_ref
+        from starshot.v2.settings import allowed_starbreach_boss_design_ids
 
         try:
             owner_id, _bare = parse_boss_design_ref(boss_design_id)
             if owner_id is not None and owner_id != user["id"]:
                 raise ValueError("You can only launch battles against your own boss designs.")
+            allowed = allowed_starbreach_boss_design_ids()
+            if owner_id is None and allowed and boss_design_id not in allowed:
+                raise ValueError("That StarBreach boss is not allowed for new games.")
             _load_playable_boss_design(boss_design_id)  # fail fast at creation
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

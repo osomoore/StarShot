@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=18">
-<link rel="stylesheet" href="/v2/static/admin.css?v=14">
+<link rel="stylesheet" href="/v2/static/admin.css?v=15">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=6">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
@@ -241,6 +241,18 @@
             <input type="checkbox" id="setting-overdrive-desperation">
             Allow Overdrive Desperation
           </label>
+          <h3 class="panel-sub">StarBreach defaults</h3>
+          <label class="setting-row" style="flex-direction:column;align-items:flex-start">
+            Default Boss Ship
+            <select id="setting-starbreach-default-boss">
+              <option value="">The StarBreacher (stock)</option>
+            </select>
+          </label>
+          <div class="setting-row" style="flex-direction:column;align-items:flex-start">
+            Allowed Boss Ships
+            <div id="setting-starbreach-allowed-bosses" class="setting-check-list"></div>
+            <div class="deck-set-meta">Leave every box unchecked to allow every battle-ready global boss.</div>
+          </div>
           <button class="btn gold" id="save-settings">💾 Save site settings</button>
           <div id="settings-status" class="admin-status"></div>
         </div>
@@ -266,7 +278,7 @@
 
 <script src="/v2/static/api.js?v=6"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=18"></script>
+<script src="/v2/static/admin.js?v=19"></script>
 <script src="/v2/static/bossdesigner.js?v=15"></script>
 </body>
 </html>

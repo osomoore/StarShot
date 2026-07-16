@@ -22,8 +22,9 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 
 - After every AI-agent update to this repo, append a short entry to
   `docs/context/ai_changelog.md`.
-- Each entry should include date/time, build id, AI agent name, and a concise
-  summary of what changed and how it was verified.
+- Each entry should include date/time, a short summary title of just a few
+  words, build id, AI agent name, and a concise summary of what changed and
+  how it was verified.
 - Use the same build id shown by `/api/v2/build-info` and the v2 build footer
   status line at the bottom of pages.
 - Keep entries newest-first. The admin console exposes this file in the "AI
@@ -79,7 +80,7 @@ Implemented so far:
 
 Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 8 groups of the 0.2 migration are complete.
 
-Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_id`; order submission and resolution reject games whose deck set does not match the active server catalog.
+Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_id`; order submission and resolution reject games whose deck set does not match the active server catalog. Bundled developer deck sets remain under `resources/decks/`; server-created/imported/edited deck sets default to `.starshot/content/decks/custom/`. The v2 deck scanner merges bundled + runtime deck roots and preserves same-id conflicts by exposing older versions with `_developer` / `_server` aliases; activating an alias materializes a runtime copy whose manifest id matches the alias so games bind safely.
 
 **Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 
@@ -164,6 +165,12 @@ Admin tools:
   lobby "StarBreach Boss" dropdown via public `GET /api/v2/boss-designs`);
   only problem-free designs are offered/accepted — incomplete designs can be
   saved but not played. Tests in `tests/test_boss_spec.py`.
+- The admin Account & Project settings include local server defaults for new
+  StarBreach games: the active/default deck file is controlled by the Deck
+  Editor's active deck set, and StarBreach can set a default global boss ship
+  plus an allowed-list of global boss ships. Empty allowed-list = all
+  battle-ready global bosses are allowed; player-owned bosses remain available
+  to their owner.
 
 Not implemented yet:
 
@@ -198,7 +205,7 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 247 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 248 tests passing as of last session (2 API test modules require `fastapi` installed).
 - Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
   `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
   where units actually stood at that moment.

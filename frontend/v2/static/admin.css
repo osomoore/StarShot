@@ -200,6 +200,18 @@
   color: var(--ink); font: inherit; padding: 8px 10px; margin-top: 6px;
 }
 .setting-row input[type="checkbox"] { accent-color: var(--gold); width: 17px; height: 17px; }
+.setting-check-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.setting-check-list label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+}
 
 .pw-form { display: flex; gap: 10px; flex-wrap: wrap; }
 .pw-form input {

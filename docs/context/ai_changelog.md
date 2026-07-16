@@ -1,9 +1,31 @@
 # StarShot AI Change Log
 
-Newest entries first. Each AI-agent update should add date/time, build id, agent, and a short summary.
+Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
+
+## 2026-07-16 10:42:44 -05:00
+
+- Title: Standardized changelog titles
+- Build ID: `c43deb1bf222`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Updated the AI handoff directive so each change log entry must include a short summary title of just a few words.
+  - Backfilled titles on existing AI change log entries.
+
+## 2026-07-16 10:36:23 -05:00
+
+- Title: Added server/developer deck source resolution
+- Build ID: `c43deb1bf222`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Extended the bundled/runtime content split to deck sets: developer decks stay under `resources/decks/`, while server-created/imported/edited decks default to `.starshot/content/decks/custom/`.
+  - Deck scanning now merges bundled and runtime roots, preserves same-id conflicts with `_developer` / `_server` aliases, and materializes aliases into runtime copies before activation/use so game `deck_set_id` bindings stay stable.
+  - Added local admin settings for default StarBreach boss ship and allowed global StarBreach boss ships for new games, with lobby defaults and server-side enforcement.
+  - Updated admin UI controls and cache-busting query strings for the new settings.
+  - Verification included JS syntax checks for `admin.js` and `lobby.js`, `tests.test_v2_api`, and the full unittest suite (`248 tests OK`).
 
 ## 2026-07-16 10:18:27 -05:00
 
+- Title: Added server/developer boss storage
 - Build ID: `99c32d8d62ca`
 - AI agent: Codex (GPT-5)
 - Summary:
@@ -14,6 +36,7 @@ Newest entries first. Each AI-agent update should add date/time, build id, agent
 
 ## 2026-07-16 09:31:09 -05:00
 
+- Title: Added AI change log viewer
 - Build ID: `535b6949cea2`
 - AI agent: Codex (GPT-5)
 - Summary:

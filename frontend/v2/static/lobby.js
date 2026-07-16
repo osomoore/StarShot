@@ -267,7 +267,7 @@
     bossDesignsLoaded = true;
     try {
       const data = await API.bossDesigns();
-      const current = starBreachBossSelection;
+      const current = starBreachBossSelection || data.default_design_id || "";
       select.innerHTML = '<option value="">The StarBreacher (default)</option>';
       for (const entry of data.designs || []) {
         const option = document.createElement("option");
@@ -277,6 +277,7 @@
       }
       if ([...select.options].some((option) => option.value === current)) {
         select.value = current;
+        starBreachBossSelection = current;
       } else {
         select.value = "";
         starBreachBossSelection = "";

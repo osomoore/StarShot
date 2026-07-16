@@ -9,6 +9,9 @@ pace.
 from __future__ import annotations
 
 import os
+import hashlib
+import shutil
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,10 +29,14 @@ from starshot.v2.store import V2Store
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_V2_DECK_PATH = ROOT / "resources" / "decks" / "core_0_3"
 DECKS_ROOT = ROOT / "resources" / "decks"
+RUNTIME_DECKS_ROOT = ROOT / ".starshot" / "content" / "decks"
+LEGACY_CUSTOM_DECKS_ROOT = DECKS_ROOT / "custom"
+SOURCE_DEVELOPER = "developer"
+SOURCE_SERVER = "server"
 
 
 def custom_decks_root() -> Path:
-    return Path(os.environ.get("STARSHOT_CUSTOM_DECKS", DECKS_ROOT / "custom"))
+    return Path(os.environ.get("STARSHOT_CUSTOM_DECKS", RUNTIME_DECKS_ROOT / "custom"))
 
 
 class _CustomDecksProxy:
@@ -78,16 +85,103 @@ def _manifest_id(path: Path) -> str | None:
         return None
 
 
+def _safe_deck_alias(value: str) -> str:
+    import re
+
+    slug = re.sub(r"[^a-z0-9]+", "_", str(value).lower()).strip("_")
+    return slug or "deck_set"
+
+
+def _deck_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    for name in ("manifest.toml", "config.toml", "base_deck.toml", "desperation_deck.toml"):
+        file_path = path / name
+        if file_path.exists():
+            digest.update(name.encode("utf-8"))
+            digest.update(file_path.read_bytes())
+    return digest.hexdigest()
+
+
+def _deck_scan_roots() -> tuple[tuple[str, Path], ...]:
+    roots = [(SOURCE_DEVELOPER, DECKS_ROOT)]
+    if LEGACY_CUSTOM_DECKS_ROOT != custom_decks_root():
+        roots.append((SOURCE_DEVELOPER, LEGACY_CUSTOM_DECKS_ROOT))
+    roots.append((SOURCE_SERVER, custom_decks_root()))
+    return tuple(roots)
+
+
+def _unique_deck_alias(base_id: str, source: str, used: set[str]) -> str:
+    stem = _safe_deck_alias(f"{base_id}_{source}")
+    candidate = stem
+    suffix = 2
+    while candidate in used:
+        candidate = _safe_deck_alias(f"{stem}_{suffix}")
+        suffix += 1
+    used.add(candidate)
+    return candidate
+
+
+def _toml_escape(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _serialize_manifest(data: dict) -> str:
+    lines: list[str] = []
+    for key, value in data.items():
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, (int, float)):
+            rendered = str(value)
+        else:
+            rendered = _toml_escape(str(value))
+        lines.append(f"{key} = {rendered}")
+    return "\n".join(lines) + "\n"
+
+
+def materialize_runtime_deck_set(deck_set: dict, *, force: bool = False) -> dict:
+    """Copy a scanned deck set into runtime storage when its visible id is an
+    alias. This makes conflict aliases safe to activate/use because the
+    manifest id then matches the id games store."""
+    source_id = deck_set.get("source_id") or deck_set["id"]
+    if not force and deck_set["id"] == source_id:
+        return deck_set
+    if force and deck_set.get("source") == SOURCE_SERVER and deck_set["id"] == source_id:
+        return deck_set
+    source = Path(deck_set["path"])
+    target = custom_decks_root() / _safe_deck_alias(deck_set["id"])
+    if not target.exists():
+        target.mkdir(parents=True, exist_ok=True)
+        for filename in ("manifest.toml", "config.toml", "base_deck.toml", "desperation_deck.toml"):
+            shutil.copy(source / filename, target / filename)
+        keyword_file = source / "custom_keywords.json"
+        if keyword_file.exists():
+            shutil.copy(keyword_file, target / "custom_keywords.json")
+        manifest = tomllib.loads((target / "manifest.toml").read_text(encoding="utf-8"))
+        manifest["id"] = deck_set["id"]
+        manifest["name"] = deck_set.get("name") or deck_set["id"]
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        manifest["uploaded_at"] = manifest.get("uploaded_at") or now
+        manifest["modified_at"] = now
+        (target / "manifest.toml").write_text(_serialize_manifest(manifest), encoding="utf-8")
+    updated = dict(deck_set)
+    updated["path"] = str(target.resolve())
+    updated["source"] = SOURCE_SERVER
+    updated["custom"] = True
+    updated["source_id"] = deck_set["id"]
+    return updated
+
+
 def scan_deck_sets() -> list[dict]:
-    """All installed deck sets (stock + custom saves)."""
+    """All installed deck sets, merging bundled developer and runtime server content."""
     import tomllib
 
-    sets: list[dict] = []
-    custom_root = custom_decks_root()
-    for root, is_custom in ((DECKS_ROOT, False), (custom_root, True)):
+    records_by_id: dict[str, list[dict]] = {}
+    for source, root in _deck_scan_roots():
         if not root.is_dir():
             continue
         for child in sorted(root.iterdir()):
+            if root == DECKS_ROOT and child == LEGACY_CUSTOM_DECKS_ROOT:
+                continue
             manifest = child / "manifest.toml"
             if not (child.is_dir() and manifest.exists()):
                 continue
@@ -106,17 +200,49 @@ def scan_deck_sets() -> list[dict]:
                     latest_mtime = manifest.stat().st_mtime
                 latest_file_modified_at = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z")
                 modified_at = data.get("modified_at") or data.get("uploaded_at") or latest_file_modified_at
-                sets.append({
+                deck_id = str(data["id"])
+                records_by_id.setdefault(deck_id, []).append({
                     "id": data["id"],
+                    "source_id": data["id"],
                     "name": data.get("name", data["id"]),
                     "rules_version": data.get("rules_version", ""),
                     "uploaded_at": data.get("uploaded_at"),
                     "modified_at": modified_at,
                     "last_changed_at": modified_at,
                     "path": str(child.resolve()),
-                    "custom": is_custom,
+                    "custom": source == SOURCE_SERVER or root == LEGACY_CUSTOM_DECKS_ROOT,
+                    "source": source,
+                    "conflict_of": None,
+                    "_hash": _deck_hash(child),
+                    "_mtime": latest_mtime,
                 })
-    return sets
+    sets: list[dict] = []
+    used: set[str] = set()
+    for deck_id in sorted(records_by_id):
+        records = records_by_id[deck_id]
+        hashes = {record["_hash"] for record in records}
+        if len(hashes) <= 1:
+            chosen = sorted(records, key=lambda item: (item["source"] == SOURCE_SERVER, item["_mtime"]))[-1]
+            chosen = dict(chosen)
+            chosen["id"] = deck_id
+            used.add(deck_id)
+            sets.append(chosen)
+            continue
+        ordered = sorted(records, key=lambda item: (item["_mtime"], item["source"] == SOURCE_SERVER), reverse=True)
+        newest = dict(ordered[0])
+        newest["id"] = deck_id
+        used.add(deck_id)
+        sets.append(newest)
+        for record in ordered[1:]:
+            alternate = dict(record)
+            alternate["id"] = _unique_deck_alias(deck_id, alternate["source"], used)
+            alternate["conflict_of"] = deck_id
+            alternate["name"] = f"{alternate['name']} ({alternate['source']})"
+            sets.append(alternate)
+    for deck_set in sets:
+        deck_set.pop("_hash", None)
+        deck_set.pop("_mtime", None)
+    return sorted(sets, key=lambda item: item["id"])
 
 
 def deck_path_for_game(raw_state: dict) -> Path:
@@ -495,7 +621,7 @@ def _deck_set_for_id(deck_set_id: str | None) -> dict:
         if deck_set_id is None and Path(deck_set["path"]) == active:
             return deck_set
         if deck_set["id"] == deck_set_id:
-            return deck_set
+            return materialize_runtime_deck_set(deck_set)
     if deck_set_id is None:
         fallback_id = _manifest_id(active) or "active"
         return {"id": fallback_id, "name": fallback_id, "path": str(active), "custom": False, "rules_version": ""}

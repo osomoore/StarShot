@@ -48,19 +48,24 @@ def list_playable_boss_designs(request: Request) -> dict:
     """Bosses this user may fight: the shared library, plus their own designs
     (playable only by their creator, ids prefixed `user:<uid>:`)."""
     from starshot.v2.router import _current_user
+    from starshot.v2.settings import allowed_starbreach_boss_design_ids, default_starbreach_boss_design_id
 
     user = _current_user(request)
+    allowed = allowed_starbreach_boss_design_ids()
     designs = [
         {"id": entry["id"], "name": entry["name"]}
         for entry in boss_designs.list_designs()
-        if entry["valid"]
+        if entry["valid"] and (not allowed or entry["id"] in allowed)
     ]
     designs.extend(
         {"id": f"user:{user['id']}:{entry['id']}", "name": f"{entry['name']} (yours)"}
         for entry in boss_designs.list_designs(user["id"])
         if entry["valid"]
     )
-    return {"designs": designs}
+    default_id = default_starbreach_boss_design_id()
+    if default_id and allowed and default_id not in allowed:
+        default_id = ""
+    return {"designs": designs, "default_design_id": default_id}
 
 
 @boss_designer_router.get("")

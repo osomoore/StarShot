@@ -27,7 +27,9 @@ os.environ["STARSHOT_SITE_HTPASSWD"] = str(_TEST_HTPASSWD)
 from fastapi.testclient import TestClient  # noqa: E402
 
 from starshot.api.app import app  # noqa: E402
+from starshot.v2 import boss_designs  # noqa: E402
 from starshot.v2.store import get_v2_store  # noqa: E402
+from tests.test_boss_designer import make_design  # noqa: E402
 
 EMPTY_ORDERS = {
     "stacks": [
@@ -748,6 +750,63 @@ class AdminTests(unittest.TestCase):
         self.assertIn("Codex", payload["text"])
         self.assertTrue(payload["build_id"])
 
+    def test_starbreach_boss_defaults_and_allowed_list(self) -> None:
+        client = self.admin_client()
+        tempdir = tempfile.TemporaryDirectory()
+        old_bundled = boss_designs.DESIGNS_DIR
+        old_runtime = boss_designs.RUNTIME_DESIGNS_DIR
+        root = Path(tempdir.name)
+        boss_designs.DESIGNS_DIR = root / "bundled"
+        boss_designs.RUNTIME_DESIGNS_DIR = root / "runtime"
+        try:
+            boss_designs.save_design(make_design(id="allowed_boss", name="Allowed Boss"))
+            boss_designs.save_design(make_design(id="blocked_boss", name="Blocked Boss"))
+
+            saved = client.post(
+                "/api/v2/admin/settings",
+                json={
+                    "default_starbreach_boss_design_id": "allowed_boss",
+                    "allowed_starbreach_boss_design_ids": ["allowed_boss"],
+                },
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+            star_breach = saved.json()["star_breach"]
+            self.assertEqual(star_breach["default_boss_design_id"], "allowed_boss")
+            self.assertEqual(star_breach["allowed_boss_design_ids"], ["allowed_boss"])
+
+            public = client.get("/api/v2/boss-designs")
+            self.assertEqual(public.status_code, 200, public.text)
+            self.assertEqual(public.json()["default_design_id"], "allowed_boss")
+            self.assertEqual([entry["id"] for entry in public.json()["designs"]], ["allowed_boss"])
+
+            rejected = client.post(
+                "/api/v2/matches",
+                json={
+                    "active_expansions": ["star_breach"],
+                    "star_breach_boss_design_id": "blocked_boss",
+                    "open_seats": 0,
+                },
+            )
+            self.assertEqual(rejected.status_code, 400)
+            self.assertIn("not allowed", rejected.json()["detail"])
+
+            created = client.post(
+                "/api/v2/matches",
+                json={"active_expansions": ["star_breach"], "open_seats": 0},
+            )
+            self.assertEqual(created.status_code, 200, created.text)
+        finally:
+            client.post(
+                "/api/v2/admin/settings",
+                json={
+                    "default_starbreach_boss_design_id": "",
+                    "allowed_starbreach_boss_design_ids": [],
+                },
+            )
+            boss_designs.DESIGNS_DIR = old_bundled
+            boss_designs.RUNTIME_DESIGNS_DIR = old_runtime
+            tempdir.cleanup()
+
     def test_deck_roundtrip_and_validation(self) -> None:
         client = self.admin_client()
         deck = client.get("/api/v2/admin/deck").json()
@@ -757,6 +816,10 @@ class AdminTests(unittest.TestCase):
         # Unchanged save must validate and succeed.
         ok = client.put("/api/v2/admin/deck", json={"which": "base", "header": base["header"], "cards": base["cards"]})
         self.assertEqual(ok.status_code, 200, ok.text)
+        from starshot.v2.service import core_deck_path
+
+        active_path = core_deck_path().resolve()
+        self.assertTrue(str(active_path).startswith(str(Path(os.environ["STARSHOT_CUSTOM_DECKS"]).resolve())))
 
         # A card with unparseable text is rejected with a useful message.
         broken = base["cards"] + [{"name": "Bad Card", "copies": 1, "side_a_type": "Basic", "side_a_1": "Flibber 3"}]
