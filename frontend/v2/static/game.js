@@ -609,8 +609,14 @@
 
   // ── boss battle board (mini in the main view, expanded in the modal) ───
   const STACK_COLORS = { "0.5": "#ff8d6b", "1.5": "#ffd75e", "2.5": "#9dff8a", "3.5": "#59c8ff", starbreach: "#d9a6ff" };
-  const KIND_SYMBOL = { attack: "☄", move: "➤", breacher: "◉", spawn: "▣", ability: "⚡", filler: "·" };
-  const KIND_COLORS = { attack: "#ff8d6b", move: "#9dff8a", breacher: "#d9a6ff", spawn: "#ff7ad0", ability: "#ffd75e", filler: "#9aa3b8" };
+  const KIND_SYMBOL = { attack: "☄", move: "➤", breacher: "◉", spawn: "▣", ability: "⚡", filler: "·", shield: "🛡" };
+  const KIND_COLORS = { attack: "#ff8d6b", move: "#9dff8a", breacher: "#d9a6ff", spawn: "#ff7ad0", ability: "#ffd75e", filler: "#9aa3b8", shield: "#59c8ff" };
+  // Component tiles are colored/labelled by what they are, so a glance at the
+  // hull tells you which action each tile powers (matching the chip colors).
+  const COMPONENT_TYPE_COLOR = { cannon: "#ff8d6b", engine: "#9dff8a", shield_generator: "#59c8ff", core: "#d9a6ff" };
+  // A font guaranteed to carry the ☄ ➤ ◉ 🛡 glyphs — the decorative body font
+  // renders them as "?", so SVG symbol labels pin this explicitly.
+  const SYMBOL_FONT = "'Space Grotesk', 'Segoe UI Symbol', sans-serif";
   const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
   const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
   const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉" };
@@ -723,16 +729,19 @@
       const tier = thresholds[step];
       const label = tier != null ? tierLabel(sb, tier) : null;
       const kind = label ? label.kind : null;
+      const online = tier != null && (sb.active_tiers || []).includes(tier);
       const classes = ["bmb-box"];
       if (step <= shownProgress) classes.push("filled");
       if (tier != null) classes.push("major");
-      if (tier != null && (sb.active_tiers || []).includes(tier)) classes.push("online");
-      const color = label && label.stack ? stackColor(label.stack) : (kind === "spawn" ? "#ff7ad0" : "#d9a6ff");
+      if (online) classes.push("online");
+      // Ability boxes stay gray-ish until the tier comes online, then take the
+      // color of the ability kind they grant (matching the action chips).
+      const color = online ? kindColor(kind || "filler") : "#8a8a96";
       const symbol = tier != null ? (KIND_SYMBOL[kind] || "★") : "";
       const title = tier != null
-        ? `Space ${step} — Tier ${tier}: ${kind || "ability"}${(sb.active_tiers || []).includes(tier) ? " (online)" : ""}`
+        ? `Space ${step} — Tier ${tier}: ${kind || "ability"}${online ? " (online)" : ""}`
         : `Space ${step}`;
-      boxes += `<span class="${classes.join(" ")}"${tier != null ? ` style="border-color:${color}"` : ""} title="${esc(title)}">${symbol}</span>`;
+      boxes += `<span class="${classes.join(" ")}"${tier != null ? ` data-tier="${tier}" style="border-color:${color}${online ? `;color:${color}` : ""}"` : ""} title="${esc(title)}">${symbol}</span>`;
     }
     return boxes;
   }
@@ -1474,29 +1483,50 @@
     for (const cell of cells) {
       const [x, y] = xy(cell.q, cell.r);
       const dead = destroyed.has(cell.q + "," + cell.r);
-      const tint = cell.area ? palette.fill(cell.area) : "150,150,150";
+      const component = componentsByHex[cell.q + "," + cell.r];
       const selected = opts.selectedArea && cell.area === opts.selectedArea;
       const clickable = opts.clickableAreas && cell.area && opts.clickableAreas[cell.area];
+      // In component-color mode the tile is tinted by what it is (so the shield
+      // arcs alone carry the region grouping); otherwise tiles carry the region
+      // color the way the target picker needs.
+      const typeColor = component && COMPONENT_TYPE_COLOR[component.type];
+      const useTypeColor = opts.componentColors && typeColor;
+      const tint = cell.area ? palette.fill(cell.area) : "150,150,150";
       const pts = [];
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 180) * (60 * i);
         pts.push(`${(x + (size - 0.8) * Math.cos(a)).toFixed(1)},${(y + (size - 0.8) * Math.sin(a)).toFixed(1)}`);
       }
-      const component = componentsByHex[cell.q + "," + cell.r];
       const fillAlpha = selected ? ".78" : ".5";
+      let fill, stroke;
+      if (dead) {
+        fill = "rgba(25,25,32,.9)"; stroke = "#333";
+      } else if (useTypeColor) {
+        fill = `${typeColor}44`; stroke = selected ? "#fff" : typeColor;
+      } else if (opts.componentColors) {
+        // Non-component hull in component-color mode: neutral so the tiles that
+        // do something stand out.
+        fill = "rgba(120,124,138,.28)"; stroke = selected ? "#fff" : "#6b7080";
+      } else {
+        fill = `rgba(${tint},${fillAlpha})`; stroke = selected ? "#fff" : `rgb(${tint})`;
+      }
       const componentAttrs = component
         ? `data-component-id="${esc(component.id)}" class="boss-component-node"`
         : "";
       hullSvg += `<polygon points="${pts.join(" ")}"
-        fill="${dead ? "rgba(25,25,32,.9)" : `rgba(${tint},${fillAlpha})`}"
-        stroke="${dead ? "#333" : selected ? "#fff" : `rgb(${tint})`}" stroke-width="${selected ? 1.8 : 1}"
+        fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 1.8 : 1}"
         ${clickable ? `data-area="${esc(cell.area)}" class="boss-region-cell" cursor="pointer"` : componentAttrs}>
         <title>${esc(component ? component.name : `${areaDisplayName(cell.area)} hull`)}${dead ? " (destroyed)" : ""}</title></polygon>`;
       if (component) {
-        hullSvg += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="8.5" font-weight="700"
-          fill="${dead ? "#555" : "#0a0f1e"}" pointer-events="none">${COMPONENT_BADGE[component.type] || "?"}${component.number ?? ""}</text>`;
+        const label = `${COMPONENT_SYMBOL[component.type] || "◆"}${component.number ?? ""}`;
+        const labelFill = dead ? "#555" : (useTypeColor ? "#f4f1e6" : "#0a0f1e");
+        // Label size tracks the hex size so big boards get big, readable text.
+        const fontSize = size * 0.72;
+        hullSvg += `<text x="${x}" y="${(y + fontSize * 0.36).toFixed(1)}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" font-weight="700"
+          font-family="${SYMBOL_FONT}" fill="${labelFill}" pointer-events="none">${label}</text>`;
       } else if (dead) {
-        hullSvg += `<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9" fill="#555" pointer-events="none">✕</text>`;
+        const fontSize = size * 0.72;
+        hullSvg += `<text x="${x}" y="${(y + fontSize * 0.36).toFixed(1)}" text-anchor="middle" font-size="${fontSize.toFixed(1)}" fill="#555" pointer-events="none">✕</text>`;
       }
     }
     let laneSvg = "";
@@ -1574,79 +1604,178 @@
     };
   }
 
-  /* Circuit-board battle board: action rows to the right of the hull, with
-     traces linking each component hex to the action slot it powers. */
-  function battleBoardCircuitSVG(sb, parts) {
+  /* Circuit-board battle board: one vertical action stack per phase, with
+     traces running from each component hex to the action chip it powers.
+     Desktop lays the stacks off the hull's right side (opts.layout "right");
+     mobile keeps them below the hull so the ship can use the narrow width. */
+  function battleBoardCircuitSVG(sb, parts, opts = {}) {
     const layout = sb.boss_layout || {};
     const phases = layout.phases || [];
-    if (!phases.length) return { svg: "", maxX: parts.maxX };
+    if (!phases.length) return { svg: "", minX: parts.minX, maxX: parts.maxX, minY: parts.minY, maxY: parts.maxY };
     const componentById = bossComponentById(sb);
-    const rowH = 34, chipW = 24, chipH = 20, chipGap = 6;
-    const labelW = 34;
-    const rowsX = parts.maxX + 42;
-    const totalH = phases.length * rowH;
-    const rowsTop = (parts.minY + parts.maxY) / 2 - totalH / 2 + rowH / 2;
+    const chipW = 26, chipH = 20, chipGap = 7, colGap = 18, gutter = 8, innerGap = 6;
+    // Stacks are two chips wide so they stay short.
+    const stackW = chipW * 2 + innerGap;
+    const colW = stackW + colGap;
+    // Reserve a routing band between the hull and the chips: one horizontal
+    // lane per hull trace (wrapped) so the drops don't stack on top of each other.
+    let traceCount = 0;
+    for (const phase of phases) {
+      for (const slot of phase.slots || []) {
+        if (slot.slot === "component") traceCount++;
+      }
+    }
+    const laneSpacing = 4.5, laneMax = 12;
+    const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
+    // Two layouts: "right" (desktop) hangs the stacks off the hull's starboard
+    // side so the wide modal is used and the ship stays big; "below" (mobile)
+    // stacks them under the hull for the tall narrow screen.
+    const sideways = opts.layout === "right";
+    const totalColsW = phases.length * colW - colGap;
+    let busTop = 0, busLeft = 0, labelY, chipsTop, firstColCenterX;
+    if (sideways) {
+      const chipCount = (phase) => (phase.slots || []).length
+        + (fleetAlive ? (((layout.fleet_actions || {})[phase.key]) || []).length : 0);
+      const maxRows = Math.max(1, ...phases.map((phase) => Math.ceil(chipCount(phase) / 2)));
+      busLeft = parts.maxX + 10;
+      const busBandW = Math.min(traceCount, laneMax) * laneSpacing + 8;
+      firstColCenterX = busLeft + busBandW + gutter + stackW / 2;
+      // Stack block vertically centered on the hull.
+      const blockH = 22 + maxRows * (chipH + chipGap);
+      const blockTop = (parts.minY + parts.maxY) / 2 - blockH / 2;
+      labelY = blockTop + 12;
+      chipsTop = blockTop + 22;
+    } else {
+      busTop = parts.maxY + 8;
+      const busBandH = Math.min(traceCount, laneMax) * laneSpacing + 8;
+      labelY = busTop + busBandH + 12;
+      chipsTop = labelY + 8;
+      // Columns, one per phase, centered under the hull.
+      const hullCenterX = (parts.minX + parts.maxX) / 2;
+      firstColCenterX = hullCenterX - totalColsW / 2 + stackW / 2;
+    }
+    const colCenterX = (p) => firstColCenterX + p * colW;
     let svg = "";
     let busIndex = 0;
     let linkIndex = 0;
-    let maxChipX = rowsX;
+    let maxChipBottom = chipsTop;
     phases.forEach((phase, phaseIndex) => {
-      const rowY = rowsTop + phaseIndex * rowH;
-      const color = stackColor(phase.key);
-      svg += `<rect class="boss-circuit-hotspot boss-circuit-stack-hotspot" data-stack-key="${esc(phase.key)}"
-        x="${(rowsX - labelW - 8).toFixed(1)}" y="${(rowY - rowH / 2 + 2).toFixed(1)}"
-        width="280" height="${rowH - 4}" fill="transparent"/>`;
-      svg += `<text x="${rowsX}" y="${rowY + 4}" text-anchor="end" font-size="12" font-family="Pirata One"
-        fill="${color}">${esc(PHASE_SHORT[phase.key] || phase.key)} ${KIND_SYMBOL[phase.kind] || ""}</text>`;
-      let chipX = rowsX + 10;
-      const trace = (hx, hy, active, linkId) => {
-        const busX = parts.maxX - 28 + (busIndex++ % 10) * 5.5;
+      const cx = colCenterX(phaseIndex);
+      const gutterX = cx - stackW / 2 - gutter; // vertical trace lane left of the stack
+      const phaseColor = stackColor(phase.key);
+      let chipIndex = 0; // chips fill the stack two per row, left then right
+      const chipCenterX = (i) => cx - stackW / 2 + (i % 2) * (chipW + innerGap) + chipW / 2;
+      const chipTopY = (i) => chipsTop + Math.floor(i / 2) * (chipH + chipGap);
+      // Draw a chip in the next stack cell; returns its {x: centerX, y: topY}.
+      const drawChip = (text, active, title, opts = {}) => {
+        const { linkId = "", fleet = false, color = "#9aa3b8", tier = null, componentId = "" } = opts;
+        const ccx = chipCenterX(chipIndex), cty = chipTopY(chipIndex), sub = chipIndex % 2;
+        chipIndex++;
+        const rx = fleet ? 10 : 4;
+        const strike = !active && !fleet;
+        const stroke = active ? color : (fleet ? "#9aa3b8" : "#4a4a55");
+        // Fleet chips are informational only — they don't power (or get powered
+        // by) anything, so they carry no hover linkage at all.
+        const hotspotAttrs = fleet ? "" : ` class="boss-circuit-hotspot" data-link-id="${linkId}"`
+          + (tier != null ? ` data-tier="${esc(tier)}"` : "")
+          + (componentId ? ` data-component-id="${esc(componentId)}"` : "")
+          + ` data-stack-key="${esc(phase.key)}"`;
+        svg += `<g${hotspotAttrs}><title>${esc(title)}</title>
+          <rect x="${(ccx - chipW / 2).toFixed(1)}" y="${cty.toFixed(1)}" width="${chipW}" height="${chipH}" rx="${rx}"
+            fill="${active ? `${color}22` : (fleet ? "rgba(160,160,180,.12)" : "rgba(30,30,38,.9)")}"
+            stroke="${stroke}" stroke-width="${active ? 1.4 : 1}" ${active || fleet ? "" : 'stroke-dasharray="3 2"'}/>
+          <text x="${ccx.toFixed(1)}" y="${(cty + chipH / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700"
+            font-family="${SYMBOL_FONT}" fill="${active ? color : (fleet ? "#9aa3b8" : "#555")}">${esc(text)}</text>
+          ${strike ? `<line x1="${(ccx - chipW / 2 + 3).toFixed(1)}" y1="${(cty + 3).toFixed(1)}" x2="${(ccx + chipW / 2 - 3).toFixed(1)}" y2="${(cty + chipH - 3).toFixed(1)}" stroke="#883333" stroke-width="1.2"/>` : ""}
+        </g>`;
+        return { x: ccx, y: cty, sub };
+      };
+      // Trace a hull hex into a chip, ending in a short downward drop with an
+      // arrowhead. Below-mode routes down through a horizontal bus band and the
+      // stack's left gutter; sideways-mode routes right through a vertical bus
+      // band, then along the gap above the target row.
+      const trace = (hx, hy, active, linkId, chip, color) => {
+        // Jog in the gap above the target row, staggered per sub-column so two
+        // traces into the same row don't overlap.
+        const jogY = chip.y - (chip.sub ? 3 : 5);
         const stroke = active ? color : "#4a4a55";
+        const route = sideways
+          ? (() => {
+              const busX = busLeft + (busIndex++ % laneMax) * laneSpacing;
+              return `M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${jogY.toFixed(1)} L ${chip.x.toFixed(1)} ${jogY.toFixed(1)} L ${chip.x.toFixed(1)} ${chip.y.toFixed(1)}`;
+            })()
+          : (() => {
+              const busY = busTop + (busIndex++ % laneMax) * laneSpacing;
+              return `M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${hx.toFixed(1)} ${busY.toFixed(1)} L ${gutterX.toFixed(1)} ${busY.toFixed(1)} L ${gutterX.toFixed(1)} ${jogY.toFixed(1)} L ${chip.x.toFixed(1)} ${jogY.toFixed(1)} L ${chip.x.toFixed(1)} ${chip.y.toFixed(1)}`;
+            })();
         svg += `<g class="boss-circuit-link${active ? " active" : " inactive"}" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"
             style="--trace-color:${stroke}" pointer-events="none">
-          <path class="boss-circuit-line" d="M ${hx.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${hy.toFixed(1)} L ${busX.toFixed(1)} ${rowY} L ${(chipX - 2).toFixed(1)} ${rowY}"
+          <path class="boss-circuit-line" d="${route}"
             fill="none" stroke="${stroke}" stroke-width="1.2"
             ${active ? "" : 'stroke-dasharray="3 3"'} stroke-linejoin="round"/>
           <circle class="boss-circuit-dot" cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="2.2" fill="${stroke}"/>
-          <circle class="boss-circuit-dot" cx="${(chipX - 2).toFixed(1)}" cy="${rowY}" r="1.8" fill="${stroke}"/></g>
+          <polygon class="boss-circuit-arrow" points="${(chip.x - 3).toFixed(1)},${(chip.y - 4.5).toFixed(1)} ${(chip.x + 3).toFixed(1)},${(chip.y - 4.5).toFixed(1)} ${chip.x.toFixed(1)},${chip.y.toFixed(1)}" fill="${stroke}"/></g>
           <circle class="boss-circuit-hotspot" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"
             cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="10" fill="transparent"/>`;
       };
-      for (const slot of phase.slots || []) {
-        const active = bossSlotActive(sb, slot);
+      // Phase label — just the stack name (the kind is carried by each chip now).
+      svg += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="14" font-family="Pirata One"
+        fill="${phaseColor}">${esc(PHASE_SHORT[phase.key] || phase.key)}</text>`;
+      // Display order mirrors resolution: active slots first with moves ahead
+      // of attacks; not-yet-active slots sink to the bottom of the stack.
+      const orderedSlots = (phase.slots || [])
+        .map((slot) => ({ slot, active: bossSlotActive(sb, slot) }))
+        .sort((a, b) => {
+          const rank = (entry) => (entry.active ? 0 : 2)
+            + ((entry.slot.kind || phase.kind) === "move" ? 0 : 1);
+          return rank(a) - rank(b);
+        });
+      for (const { slot, active } of orderedSlots) {
         const kind = slot.kind || phase.kind;
+        const color = kindColor(kind);
         const text = slotChipText(sb, slot, componentById);
         const linkId = `phase-${phase.key}-${linkIndex++}`;
-        if (slot.slot === "component") {
-          const component = componentById[slot.component_id];
-          if (component) trace(...parts.xy(component.q, component.r), active, linkId);
-        } else if (slot.slot === "tier" && slot.core_hex) {
-          trace(...parts.xy(slot.core_hex[0], slot.core_hex[1]), active, linkId);
-        }
         const title = `${slotChipTitle(sb, slot, componentById, active)} - ${kind}`;
-        svg += `<g class="boss-circuit-hotspot" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"><title>${esc(title)}</title>
-          <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="4"
-            fill="${active ? `${color}22` : "rgba(30,30,38,.9)"}" stroke="${active ? color : "#4a4a55"}"
-            stroke-width="${active ? 1.4 : 1}" ${active ? "" : 'stroke-dasharray="3 2"'}/>
-          <text x="${chipX + chipW / 2}" y="${rowY + 3.6}" text-anchor="middle" font-size="9.5" font-weight="700"
-            fill="${active ? color : "#555"}">${esc(text)}</text>
-          ${active ? "" : `<line x1="${chipX + 3}" y1="${rowY - chipH / 2 + 3}" x2="${chipX + chipW - 3}" y2="${rowY + chipH / 2 - 3}" stroke="#883333" stroke-width="1.2"/>`}
-        </g>`;
-        chipX += chipW + chipGap;
+        if (slot.slot === "tier") {
+          // Progression actions link to their box on the progress track (drawn
+          // by the HTML overlay), not to a hull hex.
+          drawChip(text, active, title, { linkId, color, tier: slot.tier });
+        } else {
+          const componentId = slot.slot === "component" ? slot.component_id : "";
+          const chip = drawChip(text, active, title, { linkId, color, componentId });
+          if (slot.slot === "component") {
+            const component = componentById[slot.component_id];
+            if (component) trace(...parts.xy(component.q, component.r), active, linkId, chip, color);
+          }
+        }
       }
-      const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
-      for (const kind of ((layout.fleet_actions || {})[phase.key]) || []) {
+      // Fleet chips: craft move before they shoot, same as resolution.
+      const fleetKinds = (((layout.fleet_actions || {})[phase.key]) || [])
+        .slice().sort((a, b) => (a === "move" ? 0 : 1) - (b === "move" ? 0 : 1));
+      for (const kind of fleetKinds) {
         if (!fleetAlive) break;
-        svg += `<g class="boss-circuit-hotspot boss-circuit-stack-hotspot" data-stack-key="${esc(phase.key)}"><title>Fleet x${fleetAlive} - ${esc(kind)}</title>
-          <rect x="${chipX}" y="${rowY - chipH / 2}" width="${chipW}" height="${chipH}" rx="10"
-            fill="rgba(160,160,180,.12)" stroke="#9aa3b8" stroke-width="1"/>
-          <text x="${chipX + chipW / 2}" y="${rowY + 3.6}" text-anchor="middle" font-size="9"
-            fill="#9aa3b8">▣${KIND_SYMBOL[kind] || ""}</text></g>`;
-        chipX += chipW + chipGap;
+        drawChip(`▣${KIND_SYMBOL[kind] || ""}`, false, `Fleet x${fleetAlive} - ${kind}`, { fleet: true });
       }
-      maxChipX = Math.max(maxChipX, chipX);
+      if (chipIndex > 0) maxChipBottom = Math.max(maxChipBottom, chipTopY(chipIndex - 1) + chipH + chipGap);
     });
-    return { svg, maxX: maxChipX + 8 };
+    if (sideways) {
+      return {
+        svg,
+        minX: parts.minX,
+        maxX: firstColCenterX + (phases.length - 1) * colW + stackW / 2 + 6,
+        minY: Math.min(parts.minY, labelY - 16),
+        maxY: Math.max(parts.maxY, maxChipBottom + 6),
+      };
+    }
+    const hullCenterX = (parts.minX + parts.maxX) / 2;
+    const halfSpan = totalColsW / 2 + gutter + 4;
+    return {
+      svg,
+      minX: Math.min(parts.minX, hullCenterX - halfSpan),
+      maxX: Math.max(parts.maxX, hullCenterX + halfSpan),
+      minY: parts.minY,
+      maxY: maxChipBottom + 6,
+    };
   }
 
   /* The StarBreacher's battle board: internal hull, components, shields,
@@ -1656,8 +1785,9 @@
     if (!sb || !sb.boss_layout) return;
     // Damage lanes stay hidden here — they only show while assigning a lane
     // (the target picker). Shields render as arcs hugging the shielded hull.
-    const parts = bossHullParts(sb, { shields: true });
-    const circuit = battleBoardCircuitSVG(sb, parts);
+    const phoneLayout = document.documentElement.dataset.device === "phone";
+    const parts = bossHullParts(sb, { shields: true, size: 20, componentColors: true });
+    const circuit = battleBoardCircuitSVG(sb, parts, { layout: phoneLayout ? "below" : "right" });
     const palette = parts.palette;
     const shields = (sb.boss_layout.areas || []).map((area) => {
       const hp = sb.shield_hp?.[area] ?? 0, max = sb.shield_max?.[area] ?? hp;
@@ -1675,7 +1805,7 @@
     box.innerHTML = `
       <h3>☄ ${esc(sb.boss_name || "The StarBreacher")} — Battle Board</h3>
       <div class="boss-modal-map">
-        <svg viewBox="${parts.minX} ${parts.minY} ${circuit.maxX - parts.minX} ${parts.maxY - parts.minY}" style="width:100%;max-height:340px">
+        <svg viewBox="${circuit.minX} ${circuit.minY} ${circuit.maxX - circuit.minX} ${circuit.maxY - circuit.minY}" style="width:100%;height:100%">
           <defs><marker id="bossLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
             <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
           <g class="boss-detail-lanes">${parts.laneSvg}</g>
@@ -1684,13 +1814,15 @@
           <g class="boss-battle-circuit">${circuit.svg}</g>
         </svg>
       </div>
-      ${progressTrackHTML(sb)}
-      ${pendingTiers.length ? `<div style="margin-top:4px;color:#ff9d8a">Tier ${pendingTiers.join(", ")} powers up next round!</div>` : ""}
-      ${spawnNotes ? `<div class="opt-sub">${esc(spawnNotes)}</div>` : ""}
-      <div class="boss-modal-grid">
+      <div class="boss-modal-bottom">
         <div class="boss-modal-side">
           <h4>Shield Regions</h4>
           <table>${shields}</table>
+        </div>
+        <div class="boss-modal-center">
+          ${progressTrackHTML(sb)}
+          ${pendingTiers.length ? `<div style="margin-top:4px;color:#ff9d8a">Tier ${pendingTiers.join(", ")} powers up next round!</div>` : ""}
+          ${spawnNotes ? `<div class="opt-sub">${esc(spawnNotes)}</div>` : ""}
         </div>
         <div class="boss-modal-side">
           <h4>Legend</h4>
@@ -1698,36 +1830,217 @@
             <span>☄ attack</span><span>➤ move</span><span>⬢ base</span>
             <span>★n tier n</span><span>▣ fleet</span><span>🛡 shield gen</span><span>◉ core</span>
           </div>
-          <div style="margin-top:6px">Traces link each hull component to the action it powers —
-            destroy the component and the action goes dark. Shield arcs hug the shielded hull
-            sections; each layer is a remaining charge. Boss progress fills the track;
-            marked boxes grant new abilities at the next round's start.</div>
         </div>
       </div>
       <button class="btn ghost picker-cancel" id="boss-modal-close">Close</button>`;
     overlay.appendChild(box);
     wireBossCircuitHover(box);
+    const drawProgressLinks = wireBossProgressLinks(box);
+    wireBossMapZoom(box.querySelector(".boss-modal-map"), drawProgressLinks);
+    decorateBossTrackWrap(box);
     box.querySelector("#boss-modal-close").addEventListener("click", hidePicker);
     overlay.addEventListener("click", function onOverlay(event) {
       if (event.target === overlay) { hidePicker(); overlay.removeEventListener("click", onOverlay); }
     });
   }
 
+  /* Draw circuit lines from each progression-track box down to the action chip
+     it powers. Track boxes are HTML and the chips live in the SVG board, so the
+     link is an absolutely-positioned overlay computed from on-screen rects and
+     kept in sync as the modal resizes or the map scrolls. */
+  function wireBossProgressLinks(box) {
+    const map = box.querySelector(".boss-modal-map");
+    const link = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    link.setAttribute("class", "boss-progress-links");
+    box.style.position = "relative";
+    box.appendChild(link);
+    const draw = () => {
+      if (!box.isConnected) {
+        window.removeEventListener("resize", draw);
+        if (map) map.removeEventListener("scroll", draw);
+        return;
+      }
+      const boxRect = box.getBoundingClientRect();
+      link.setAttribute("viewBox", `0 0 ${boxRect.width.toFixed(1)} ${boxRect.height.toFixed(1)}`);
+      link.setAttribute("width", boxRect.width.toFixed(1));
+      link.setAttribute("height", boxRect.height.toFixed(1));
+      const mapRect = map ? map.getBoundingClientRect() : boxRect;
+      let inner = "";
+      box.querySelectorAll(".bmb-track [data-tier]").forEach((trackBox) => {
+        const tier = trackBox.dataset.tier;
+        const sel = window.CSS && CSS.escape ? CSS.escape(tier) : tier;
+        const chip = box.querySelector(`.boss-battle-circuit [data-tier="${sel}"]`);
+        if (!chip) return;
+        const tr = trackBox.getBoundingClientRect();
+        const cr = chip.getBoundingClientRect();
+        const color = chip.querySelector("rect")?.getAttribute("stroke") || "#d9a6ff";
+        const x1 = tr.left + tr.width / 2 - boxRect.left, y1 = tr.top - boxRect.top;
+        // When the chip is panned/zoomed out of the map viewport it's clipped
+        // away — truncate the connector at the map edge (faded, no arrowhead)
+        // so the link still reads without pointing at empty space.
+        const chipCx = cr.left + cr.width / 2, chipCy = cr.top + cr.height / 2;
+        const visible = chipCx >= mapRect.left && chipCx <= mapRect.right
+          && chipCy >= mapRect.top && chipCy <= mapRect.bottom;
+        const x2 = (visible ? chipCx : Math.min(mapRect.right - 8, Math.max(mapRect.left + 8, chipCx))) - boxRect.left;
+        const y2 = (visible ? cr.bottom : mapRect.bottom - 2) - boxRect.top;
+        const midY = (y1 + y2) / 2;
+        inner += `<path d="M ${x2.toFixed(1)} ${y2.toFixed(1)} C ${x2.toFixed(1)} ${midY.toFixed(1)}, ${x1.toFixed(1)} ${midY.toFixed(1)}, ${x1.toFixed(1)} ${y1.toFixed(1)}"
+            fill="none" stroke="${color}" stroke-width="1.4" stroke-dasharray="4 3" opacity="${visible ? ".7" : ".35"}"/>
+          <circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.4" fill="${color}"/>
+          ${visible ? `<polygon points="${(x2 - 3).toFixed(1)},${(y2 + 4.5).toFixed(1)} ${(x2 + 3).toFixed(1)},${(y2 + 4.5).toFixed(1)} ${x2.toFixed(1)},${(y2 + 0.5).toFixed(1)}" fill="${color}"/>` : ""}`;
+      });
+      link.innerHTML = inner;
+    };
+    requestAnimationFrame(draw);
+    window.addEventListener("resize", draw);
+    if (map) map.addEventListener("scroll", draw);
+    return draw;
+  }
+
+  /* Zoom + pan for the boss battle-board map. Works by shrinking/shifting the
+     SVG viewBox — the browser re-renders the vectors at every zoom level, so
+     the board stays razor sharp (a CSS transform would scale a rasterized
+     bitmap and blur). Wheel zooms toward the cursor, dragging pans, and
+     two-finger pinch zooms/pans on touch devices. */
+  function wireBossMapZoom(map, onChange) {
+    const svg = map && map.querySelector("svg");
+    if (!svg) return;
+    const base = (svg.getAttribute("viewBox") || "0 0 100 100").split(/[\s,]+/).map(Number);
+    const MIN_SCALE = 1, MAX_SCALE = 8;
+    let scale = 1;
+    let cx = base[0] + base[2] / 2, cy = base[1] + base[3] / 2; // view center, board coords
+    const apply = () => {
+      const w = base[2] / scale, h = base[3] / scale;
+      // Keep the window inside the base board — no panning into the void.
+      cx = Math.min(base[0] + base[2] - w / 2, Math.max(base[0] + w / 2, cx));
+      cy = Math.min(base[1] + base[3] - h / 2, Math.max(base[1] + h / 2, cy));
+      svg.setAttribute("viewBox", `${(cx - w / 2).toFixed(2)} ${(cy - h / 2).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)}`);
+      if (onChange) onChange();
+    };
+    // Client px → board coords (getScreenCTM handles the meet letterboxing).
+    const toBoard = (clientX, clientY) => {
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return { x: cx, y: cy };
+      return new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    };
+    // Board units per client pixel, for converting drag deltas.
+    const unitsPerPx = () => {
+      const ctm = svg.getScreenCTM();
+      return ctm ? 1 / ctm.a : 1;
+    };
+    const zoomAt = (clientX, clientY, factor) => {
+      const before = toBoard(clientX, clientY);
+      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+      apply();
+      // One correction pass keeps the point under the cursor fixed (exact,
+      // since the letterbox offset moves linearly with the viewBox).
+      const after = toBoard(clientX, clientY);
+      cx += before.x - after.x;
+      cy += before.y - after.y;
+      apply();
+    };
+    map.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }, { passive: false });
+    // Dragging must never start a text selection (a selection swallows
+    // subsequent drags until it's cleared).
+    map.addEventListener("dragstart", (event) => event.preventDefault());
+    const pointers = new Map();
+    let pinchDist = 0;
+    map.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      map.setPointerCapture(event.pointerId);
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      pinchDist = 0;
+    });
+    map.addEventListener("pointermove", (event) => {
+      const pointer = pointers.get(event.pointerId);
+      if (!pointer) return;
+      if (pointers.size === 1) {
+        const k = unitsPerPx();
+        cx -= (event.clientX - pointer.x) * k;
+        cy -= (event.clientY - pointer.y) * k;
+        pointer.x = event.clientX; pointer.y = event.clientY;
+        apply();
+      } else if (pointers.size === 2) {
+        const other = Array.from(pointers.entries()).find(([id]) => id !== event.pointerId)[1];
+        const prevMid = { x: (pointer.x + other.x) / 2, y: (pointer.y + other.y) / 2 };
+        pointer.x = event.clientX; pointer.y = event.clientY;
+        const mid = { x: (pointer.x + other.x) / 2, y: (pointer.y + other.y) / 2 };
+        const dist = Math.hypot(pointer.x - other.x, pointer.y - other.y) || 1;
+        const k = unitsPerPx();
+        cx -= (mid.x - prevMid.x) * k;
+        cy -= (mid.y - prevMid.y) * k;
+        if (pinchDist) zoomAt(mid.x, mid.y, dist / pinchDist);
+        else apply();
+        pinchDist = dist;
+      }
+    });
+    const release = (event) => { pointers.delete(event.pointerId); pinchDist = 0; };
+    map.addEventListener("pointerup", release);
+    map.addEventListener("pointercancel", release);
+  }
+
+  /* When the progress track wraps, mark the last box of each row with a small
+     loop arrow so it reads as "continues on the next row". */
+  function decorateBossTrackWrap(box) {
+    const track = box.querySelector(".bmb-track");
+    if (!track) return;
+    const update = () => {
+      if (!box.isConnected) { window.removeEventListener("resize", update); return; }
+      const boxes = Array.from(track.querySelectorAll(".bmb-box"));
+      boxes.forEach((node) => node.classList.remove("bmb-wrap-end"));
+      for (let i = 0; i < boxes.length - 1; i++) {
+        // A new row starts when the next box jumps back to the left. (offsetTop
+        // won't do — centered boxes of differing heights shift it within a row.)
+        if (boxes[i + 1].offsetLeft < boxes[i].offsetLeft) boxes[i].classList.add("bmb-wrap-end");
+      }
+    };
+    requestAnimationFrame(update);
+    window.addEventListener("resize", update);
+  }
+
+  /* Hovering a component hex or an action chip lights up the whole circuit:
+     the trace, the chip, the hull component, and (for progression actions)
+     the box on the progress track. */
   function wireBossCircuitHover(root) {
     const links = Array.from(root.querySelectorAll(".boss-circuit-link"));
+    const hotspots = Array.from(root.querySelectorAll(".boss-circuit-hotspot"));
+    const cssEscape = (value) => (window.CSS && CSS.escape ? CSS.escape(String(value)) : String(value));
     const setHot = (target, on) => {
       const linkId = target.dataset.linkId;
       const stackKey = target.dataset.stackKey;
+      const matches = (el) => (linkId
+        ? el.dataset.linkId === linkId
+        : stackKey && el.dataset.stackKey === stackKey);
       for (const link of links) {
-        const match = linkId
-          ? link.dataset.linkId === linkId
-          : stackKey && link.dataset.stackKey === stackKey;
-        if (match) link.classList.toggle("hot", on);
+        if (matches(link)) link.classList.toggle("hot", on);
+      }
+      for (const spot of hotspots) {
+        if (!matches(spot)) continue;
+        spot.classList.toggle("hot", on);
+        if (spot.dataset.componentId) {
+          root.querySelectorAll(`.boss-component-node[data-component-id="${cssEscape(spot.dataset.componentId)}"]`)
+            .forEach((node) => node.classList.toggle("hot", on));
+        }
+        if (spot.dataset.tier != null) {
+          root.querySelectorAll(`.bmb-track [data-tier="${cssEscape(spot.dataset.tier)}"]`)
+            .forEach((node) => node.classList.toggle("hot", on));
+        }
       }
     };
-    root.querySelectorAll(".boss-circuit-hotspot").forEach((target) => {
+    hotspots.forEach((target) => {
       target.addEventListener("mouseenter", () => setHot(target, true));
       target.addEventListener("mouseleave", () => setHot(target, false));
+    });
+    // The whole hull hex is a hover target too (the trace hotspot circle only
+    // covers its center).
+    root.querySelectorAll(".boss-component-node").forEach((node) => {
+      const spot = hotspots.find((s) => s.dataset.componentId === node.dataset.componentId);
+      if (!spot) return;
+      node.addEventListener("mouseenter", () => setHot(spot, true));
+      node.addEventListener("mouseleave", () => setHot(spot, false));
     });
   }
 

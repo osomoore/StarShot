@@ -633,10 +633,41 @@ h1, h2, .brand, .poster-title, .banner-text {
 .boss-progress-rail .bmb-track-label { margin: 0 0 3px; }
 .bmb-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .bmb-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; }
-.boss-board-modal { max-width: 720px; }
-.boss-board-modal .bmb-track { margin-top: 8px; }
-.boss-board-modal .bmb-box { width: 16px; height: 16px; font-size: 10px; line-height: 14px; }
-.boss-board-modal .bmb-box.major { width: 18px; height: 18px; line-height: 14px; }
+/* Doubled-width board (specific selector: the later .picker rule would
+   otherwise cap max-width at 520px). */
+.picker.boss-board-modal {
+  max-width: min(1440px, 96vw); width: min(1440px, 96vw);
+  /* Nothing here needs selecting — a stray selection mid-drag otherwise eats
+     later drags until it's cleared. */
+  user-select: none; -webkit-user-select: none;
+}
+/* Progress track in the modal: full panel width, large readable boxes that
+   wrap onto a new line rather than shrinking. Wrapped rows get extra breathing
+   room, and the last box of a row shows a loop arrow pointing to the next row. */
+.boss-board-modal .bmb-track { margin-top: 10px; gap: 5px; row-gap: 12px; justify-content: center; padding: 0 20px; }
+.bmb-box { position: relative; }
+.bmb-box.bmb-wrap-end::after {
+  content: "↴"; position: absolute; right: -16px; top: 55%;
+  color: #8a8a96; font-size: 14px; line-height: 1; pointer-events: none;
+  font-family: "Space Grotesk", "Segoe UI Symbol", sans-serif;
+}
+.boss-board-modal .bmb-track-label { font-size: 16px; margin-right: 6px; }
+.boss-board-modal .bmb-box {
+  width: 26px; height: 26px; font-size: 15px; line-height: 24px; border-radius: 5px;
+}
+.boss-board-modal .bmb-box.major { width: 30px; height: 30px; line-height: 26px; }
+/* Overlay that links progression-track boxes to their action chips. */
+.boss-progress-links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 5; }
+/* Phones: the battle board takes the whole window, and the map flexes to fill
+   whatever height the track/legend/close button leave over. */
+:root[data-device="phone"] .picker.boss-board-modal {
+  /* 100% (not 100vw) so a scrollbar can't force horizontal overflow. */
+  width: 100%; max-width: 100%; min-height: 100dvh; max-height: 100dvh;
+  border-radius: 0; border-left: 0; border-right: 0;
+  box-sizing: border-box; padding: 14px 10px;
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+:root[data-device="phone"] .boss-board-modal .boss-modal-map { flex: 1 0 40vh; height: auto; min-height: 40vh; }
 /* Shield-region target picker */
 .boss-region-picker { max-width: 600px; }
 .boss-region-map { width: 100%; overflow: auto; }
@@ -666,7 +697,16 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 .sb-continue:hover { transform: translateX(-50%) translateY(-1px); }
 .sb-continue:active { transform: translateX(-50%) translateY(1px); }
-.boss-modal-map { width: 100%; overflow: auto; }
+/* The battle-board map is a zoom/pan viewport: starts at 2x, wheel/pinch zooms,
+   drag pans. Overflow is clipped rather than scrolled. */
+.boss-modal-map {
+  width: 100%; height: 58vh; position: relative; overflow: hidden;
+  touch-action: none; cursor: grab;
+  user-select: none; -webkit-user-select: none;
+  border: 1px solid rgba(168,106,209,.3); border-radius: 8px;
+}
+.boss-modal-map:active { cursor: grabbing; }
+.boss-modal-map svg { display: block; }
 .boss-lane-mark text { paint-order: stroke; stroke: #10182b; stroke-width: 3px; }
 .boss-detail-shield { fill: none; stroke-width: 2; stroke-linecap: round; filter: drop-shadow(0 0 3px rgba(126,216,255,.45)); }
 .boss-circuit-link { opacity: .18; transition: opacity .12s ease, filter .12s ease; }
@@ -674,8 +714,23 @@ h1, h2, .brand, .poster-title, .banner-text {
 .boss-circuit-link.hot { opacity: 1; filter: drop-shadow(0 0 5px var(--trace-color)); }
 .boss-circuit-link.hot .boss-circuit-line { stroke-width: 2.2; }
 .boss-circuit-link.hot .boss-circuit-dot { r: 3; }
-.boss-circuit-hotspot { cursor: pointer; }
-.boss-modal-grid { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.boss-circuit-hotspot { cursor: pointer; transition: filter .12s ease; }
+/* Hover lights the whole circuit: chip, hull component, and track box. */
+.boss-circuit-hotspot.hot { filter: brightness(1.55) drop-shadow(0 0 4px rgba(255,255,255,.5)); }
+.boss-component-node { transition: filter .12s ease; }
+.boss-component-node.hot { filter: brightness(1.6) drop-shadow(0 0 6px rgba(255,255,255,.65)); }
+.bmb-box.hot { filter: brightness(1.7); box-shadow: 0 0 8px rgba(255,255,255,.6); }
+/* Bottom row of the battle-board modal: shields | progress track | legend on
+   desktop; on phones it stacks with the track first (right under the map). */
+.boss-modal-bottom { display: flex; gap: 18px; align-items: flex-start; margin-top: 10px; }
+.boss-modal-bottom .boss-modal-side { flex: 0 1 260px; text-align: left; }
+.boss-modal-bottom .boss-modal-side h4 { margin-top: 0; }
+.boss-modal-center { flex: 1 1 auto; min-width: 0; }
+.boss-modal-center .bmb-track { margin-top: 0; }
+:root[data-device="phone"] .boss-modal-bottom { flex-direction: column; align-items: stretch; gap: 10px; }
+/* In column direction the desktop flex-basis (260px) would become height. */
+:root[data-device="phone"] .boss-modal-bottom .boss-modal-side { flex: 0 0 auto; }
+:root[data-device="phone"] .boss-modal-center { order: -1; }
 .boss-modal-side { min-width: 190px; flex: 1; font-size: 12px; color: var(--ink-dim); }
 .boss-modal-side h4 { font-family: "Pirata One", serif; color: #d9a6ff; margin: 8px 0 3px; font-size: 16px; }
 .boss-modal-side table { width: 100%; border-collapse: collapse; }

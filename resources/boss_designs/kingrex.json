@@ -824,11 +824,27 @@
   "behavior": {
     "boss_ai": "hunter_killer",
     "fleet": {
-      "count": 0,
+      "count": 2,
       "kind": "hunter_killer",
       "hp": 3,
       "ai": "hunter_killer",
-      "actions": []
+      "actions": [
+        {
+          "stack": "1.5",
+          "action": "shoot",
+          "count": 2
+        },
+        {
+          "stack": "2.5",
+          "action": "move",
+          "count": 3
+        },
+        {
+          "stack": "3.5",
+          "action": "shoot",
+          "count": 1
+        }
+      ]
     }
   }
 }

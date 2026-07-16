@@ -414,7 +414,9 @@ def phase_slots(spec: dict, phase_key: str) -> list[dict]:
 
 
 def fleet_action_kinds(spec: dict, phase_key: str) -> list[str]:
-    return list(spec["fleet_actions"].get(phase_key, ()))
+    # Craft reposition before they open fire: move actions resolve first.
+    kinds = list(spec["fleet_actions"].get(phase_key, ()))
+    return sorted(kinds, key=lambda kind: 0 if kind == "move" else 1)
 
 
 def tier_progress_map(spec: dict) -> dict[int, int]:
@@ -461,11 +463,15 @@ def active_phase_slots(
     active_tiers: set[int],
     round_number: int,
 ) -> list[dict]:
-    return [
+    default_kind = phase_kind(spec, phase_key)
+    slots = [
         slot
         for slot in phase_slots(spec, phase_key)
         if slot_is_active(spec, slot, destroyed_hexes, active_tiers, round_number)
     ]
+    # The boss repositions before it opens fire: within a stack, move actions
+    # resolve ahead of attacks (stable, so designed order otherwise holds).
+    return sorted(slots, key=lambda slot: 0 if slot.get("kind", default_kind) == "move" else 1)
 
 
 def expected_phase_actions(
