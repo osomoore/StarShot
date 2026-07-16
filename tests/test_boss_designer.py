@@ -261,10 +261,14 @@ class StorageTests(unittest.TestCase):
     def setUp(self):
         self._tempdir = tempfile.TemporaryDirectory()
         self._original_dir = boss_designs.DESIGNS_DIR
-        boss_designs.DESIGNS_DIR = Path(self._tempdir.name)
+        self._original_runtime_dir = boss_designs.RUNTIME_DESIGNS_DIR
+        root = Path(self._tempdir.name)
+        boss_designs.DESIGNS_DIR = root / "bundled"
+        boss_designs.RUNTIME_DESIGNS_DIR = root / "runtime"
 
     def tearDown(self):
         boss_designs.DESIGNS_DIR = self._original_dir
+        boss_designs.RUNTIME_DESIGNS_DIR = self._original_runtime_dir
         self._tempdir.cleanup()
 
     def test_save_load_list_delete(self):
@@ -293,6 +297,38 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(saved["id"], "test_boss_ii")
         self.assertIsNotNone(boss_designs.load_design("test_boss_ii"))
 
+    def test_bundled_designs_are_read_but_saves_go_to_runtime(self):
+        boss_designs.DESIGNS_DIR.mkdir(parents=True)
+        bundled_path = boss_designs.DESIGNS_DIR / "test_boss.json"
+        bundled_path.write_text(
+            boss_designs.json.dumps(make_design(name="Bundled Boss"), indent=2),
+            encoding="utf-8",
+        )
+
+        self.assertEqual(boss_designs.load_design("test_boss")["name"], "Bundled Boss")
+        saved, _ = boss_designs.save_design(make_design(name="Server Boss"))
+        self.assertEqual(saved["name"], "Server Boss")
+        self.assertTrue((boss_designs.RUNTIME_DESIGNS_DIR / "test_boss.json").exists())
+        self.assertEqual(boss_designs.load_design("test_boss")["name"], "Server Boss")
+
+    def test_conflicting_bundled_and_runtime_versions_are_both_listed(self):
+        boss_designs.DESIGNS_DIR.mkdir(parents=True)
+        boss_designs.RUNTIME_DESIGNS_DIR.mkdir(parents=True)
+        (boss_designs.DESIGNS_DIR / "test_boss.json").write_text(
+            boss_designs.json.dumps(make_design(name="Developer Boss"), indent=2),
+            encoding="utf-8",
+        )
+        (boss_designs.RUNTIME_DESIGNS_DIR / "test_boss.json").write_text(
+            boss_designs.json.dumps(make_design(name="Server Boss"), indent=2),
+            encoding="utf-8",
+        )
+
+        entries = boss_designs.list_designs()
+        ids = {entry["id"] for entry in entries}
+        self.assertIn("test_boss", ids)
+        self.assertIn("test_boss_developer", ids)
+        self.assertEqual(boss_designs.load_design("test_boss_developer")["id"], "test_boss_developer")
+
 
 class SpawnStepTests(unittest.TestCase):
     def test_spawn_fleet_step_normalizes(self):
@@ -316,10 +352,14 @@ class PlayerStorageTests(unittest.TestCase):
     def setUp(self):
         self._tempdir = tempfile.TemporaryDirectory()
         self._original_dir = boss_designs.DESIGNS_DIR
-        boss_designs.DESIGNS_DIR = Path(self._tempdir.name)
+        self._original_runtime_dir = boss_designs.RUNTIME_DESIGNS_DIR
+        root = Path(self._tempdir.name)
+        boss_designs.DESIGNS_DIR = root / "bundled"
+        boss_designs.RUNTIME_DESIGNS_DIR = root / "runtime"
 
     def tearDown(self):
         boss_designs.DESIGNS_DIR = self._original_dir
+        boss_designs.RUNTIME_DESIGNS_DIR = self._original_runtime_dir
         self._tempdir.cleanup()
 
     def test_player_designs_are_separate_from_global(self):

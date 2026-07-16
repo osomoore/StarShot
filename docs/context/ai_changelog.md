@@ -2,6 +2,16 @@
 
 Newest entries first. Each AI-agent update should add date/time, build id, agent, and a short summary.
 
+## 2026-07-16 10:18:27 -05:00
+
+- Build ID: `99c32d8d62ca`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Changed boss design storage so bundled developer designs remain in `resources/boss_designs/`, while all server/admin/player saves write to `.starshot/content/boss_designs/`.
+  - Merged bundled and runtime boss libraries at load/list time; conflicting same-id designs are preserved by exposing the older version with a `_developer` or `_server` suffix.
+  - Added tests for runtime saves, bundled reads, and conflicting bundled/runtime boss versions.
+  - Verification included `tests.test_boss_designer`, `tests.test_boss_spec`, and `tests.test_v2_api`; full-suite verification followed with `247 tests OK`.
+
 ## 2026-07-16 09:31:09 -05:00
 
 - Build ID: `535b6949cea2`

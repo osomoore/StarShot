@@ -121,8 +121,13 @@ Admin tools:
   Also: per-region shield start/max charges, a Behavior tab (boss AI —
   hunter-killer only for now; fleet craft count/type/HP/AI and numeric
   move/shoot counts for fleet actions per boss stage), JSON download/upload of designs,
-  and delete-with-confirmation. Designs are JSON documents in
-  `resources/boss_designs/`. Kept insulated: schema/validation/storage in
+  and delete-with-confirmation. Bundled developer designs are JSON documents
+  in `resources/boss_designs/`; server-created and server-edited designs are
+  saved under `.starshot/content/boss_designs/` so Git pulls do not overwrite
+  live content. The design loader merges bundled + runtime libraries; if both
+  sides contain different JSON for the same id, the newest mtime keeps the
+  canonical id and the older version appears with a `_developer` or `_server`
+  suffix for admin cleanup. Kept insulated: schema/validation/storage in
   `backend/starshot/v2/boss_designs.py` (no FastAPI), routes in
   `backend/starshot/v2/boss_designer_api.py`, UI in
   `frontend/v2/static/bossdesigner.js` + `bossdesigner.css`; tests in
@@ -193,7 +198,7 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 245 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 247 tests passing as of last session (2 API test modules require `fastapi` installed).
 - Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
   `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
   where units actually stood at that moment.

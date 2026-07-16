@@ -6,7 +6,10 @@ lanes, and a progression track. This module is intentionally free of FastAPI
 and of the live rules engine so the designer can evolve without touching
 either; `boss_designer_api.py` exposes it over HTTP.
 
-Designs are stored one-per-file under ``resources/boss_designs/<id>.json``.
+Bundled developer designs are stored one-per-file under
+``resources/boss_designs/<id>.json``. Server-created and server-edited
+designs are stored under ``.starshot/content/boss_designs/`` so Git pulls do
+not overwrite them.
 Saving accepts any structurally sound document and returns a list of
 ``problems`` (human-readable warnings) so half-finished designs can be kept.
 """
@@ -19,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 DESIGNS_DIR = ROOT / "resources" / "boss_designs"
+RUNTIME_DESIGNS_DIR = ROOT / ".starshot" / "content" / "boss_designs"
 
 # Mirrors backend/starshot/rules/hex.py (and board.js).
 AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
@@ -483,74 +487,195 @@ def is_design_valid(design: dict) -> bool:
 
 
 # ── storage ─────────────────────────────────────────────────────────────────
-# Global (admin) designs live directly in resources/boss_designs; per-player
-# designs live under resources/boss_designs/players/<user_id>/. Every storage
-# function takes an optional owner_id: None = the shared global library.
+# Bundled developer designs live under resources/boss_designs. Runtime
+# server/admin/player saves live under .starshot/content/boss_designs. Every
+# storage function takes an optional owner_id: None = the shared global library.
 
 PLAYERS_SUBDIR = "players"
+SOURCE_DEVELOPER = "developer"
+SOURCE_SERVER = "server"
 
 
-def _design_dir(owner_id: int | None = None) -> Path:
+def _bundled_design_dir(owner_id: int | None = None) -> Path:
     if owner_id is None:
         return DESIGNS_DIR
     return DESIGNS_DIR / PLAYERS_SUBDIR / str(int(owner_id))
 
 
+def _runtime_design_dir(owner_id: int | None = None) -> Path:
+    if owner_id is None:
+        return RUNTIME_DESIGNS_DIR
+    return RUNTIME_DESIGNS_DIR / PLAYERS_SUBDIR / str(int(owner_id))
+
+
+def _design_dir(owner_id: int | None = None) -> Path:
+    """Runtime save directory. Kept for tests/old callers."""
+    return _runtime_design_dir(owner_id)
+
+
 def _design_path(design_id: str, owner_id: int | None = None) -> Path:
-    return _design_dir(owner_id) / f"{safe_design_id(design_id)}.json"
+    return _runtime_design_dir(owner_id) / f"{safe_design_id(design_id)}.json"
+
+
+def _design_source_dirs(owner_id: int | None = None) -> tuple[tuple[str, Path], ...]:
+    return (
+        (SOURCE_DEVELOPER, _bundled_design_dir(owner_id)),
+        (SOURCE_SERVER, _runtime_design_dir(owner_id)),
+    )
+
+
+def _json_fingerprint(data: dict) -> str:
+    try:
+        data = normalize_design(data)
+    except BossDesignError:
+        pass
+    return json.dumps(data, sort_keys=True, separators=(",", ":"))
+
+
+def _read_design_file(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _raw_design_records(owner_id: int | None = None) -> list[dict]:
+    records: list[dict] = []
+    for source, directory in _design_source_dirs(owner_id):
+        if not directory.exists():
+            continue
+        for path in sorted(directory.glob("*.json")):
+            data = _read_design_file(path)
+            if data is None:
+                continue
+            try:
+                design_id = safe_design_id(data.get("id", path.stem))
+            except BossDesignError:
+                design_id = safe_design_id(path.stem)
+            records.append(
+                {
+                    "id": design_id,
+                    "visible_id": design_id,
+                    "source": source,
+                    "path": path,
+                    "mtime": path.stat().st_mtime,
+                    "data": data,
+                    "fingerprint": _json_fingerprint(data),
+                    "conflict_of": None,
+                }
+            )
+    return records
+
+
+def _unique_visible_id(base_id: str, source: str, used: set[str]) -> str:
+    stem = safe_design_id(f"{base_id}_{source}")
+    candidate = stem
+    suffix = 2
+    while candidate in used:
+        candidate = safe_design_id(f"{stem}_{suffix}")
+        suffix += 1
+    used.add(candidate)
+    return candidate
+
+
+def _merged_design_records(owner_id: int | None = None) -> list[dict]:
+    by_id: dict[str, list[dict]] = {}
+    for record in _raw_design_records(owner_id):
+        by_id.setdefault(record["id"], []).append(record)
+
+    merged: list[dict] = []
+    used: set[str] = set()
+    for design_id in sorted(by_id):
+        records = by_id[design_id]
+        fingerprints = {record["fingerprint"] for record in records}
+        if len(fingerprints) <= 1:
+            chosen = sorted(records, key=lambda item: (item["source"] == SOURCE_SERVER, item["mtime"]))[-1]
+            chosen = dict(chosen)
+            chosen["visible_id"] = design_id
+            used.add(design_id)
+            merged.append(chosen)
+            continue
+
+        ordered = sorted(records, key=lambda item: (item["mtime"], item["source"] == SOURCE_SERVER), reverse=True)
+        newest = dict(ordered[0])
+        newest["visible_id"] = design_id
+        used.add(design_id)
+        merged.append(newest)
+        for record in ordered[1:]:
+            alternate = dict(record)
+            alternate["visible_id"] = _unique_visible_id(design_id, alternate["source"], used)
+            alternate["conflict_of"] = design_id
+            merged.append(alternate)
+    return sorted(merged, key=lambda item: item["visible_id"])
+
+
+def _record_for_design_id(design_id: str, owner_id: int | None = None) -> dict | None:
+    wanted = safe_design_id(design_id)
+    for record in _merged_design_records(owner_id):
+        if record["visible_id"] == wanted:
+            return record
+    return None
 
 
 def list_designs(owner_id: int | None = None) -> list[dict]:
     entries = []
-    directory = _design_dir(owner_id)
-    if directory.exists():
-        for path in sorted(directory.glob("*.json")):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            try:
-                valid = is_design_valid(normalize_design(data))
-            except BossDesignError:
-                valid = False
-            entries.append(
-                {
-                    "id": data.get("id", path.stem),
-                    "name": data.get("name", path.stem),
-                    "tile_count": len(data.get("tiles", [])),
-                    "region_count": len(data.get("shield_regions", [])),
-                    "step_count": len(data.get("progression", {}).get("steps", [])),
-                    "valid": valid,
-                }
-            )
+    for record in _merged_design_records(owner_id):
+        data = record["data"]
+        try:
+            valid = is_design_valid(normalize_design(data))
+        except BossDesignError:
+            valid = False
+        entries.append(
+            {
+                "id": record["visible_id"],
+                "source_id": data.get("id", record["id"]),
+                "name": data.get("name", record["visible_id"]),
+                "tile_count": len(data.get("tiles", [])),
+                "region_count": len(data.get("shield_regions", [])),
+                "step_count": len(data.get("progression", {}).get("steps", [])),
+                "valid": valid,
+                "source": record["source"],
+                "conflict_of": record["conflict_of"],
+            }
+        )
     return entries
 
 
 def list_player_owner_ids() -> list[int]:
     """User ids that have at least one saved boss design."""
-    players_dir = DESIGNS_DIR / PLAYERS_SUBDIR
-    owners = []
-    if players_dir.exists():
+    owners: set[int] = set()
+    for players_dir in (DESIGNS_DIR / PLAYERS_SUBDIR, RUNTIME_DESIGNS_DIR / PLAYERS_SUBDIR):
+        if not players_dir.exists():
+            continue
         for child in sorted(players_dir.iterdir()):
             if child.is_dir() and child.name.isdigit() and any(child.glob("*.json")):
-                owners.append(int(child.name))
-    return owners
+                owners.add(int(child.name))
+    return sorted(owners)
 
 
 def load_design(design_id: str, owner_id: int | None = None) -> dict | None:
-    path = _design_path(design_id, owner_id)
-    if not path.exists():
+    record = _record_for_design_id(design_id, owner_id)
+    if record is None:
         return None
-    return normalize_design(json.loads(path.read_text(encoding="utf-8")))
+    design = normalize_design(record["data"])
+    if record["visible_id"] != design["id"]:
+        design["id"] = record["visible_id"]
+        design["name"] = f"{design['name']} ({record['source']})"
+    return design
 
 
 def save_design(raw: dict, owner_id: int | None = None) -> tuple[dict, list[str]]:
-    """Normalize, persist, and return (design, problems). Player saves are
-    capped at PLAYER_DESIGN_LIMIT designs (updating an existing one is fine)."""
+    """Normalize, persist to runtime storage, and return (design, problems).
+
+    Bundled Git designs are never overwritten by server saves; editing one
+    creates a runtime override with the same id.
+    """
     design = normalize_design(raw)
     directory = _design_dir(owner_id)
     if owner_id is not None and not _design_path(design["id"], owner_id).exists():
-        if len(list(directory.glob("*.json")) if directory.exists() else []) >= PLAYER_DESIGN_LIMIT:
+        existing_ids = {entry["id"] for entry in list_designs(owner_id)}
+        if design["id"] not in existing_ids and len(existing_ids) >= PLAYER_DESIGN_LIMIT:
             raise BossDesignError(
                 f"You already have {PLAYER_DESIGN_LIMIT} boss designs — delete one to make room."
             )
