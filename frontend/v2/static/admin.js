@@ -68,8 +68,30 @@
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
   };
+  const relativeAge = (value) => {
+    if (!value) return "unknown";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "unknown";
+    const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    const units = [
+      ["year", 31536000],
+      ["month", 2592000],
+      ["day", 86400],
+      ["hour", 3600],
+      ["minute", 60],
+    ];
+    for (const [name, size] of units) {
+      if (seconds >= size) {
+        const count = Math.floor(seconds / size);
+        return `${count} ${name}${count === 1 ? "" : "s"} ago`;
+      }
+    }
+    return "just now";
+  };
 
   let toastTimer = null;
+  let buildInfo = null;
+  let buildInfoTimer = null;
   function toast(message, good) {
     const node = document.getElementById("toast");
     node.textContent = message;
@@ -95,7 +117,7 @@
       document.getElementById("admin-user").textContent = "⚙ " + me.user.username;
       document.getElementById("admin-locked").classList.add("hidden");
       document.getElementById("admin-main").classList.remove("hidden");
-      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadFeedback()]);
+      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBuildInfo(), loadBattleHistory(), loadFeedback()]);
     } catch (err) {
       showLocked("Sign in as the admiral to enter.");
     }
@@ -785,6 +807,37 @@
   }
 
   document.getElementById("feedback-filter").addEventListener("input", renderFeedback);
+
+  async function loadBuildInfo() {
+    try {
+      buildInfo = await get("/admin/build-info");
+      renderBuildInfo();
+      clearInterval(buildInfoTimer);
+      buildInfoTimer = setInterval(renderBuildInfo, 60000);
+    } catch (err) {
+      const node = document.getElementById("build-info");
+      if (node) node.textContent = "Build timestamps unavailable: " + err.message;
+    }
+  }
+
+  function renderBuildInfo() {
+    const node = document.getElementById("build-info");
+    if (!node || !buildInfo) return;
+    const row = (label, info) => {
+      const builtAt = info && info.built_at;
+      return `
+        <div class="build-row">
+          <b>${esc(label)}</b>
+          <span>${builtAt ? `${esc(shortDateTime(builtAt))} (${esc(relativeAge(builtAt))})` : "unknown"}</span>
+          ${info && info.latest_file ? `<small>latest file: ${esc(info.latest_file)}</small>` : ""}
+        </div>`;
+    };
+    node.innerHTML = `
+      ${row("Front end", buildInfo.frontend)}
+      ${row("Back end", buildInfo.backend)}
+      <div class="build-row generated"><b>Checked</b><span>${esc(shortDateTime(buildInfo.generated_at))}</span></div>
+    `;
+  }
 
   async function loadSettings() {
     try {

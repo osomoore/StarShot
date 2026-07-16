@@ -21,6 +21,7 @@
   let draft = null;
   let pendingFetch = false;
   let sideTab = "registry";
+  let openShotPreviewSlot = null;
   const scenarioStatusSignatures = new Map();
   const scenarioStatusTimers = new Map();
 
@@ -148,6 +149,7 @@
 
   function showMobileMap() {
     targetResolver = null;
+    openShotPreviewSlot = null;
     setMobileSheet(null);
     hidePicker();
   }
@@ -1269,13 +1271,18 @@
     const shotPreview = slotShotPreviewEl(index);
     if (shotPreview) {
       const details = document.createElement("div");
-      details.className = "seal-details";
+      details.className = "seal-details" + (openShotPreviewSlot === index ? " open" : "");
       details.innerHTML = `<button class="seal-details-button" type="button">Details</button>`;
-      details.querySelector(".seal-details-button").textContent = "i";
-      details.querySelector(".seal-details-button").setAttribute("aria-label", "Shot details");
-      details.querySelector(".seal-details-button").addEventListener("click", (event) => {
+      const button = details.querySelector(".seal-details-button");
+      button.textContent = "i";
+      button.setAttribute("aria-label", "Shot details");
+      button.setAttribute("aria-expanded", String(openShotPreviewSlot === index));
+      button.addEventListener("click", (event) => {
         event.stopPropagation();
+        openShotPreviewSlot = openShotPreviewSlot === index ? null : index;
+        renderOrdersPanel();
       });
+      details.addEventListener("click", (event) => event.stopPropagation());
       details.appendChild(shotPreview);
       seal.appendChild(details);
     }
@@ -3542,6 +3549,11 @@
       renderAll();
       await playEventsSafely(view.event_log || []);
       renderAll();
+    });
+    document.addEventListener("click", () => {
+      if (openShotPreviewSlot === null) return;
+      openShotPreviewSlot = null;
+      if (view) renderOrdersPanel();
     });
   });
 

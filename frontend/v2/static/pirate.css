@@ -749,16 +749,14 @@ h1, h2, .brand, .poster-title, .banner-text {
   right: 0;
 }
 
-.seal-details:hover .slot-shot-preview,
-.seal-details:focus-within .slot-shot-preview {
+.seal-details.open .slot-shot-preview {
   opacity: 1;
   transform: translateY(0);
-  transition-delay: 520ms;
+  transition-delay: 0s;
   visibility: visible;
 }
 
-.order-slot:nth-child(2) .seal-details:hover .slot-shot-preview,
-.order-slot:nth-child(2) .seal-details:focus-within .slot-shot-preview {
+.order-slot:nth-child(2) .seal-details.open .slot-shot-preview {
   transform: translate(-50%, 0);
 }
 
@@ -980,6 +978,74 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 
 @media (max-width: 760px), (any-pointer: coarse) and (max-width: 1366px) {
+  :root[data-device="phone"] #screen-lobby .topbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 10px 9px;
+  }
+
+  :root[data-device="phone"] #screen-lobby .brand {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 22px;
+    gap: 6px;
+    line-height: 1.05;
+  }
+
+  :root[data-device="phone"] #screen-lobby .brand-tag {
+    font-size: 10px;
+  }
+
+  :root[data-device="phone"] #screen-lobby .topbar-right {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  :root[data-device="phone"] #screen-lobby .topbar-right .btn,
+  :root[data-device="phone"] #screen-lobby .topbar-right .user-chip {
+    line-height: 1.12;
+    min-height: 34px;
+    padding: 6px 7px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  :root[data-device="phone"] #screen-lobby .topbar-right .user-chip {
+    align-items: center;
+    border: 1px solid rgba(212, 167, 72, 0.34);
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :root[data-device="phone"] .expansion-box {
+    width: 100%;
+  }
+
+  :root[data-device="phone"] .expansion-toggle {
+    align-items: center;
+    border: 1px solid rgba(42, 53, 84, 0.72);
+    border-radius: 8px;
+    font-size: 15px;
+    gap: 12px;
+    margin-top: 7px;
+    min-height: 46px;
+    padding: 7px 9px;
+  }
+
+  :root[data-device="phone"] .expansion-toggle input {
+    flex: 0 0 auto;
+    height: 30px;
+    width: 30px;
+  }
+
   :root[data-device="phone"] #screen-game {
     height: 100dvh;
     overflow: hidden;
@@ -1037,6 +1103,11 @@ h1, h2, .brand, .poster-title, .banner-text {
     right: 10px;
     top: calc(58px + env(safe-area-inset-top));
     z-index: 24;
+  }
+
+  :root[data-device="phone"] #zoom-in,
+  :root[data-device="phone"] #zoom-out {
+    display: none;
   }
 
   :root[data-device="phone"] .board-controls .btn {
@@ -1131,24 +1202,44 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .slot-shot-preview {
-    box-shadow: none;
-    font-size: 10px;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.58);
+    font-size: 12px;
     left: auto;
-    opacity: 1;
-    order: 3;
-    padding: 6px;
-    position: relative;
+    opacity: 0;
+    padding: 9px 10px;
+    position: absolute;
     right: auto;
-    top: auto;
-    transform: none;
-    transition: none;
+    top: calc(100% + 6px);
+    transform: translateY(-4px);
+    transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+    visibility: hidden;
+    width: min(270px, 84vw);
+    z-index: 1000;
+  }
+
+  :root[data-device="phone"] .order-slot:nth-child(2) .slot-shot-preview {
+    left: 50%;
+    transform: translate(-50%, -4px);
+  }
+
+  :root[data-device="phone"] .order-slot:nth-child(3) .slot-shot-preview {
+    left: auto;
+    right: 0;
+  }
+
+  :root[data-device="phone"] .seal-details.open .slot-shot-preview {
+    opacity: 1;
+    transform: translateY(0);
+    transition-delay: 0s;
     visibility: visible;
-    width: 100%;
-    z-index: 1;
+  }
+
+  :root[data-device="phone"] .order-slot:nth-child(2) .seal-details.open .slot-shot-preview {
+    transform: translate(-50%, 0);
   }
 
   :root[data-device="phone"] .shot-preview-kicker {
-    font-size: 13px;
+    font-size: 16px;
   }
 
   :root[data-device="phone"] .order-slot .slot-label {
@@ -1219,15 +1310,17 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .overlay {
+    --mobile-popup-top-clearance: calc(70px + env(safe-area-inset-top));
+    --mobile-popup-bottom-clearance: calc(86px + env(safe-area-inset-bottom));
     align-items: end;
     background: rgba(4, 7, 14, 0.42);
-    padding: calc(70px + env(safe-area-inset-top)) 10px calc(18px + env(safe-area-inset-bottom));
+    padding: var(--mobile-popup-top-clearance) 10px var(--mobile-popup-bottom-clearance);
     place-items: end center;
   }
 
   :root[data-device="phone"] .picker {
     border-radius: 10px;
-    max-height: 72dvh;
+    max-height: calc(100dvh - var(--mobile-popup-top-clearance) - var(--mobile-popup-bottom-clearance));
     max-width: 440px;
     overflow: auto;
     padding: 16px;
