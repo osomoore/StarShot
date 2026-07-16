@@ -16,7 +16,14 @@
   let aiLevel = "deck_hand";
   let currentUser = null;
   let starBreachPreySelection = "__host__";
+  let starBreachRoleSelection = "";
   let starBreachBossSelection = "";
+  const STAR_BREACH_ROLES = [
+    ["bauble_runner", "Bauble Runner"],
+    ["tank", "Tank"],
+    ["engineer", "Engineer"],
+    ["fighting_ace", "Fighting Ace"],
+  ];
   let bossDesignsLoaded = false;
   let starCommandActive = false;
   let starBreachActive = false;
@@ -237,7 +244,23 @@
     label.querySelector("select").addEventListener("change", (event) => {
       starBreachPreySelection = event.target.value || "__host__";
     });
+    ensureStarBreachRolePicker(box);
     ensureStarBreachBossPicker(box);
+  }
+
+  function ensureStarBreachRolePicker(box) {
+    if (document.getElementById("star-breach-role")) return;
+    const label = document.createElement("label");
+    label.className = "open-seats-label star-breach-role-label hidden";
+    label.innerHTML = `Your Role:
+      <select id="star-breach-role">
+        <option value="">Deal me one</option>
+        ${STAR_BREACH_ROLES.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}</option>`).join("")}
+      </select>`;
+    box.appendChild(label);
+    label.querySelector("select").addEventListener("change", (event) => {
+      starBreachRoleSelection = event.target.value || "";
+    });
   }
 
   function ensureStarBreachBossPicker(box) {
@@ -288,6 +311,7 @@
   function updateStarBreachPreyPicker() {
     const label = document.querySelector(".star-breach-prey-label");
     const select = document.getElementById("star-breach-prey");
+    document.querySelector(".star-breach-role-label")?.classList.toggle("hidden", !starBreachActive);
     if (!label || !select) return;
     label.classList.toggle("hidden", !starBreachActive);
     if (!starBreachActive) return;
@@ -346,6 +370,43 @@
     overlay.querySelector("#star-command-tutorial-ok").addEventListener("click", () => overlay.remove());
   }
 
+  /* Ask a joining captain which StarBreach role they want. Resolves to a
+     role id, null ("deal me one"), or undefined when the popup is closed. */
+  function pickStarBreachRole(match) {
+    return new Promise((resolve) => {
+      const claimed = new Map();
+      for (const seat of match.seat_list || []) {
+        if (seat.star_breach_role) claimed.set(seat.star_breach_role, seat.display_name);
+      }
+      const overlay = document.createElement("div");
+      overlay.className = "overlay";
+      overlay.innerHTML = `
+        <div class="picker">
+          <h3>Choose Your Role</h3>
+          <div class="tutorial-steps">
+            <button class="btn gold sb-role-choice" data-role="">🎲 Deal me one</button>
+            ${STAR_BREACH_ROLES.map(([id, name]) => {
+              const takenBy = claimed.get(id);
+              return `<button class="btn ${takenBy ? "ghost" : "gold"} sb-role-choice" data-role="${esc(id)}" ${takenBy ? "disabled" : ""}>
+                ${esc(name)}${takenBy ? ` — claimed by ${esc(takenBy)}` : ""}</button>`;
+            }).join("")}
+          </div>
+          <button class="btn ghost picker-cancel" id="sb-role-cancel">Never mind</button>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelectorAll(".sb-role-choice").forEach((button) => {
+        button.addEventListener("click", () => {
+          overlay.remove();
+          resolve(button.dataset.role || null);
+        });
+      });
+      overlay.querySelector("#sb-role-cancel").addEventListener("click", () => {
+        overlay.remove();
+        resolve(undefined);
+      });
+    });
+  }
+
   function renderMatches(containerId, matches, joinable) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
@@ -361,7 +422,9 @@
       const yourTurn = match.turn && match.turn.your_turn;
       row.className = "match-row" + (match.status === "complete" ? " complete" : "") + (yourTurn ? " your-turn" : "");
       const seatsTaken = match.seat_list.length;
-      const names = match.seat_list.map((seat) => seat.display_name).join(", ");
+      const roleName = (id) => (STAR_BREACH_ROLES.find(([roleId]) => roleId === id) || [])[1];
+      const names = match.seat_list.map((seat) => seat.display_name
+        + (seat.star_breach_role && roleName(seat.star_breach_role) ? ` (${roleName(seat.star_breach_role)})` : "")).join(", ");
       let turnBadge = "";
       if (match.status === "active" && match.turn) {
         turnBadge = yourTurn
@@ -388,8 +451,13 @@
         join.className = "btn gold small";
         join.textContent = "⚔ Join";
         join.addEventListener("click", async () => {
+          let role = null;
+          if ((match.active_expansions || []).includes("star_breach")) {
+            role = await pickStarBreachRole(match);
+            if (role === undefined) return; // cancelled
+          }
           try {
-            const result = await API.joinMatch(match.id);
+            const result = await API.joinMatch(match.id, role ? { star_breach_role: role } : undefined);
             if (result.game_id) { leave(); Game.enter(result.game_id); }
             else refresh();
           } catch (error) { App.toast(error.message); }
@@ -872,6 +940,7 @@
           open_seats: openSeats,
           active_expansions: activeExpansions(),
           star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
+          star_breach_role: starBreachActive ? (starBreachRoleSelection || null) : null,
           star_breach_boss_design_id: starBreachActive ? (starBreachBossSelection || null) : null,
         });
         crew = [];

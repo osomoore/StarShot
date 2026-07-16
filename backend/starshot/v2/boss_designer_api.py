@@ -35,6 +35,7 @@ def _designer_meta() -> dict:
         "default_lane_count": boss_designs.DEFAULT_LANE_COUNT,
         "max_lane_count": boss_designs.MAX_LANE_COUNT,
         "step_kinds": list(boss_designs.STEP_KINDS),
+        "ability_types": list(boss_designs.ABILITY_TYPES),
         "trigger_types": list(boss_designs.TRIGGER_TYPES),
         "spawn_locations": list(boss_designs.SPAWN_LOCATIONS),
         "spawn_max_count": boss_designs.SPAWN_MAX_COUNT,

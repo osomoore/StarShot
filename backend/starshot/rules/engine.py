@@ -132,7 +132,7 @@ def create_initial_state(config: GameConfig) -> GameState:
         for player in players.values():
             player.deck.append(desperation_card_by_id("desp_steady_shot_a"))
     if star_breach is not None:
-        star_breach.assign_roles(players)
+        star_breach.assign_roles(players, config.star_breach_role_preferences)
     for player in players.values():
         draw_hand(player)
 

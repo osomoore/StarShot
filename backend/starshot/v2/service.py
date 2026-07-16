@@ -447,6 +447,11 @@ def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None,
                 seed=seed,
                 active_expansions=active_expansions,
                 star_breach_prey_player_id=match.get("star_breach_prey_player_id"),
+                star_breach_role_preferences={
+                    seat["player_id"]: seat["star_breach_role"]
+                    for seat in match["seat_list"]
+                    if seat.get("star_breach_role")
+                } or None,
                 star_breach_boss_design=boss_design,
             )
         )
@@ -879,6 +884,7 @@ def build_match_meta(match: dict, state: GameState | None) -> dict:
                 "ai_type": seat["ai_type"],
                 "ai_label": AI_TYPES.get(seat["ai_type"] or "", None),
                 "title": title_by_user.get(seat["user_id"]) if seat["user_id"] is not None else None,
+                "star_breach_role": seat.get("star_breach_role"),
             }
         )
     return {

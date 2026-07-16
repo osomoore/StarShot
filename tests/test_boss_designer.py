@@ -182,6 +182,31 @@ class NormalizeTests(unittest.TestCase):
             boss_designs.normalize_design(raw)
 
 
+class AbilityStepTests(unittest.TestCase):
+    def test_ability_link_step_normalizes(self):
+        raw = make_design()
+        raw["progression"]["steps"].append({"kind": "ability_link", "ability": "signal_jammer"})
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(
+            design["progression"]["steps"][-1],
+            {"kind": "ability_link", "ability": "signal_jammer"},
+        )
+
+    def test_ability_link_rejects_unknown_ability(self):
+        raw = make_design()
+        raw["progression"]["steps"].append({"kind": "ability_link", "ability": "cloak"})
+        with self.assertRaises(boss_designs.BossDesignError):
+            boss_designs.normalize_design(raw)
+
+    def test_passive_component_tiles_normalize(self):
+        raw = make_design()
+        raw["tiles"][3] = {"q": 0, "r": -1, "type": "signal_jammer"}
+        raw["tiles"][4] = {"q": -1, "r": 0, "type": "targeting_sensors"}
+        design = boss_designs.normalize_design(raw)
+        self.assertEqual(design["tiles"][3], {"q": 0, "r": -1, "type": "signal_jammer"})
+        self.assertEqual(design["tiles"][4], {"q": -1, "r": 0, "type": "targeting_sensors"})
+
+
 class ValidateTests(unittest.TestCase):
     def _problems(self, raw) -> list[str]:
         return boss_designs.validate_design(boss_designs.normalize_design(raw))

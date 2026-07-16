@@ -419,6 +419,17 @@ class CreateMatchRequest(BaseModel):
     active_expansions: list[str] = Field(default_factory=list, max_length=4)
     star_breach_prey_player_id: str | None = Field(default=None, max_length=80)
     star_breach_boss_design_id: str | None = Field(default=None, max_length=80)
+    star_breach_role: str | None = Field(default=None, max_length=40)
+
+
+def _validated_star_breach_role(role: str | None) -> str | None:
+    if not role:
+        return None
+    from starshot.rules.star_breach import ROLES_BY_ID
+
+    if role not in ROLES_BY_ID:
+        raise HTTPException(status_code=400, detail=f"Unknown StarBreach role: {role}")
+    return role
 
 
 def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> str | None:
@@ -456,6 +467,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"Unknown AI level: {body.ai_level}")
     active_expansions = _validated_expansions(body.active_expansions)
     prey_player_id = _resolve_requested_prey_id(body, user["username"]) if "star_breach" in active_expansions else None
+    host_role = _validated_star_breach_role(body.star_breach_role) if "star_breach" in active_expansions else None
     boss_design_id = body.star_breach_boss_design_id if "star_breach" in active_expansions else None
     if "star_breach" in active_expansions and not boss_design_id:
         from starshot.v2.settings import default_starbreach_boss_design_id
@@ -492,7 +504,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         star_breach_prey_player_id=prey_player_id,
         star_breach_boss_design_id=boss_design_id,
     )
-    store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"])
+    store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"], star_breach_role=host_role)
     counts: dict[str, int] = {}
     for index, ai_type in enumerate(body.ai_types):
         counts[ai_type] = counts.get(ai_type, 0) + 1
@@ -511,14 +523,26 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
     return {"match": build_match_meta(match, None), "game_id": game_id}
 
 
+class JoinMatchRequest(BaseModel):
+    star_breach_role: str | None = Field(default=None, max_length=40)
+
+
 @router.post("/matches/{match_id}/join")
-def join_match(match_id: str, request: Request) -> dict:
+def join_match(match_id: str, request: Request, body: JoinMatchRequest | None = None) -> dict:
     user = _current_user(request)
     _check_maintenance(user)
     store = get_v2_store()
+    existing = store.get_match(match_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+    role = (
+        _validated_star_breach_role(body.star_breach_role if body else None)
+        if "star_breach" in (existing.get("active_expansions") or [])
+        else None
+    )
     store.leave_queue(user["id"])
     try:
-        result = store.try_join_match(match_id, user["id"], user["username"], user["username"])
+        result = store.try_join_match(match_id, user["id"], user["username"], user["username"], star_breach_role=role)
     except KeyError:
         raise HTTPException(status_code=404, detail="Match not found.")
     except ValueError as exc:

@@ -2,6 +2,18 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 16:25:51 -05:00
+
+- Title: StarBreach roles, previews, print layout, passive boss components
+- Build ID: `6fac5c95bd58`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Bauble Runner's doubled basic movement now shows in the order preview path/ghost; overdrive copies stay undoubled in copy-action mode, matching the engine.
+  - StarBreach role selection: the host picks a role at launch ("Your Role" in the lobby expansion box) and joiners pick from unclaimed roles in a popup; match seats store `star_breach_role` (new column), preferences flow through `GameConfig.star_breach_role_preferences`, and unrequested roles still deal round-robin so all four stay in play. Claimed roles show on open-raid rows.
+  - Boss print sheet reworked: the ship box now spans the full page width, the progression track prints as a horizontal row of squares (empty = filler; letter/number badges for linked elements: C/E + stack, B core, F spawns, J/T abilities), and the Fleet / Table Aid section prints below everything else with per-stage fleet actions and per-square progression notes.
+  - New passive boss components: Signal Jammer (+2 boss defense while intact) and Targeting Sensors (+2 boss Aim while intact). No action-stack elements; also grantable via the new "Ability link" progression step. Designer tools/badges, spec compiler (`tier_abilities`), engine hooks (volley threshold + boss aim), serialization (`boss_defense_bonus`/`boss_aim_bonus`), and the player shot preview all honor them.
+  - Verified with `python -m unittest discover -s tests` (256 tests, 8 new) and `node --check` on the four modified JS files; bumped cache strings for api/lobby/game/bossdesigner scripts.
+
 ## 2026-07-16 13:35:53 -05:00
 
 - Title: Mobile controls right align

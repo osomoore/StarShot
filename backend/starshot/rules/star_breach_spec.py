@@ -105,6 +105,8 @@ def default_spec() -> dict:
         },
         # Tier -> fleet craft spawned when it powers up (designed bosses only).
         "tier_spawns": {},
+        # Tier -> passive ability granted while active (designed bosses only).
+        "tier_abilities": {},
         # None = built-in progress rules (prey hit +1, prey kill +3 total).
         "progress_triggers": None,
         "fleet": [
@@ -138,6 +140,8 @@ def _design_component_id(tile: dict) -> str:
         "firing_computer": "c",
         "fuel_tank": "e",
         "core": "core",
+        "signal_jammer": "sj",
+        "targeting_sensors": "ts",
     }[tile["type"]]
     return f"{short}_{tile['q']}_{tile['r']}"
 
@@ -227,6 +231,10 @@ def spec_from_design(design: dict) -> dict:
             component["name"] = f"Cannon {sequence}"
         elif tile_type == "engine":
             component["name"] = f"Engine {sequence}"
+        elif tile_type == "signal_jammer":
+            component["name"] = f"Signal Jammer {sequence}"
+        elif tile_type == "targeting_sensors":
+            component["name"] = f"Targeting Sensors {sequence}"
         components.append(component)
 
     core_hex_by_number = {
@@ -249,6 +257,7 @@ def spec_from_design(design: dict) -> dict:
     fleet_config = design["behavior"]["fleet"]
     tier_labels: dict[str, dict] = {}
     tier_spawns: dict[str, dict] = {}
+    tier_abilities: dict[str, str] = {}
     for index, step in enumerate(steps):
         tier = index + 1
         if step["kind"] == "action_link":
@@ -275,6 +284,9 @@ def spec_from_design(design: dict) -> dict:
                 "hp": fleet_config["hp"],
             }
             tier_labels[str(tier)] = {"kind": "spawn", "stack": None}
+        elif step["kind"] == "ability_link":
+            tier_abilities[str(tier)] = step["ability"]
+            tier_labels[str(tier)] = {"kind": "ability", "stack": None, "ability": step["ability"]}
         elif step["kind"] == "ability_trigger":
             tier_labels[str(tier)] = {"kind": "ability", "stack": None}
         else:
@@ -323,6 +335,7 @@ def spec_from_design(design: dict) -> dict:
         "tier_progress": {str(index + 1): index + 1 for index in range(len(steps))},
         "tier_labels": tier_labels,
         "tier_spawns": tier_spawns,
+        "tier_abilities": tier_abilities,
         "progress_triggers": list(design["progression"]["triggers"]),
         "fleet": fleet,
         "fleet_move": sb_data.HUNTER_KILLER_MOVE,
@@ -393,6 +406,37 @@ def shield_generator_intact(spec: dict, area: str, destroyed_hexes: set[tuple[in
     if generator is None:
         return area in spec["areas"]
     return (generator[0], generator[1]) not in destroyed_hexes
+
+
+def ability_active(
+    spec: dict,
+    ability: str,
+    destroyed_hexes: set[tuple[int, int]],
+    active_tiers: set[int],
+) -> bool:
+    """A passive component ability is on while a component of that type is
+    intact, or while a progression tier granting it is powered."""
+    for component in spec["components"]:
+        if component["type"] == ability and (component["q"], component["r"]) not in destroyed_hexes:
+            return True
+    return any(
+        granted == ability and int(tier) in active_tiers
+        for tier, granted in (spec.get("tier_abilities") or {}).items()
+    )
+
+
+def boss_defense_bonus(
+    spec: dict, destroyed_hexes: set[tuple[int, int]], active_tiers: set[int]
+) -> int:
+    """Signal Jammer: +2 defense while intact (or progression-granted)."""
+    return 2 if ability_active(spec, "signal_jammer", destroyed_hexes, active_tiers) else 0
+
+
+def boss_aim_bonus(
+    spec: dict, destroyed_hexes: set[tuple[int, int]], active_tiers: set[int]
+) -> int:
+    """Targeting Sensors: +2 Aim while intact (or progression-granted)."""
+    return 2 if ability_active(spec, "targeting_sensors", destroyed_hexes, active_tiers) else 0
 
 
 def board_hex_areas(spec: dict) -> tuple[str, ...]:

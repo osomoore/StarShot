@@ -611,13 +611,16 @@
   const KIND_COLORS = { attack: "#ff8d6b", move: "#9dff8a", breacher: "#d9a6ff", spawn: "#ff7ad0", ability: "#ffd75e", filler: "#9aa3b8", shield: "#59c8ff" };
   // Component tiles are colored/labelled by what they are, so a glance at the
   // hull tells you which action each tile powers (matching the chip colors).
-  const COMPONENT_TYPE_COLOR = { cannon: "#ff8d6b", engine: "#9dff8a", shield_generator: "#59c8ff", core: "#d9a6ff" };
+  const COMPONENT_TYPE_COLOR = {
+    cannon: "#ff8d6b", engine: "#9dff8a", shield_generator: "#59c8ff", core: "#d9a6ff",
+    signal_jammer: "#78f0cd", targeting_sensors: "#ff96d2",
+  };
   // A font guaranteed to carry the ☄ ➤ ◉ 🛡 glyphs — the decorative body font
   // renders them as "?", so SVG symbol labels pin this explicitly.
   const SYMBOL_FONT = "'Space Grotesk', 'Segoe UI Symbol', sans-serif";
   const PHASE_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
   const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
-  const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉" };
+  const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉", signal_jammer: "J", targeting_sensors: "T" };
   // Which boss phase has already resolved by the time the player is acting.
   const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_baubles: "3.5" };
 
@@ -1427,7 +1430,7 @@
   // colors by position in the layout's area list.
   const EXTRA_FILL = ["89,200,255", "255,157,107", "157,255,138", "255,215,94", "255,122,208", "143,157,255", "107,255,216", "255,107,107", "208,255,94"];
   const EXTRA_STROKE = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0", "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
-  const COMPONENT_BADGE = { shield_generator: "SG", cannon: "☄", engine: "➤", core: "◉" };
+  const COMPONENT_BADGE = { shield_generator: "SG", cannon: "☄", engine: "➤", core: "◉", signal_jammer: "J", targeting_sensors: "T" };
 
   function areaPalette(sb) {
     const layoutAreas = (sb.boss_layout || {}).areas || [];
@@ -2606,12 +2609,21 @@
   }
 
   /* Mirror of the engine's per-card movement (see rules/engine.py). */
-  function simMove(pos, selection) {
+  function simMove(pos, selection, overdriveCopy = false) {
     const card = selection.card;
     const me = myPlayer();
     const desperate = selection.face === "desperate";
     const face = desperate ? card.desperate_face : card.effect;
-    const value = modifiedMoveValue(face, me);
+    let value = modifiedMoveValue(face, me);
+    // Bauble Runner doubles basic movement; overdrive copies are not doubled.
+    if (
+      view.star_breach
+      && myRoles().includes("bauble_runner")
+      && !desperate
+      && !face.warp_destination
+      && !face.movement_disabled
+      && !overdriveCopy
+    ) value *= 2;
     let { q, r, facing } = pos;
     const choice = selection.orientation === "up" ? "forward" : selection.orientation;
     const step = (heading, distance) => {
@@ -2659,7 +2671,7 @@
           && selection.face === "desperate"
           && !view.rules_config?.allow_overdrive_desperation
         ) continue;
-        pos = simMove(pos, selection).pos;
+        pos = simMove(pos, selection, pass > 0 && actionCopy).pos;
       }
     }
     return pos;
@@ -2727,7 +2739,8 @@
         if (distance < bestDistance) { bestDistance = distance; best = cell; }
       }
       if (!best) return null;
-      return { ship: { q: best.q, r: best.r, defense_bonus_this_action: 0, shields: 0 } };
+      // Signal Jammer (+2 boss defense) shows up in the shot preview odds.
+      return { ship: { q: best.q, r: best.r, defense_bonus_this_action: sb.boss_defense_bonus || 0, shields: 0 } };
     }
     return null;
   }
@@ -2840,7 +2853,7 @@
               && selection.face === "desperate"
               && !view.rules_config?.allow_overdrive_desperation
             ) continue;
-            const result = simMove(pos, selection);
+            const result = simMove(pos, selection, pass > 0 && actionCopy);
             pos = result.pos;
             points.push({ q: pos.q, r: pos.r });
           }

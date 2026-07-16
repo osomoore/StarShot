@@ -220,6 +220,53 @@ class DesignSpecTests(unittest.TestCase):
         self.assertEqual(labels["4"], {"kind": "filler", "stack": None})
 
 
+class AbilityComponentTests(unittest.TestCase):
+    def test_jammer_and_sensors_compile_and_grant_bonuses(self):
+        raw = make_design()
+        raw["tiles"][3] = {"q": 0, "r": -1, "type": "signal_jammer"}
+        raw["tiles"][4] = {"q": -1, "r": 0, "type": "targeting_sensors"}
+        spec = sb_spec.spec_from_design(normalize_design(raw))
+        types = {component["type"] for component in spec["components"]}
+        self.assertIn("signal_jammer", types)
+        self.assertIn("targeting_sensors", types)
+        # Passive components never feed an action-stack slot.
+        for phase in spec["phases"]:
+            for slot in phase["slots"]:
+                if slot["slot"] != "component":
+                    continue
+                component = next(c for c in spec["components"] if c["id"] == slot["component_id"])
+                self.assertIn(component["type"], ("cannon", "engine"))
+        self.assertEqual(sb_spec.boss_defense_bonus(spec, set(), set()), 2)
+        self.assertEqual(sb_spec.boss_aim_bonus(spec, set(), set()), 2)
+        # A destroyed component hex switches its bonus off.
+        self.assertEqual(sb_spec.boss_defense_bonus(spec, {(0, -1)}, set()), 0)
+        self.assertEqual(sb_spec.boss_aim_bonus(spec, {(-1, 0)}, set()), 0)
+
+    def test_ability_link_progression_grants_effects(self):
+        raw = make_design()
+        raw["progression"]["steps"] = [
+            {"kind": "ability_link", "ability": "signal_jammer"},
+            {"kind": "ability_link", "ability": "targeting_sensors"},
+        ]
+        spec = sb_spec.spec_from_design(normalize_design(raw))
+        self.assertEqual(
+            spec["tier_abilities"], {"1": "signal_jammer", "2": "targeting_sensors"}
+        )
+        self.assertEqual(sb_spec.boss_defense_bonus(spec, set(), set()), 0)
+        self.assertEqual(sb_spec.boss_defense_bonus(spec, set(), {1}), 2)
+        self.assertEqual(sb_spec.boss_aim_bonus(spec, set(), {1}), 0)
+        self.assertEqual(sb_spec.boss_aim_bonus(spec, set(), {1, 2}), 2)
+        self.assertEqual(
+            spec["tier_labels"]["1"],
+            {"kind": "ability", "stack": None, "ability": "signal_jammer"},
+        )
+
+    def test_default_spec_has_no_passive_bonuses(self):
+        spec = sb_spec.default_spec()
+        self.assertEqual(sb_spec.boss_defense_bonus(spec, set(), {1, 2, 3}), 0)
+        self.assertEqual(sb_spec.boss_aim_bonus(spec, set(), {1, 2, 3}), 0)
+
+
 class DesignedBossGameTests(unittest.TestCase):
     def _designed_state(self, seed=11):
         design = playable_design()

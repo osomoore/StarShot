@@ -139,6 +139,7 @@ _MIGRATIONS = (
     "ALTER TABLE feedback ADD COLUMN is_bug_report INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE feedback ADD COLUMN game_log TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE matches ADD COLUMN star_breach_boss_design_id TEXT",
+    "ALTER TABLE match_seats ADD COLUMN star_breach_role TEXT",
 )
 
 
@@ -692,15 +693,23 @@ class V2Store:
         display_name: str,
         user_id: int | None = None,
         ai_type: str | None = None,
+        star_breach_role: str | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (match_id, seat_index, player_id, user_id, ai_type, display_name),
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role),
             )
 
-    def try_join_match(self, match_id: str, user_id: int, player_id: str, display_name: str) -> dict:
+    def try_join_match(
+        self,
+        match_id: str,
+        user_id: int,
+        player_id: str,
+        display_name: str,
+        star_breach_role: str | None = None,
+    ) -> dict:
         """Claim the next free human seat. Raises ValueError when impossible."""
         with self._connect(immediate=True) as conn:
             match = conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
@@ -715,11 +724,15 @@ class V2Store:
                 raise ValueError("Already seated in this match.")
             if len(seats) >= match["seats"]:
                 raise ValueError("Match is full.")
+            if star_breach_role and any(
+                seat["star_breach_role"] == star_breach_role for seat in seats
+            ):
+                raise ValueError("That StarBreach role is already claimed.")
             seat_index = len(seats)
             conn.execute(
-                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name)
-                   VALUES (?, ?, ?, ?, NULL, ?)""",
-                (match_id, seat_index, player_id, user_id, display_name),
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role)
+                   VALUES (?, ?, ?, ?, NULL, ?, ?)""",
+                (match_id, seat_index, player_id, user_id, display_name, star_breach_role),
             )
             conn.execute("UPDATE matches SET updated_at = ? WHERE id = ?", (_now(), match_id))
             return {"seat_index": seat_index, "full": seat_index + 1 >= match["seats"]}

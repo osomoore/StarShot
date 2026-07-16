@@ -78,6 +78,9 @@ class GameConfig:
     debug_start_with_attack_desperation_card: bool = False
     active_expansions: tuple[str, ...] = ()
     star_breach_prey_player_id: str | None = None
+    # player_id -> requested StarBreach role id; unrequested roles are dealt
+    # round-robin so every role ability stays in play.
+    star_breach_role_preferences: dict | None = None
     # A normalized boss-designer document (see starshot.v2.boss_designs); when
     # set, StarBreach games fight this design instead of the stock scenario.
     star_breach_boss_design: dict | None = None

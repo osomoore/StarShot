@@ -46,12 +46,22 @@
     { type: "cannon", label: "Cannon", badge: "C" },
     { type: "engine", label: "Engine", badge: "E" },
     { type: "core", label: "Core", badge: "◉" },
+    { type: "signal_jammer", label: "Sig. Jammer", badge: "J" },
+    { type: "targeting_sensors", label: "Targeting", badge: "T" },
     { type: "erase", label: "Eraser", badge: "✕" },
   ];
   const TILE_FILL = {
     generic: "154,163,184", shield_gen: "120,190,255", cannon: "255,140,120",
     engine: "255,205,110", core: "222,160,255",
+    signal_jammer: "120,240,205", targeting_sensors: "255,150,210",
   };
+  // Passive abilities: no action-stack element; active while the component is
+  // intact, or granted by an "ability link" progression square.
+  const ABILITY_LABELS = {
+    signal_jammer: "Signal Jammer (+2 defense)",
+    targeting_sensors: "Targeting Sensors (+2 Aim)",
+  };
+  const ABILITY_SHORT = { signal_jammer: "J", targeting_sensors: "T" };
   const REGION_COLORS = ["#59c8ff", "#ff9d6b", "#9dff8a", "#ffd75e", "#ff7ad0",
     "#8f9dff", "#6bffd8", "#ff6b6b", "#d0ff5e"];
   const STACK_SHORT = { "0.5": "0.5", "1.5": "1.5", "2.5": "2.5", "3.5": "3.5", starbreach: "SB" };
@@ -127,7 +137,10 @@
 
   /* Components auto-number per type in placement order (matches the game
      engine), so the organizer can say "Engine 1" instead of coordinates. */
-  const COMPONENT_LABEL = { cannon: "Cannon", engine: "Engine", shield_gen: "Shield Gen", core: "Core" };
+  const COMPONENT_LABEL = {
+    cannon: "Cannon", engine: "Engine", shield_gen: "Shield Gen", core: "Core",
+    signal_jammer: "Signal Jammer", targeting_sensors: "Targeting Sensors",
+  };
   function componentNumbers() {
     const counts = {};
     const map = {};
@@ -204,6 +217,8 @@
     const n = (numbers || componentNumbers())[key(tile.q, tile.r)] || "";
     if (tile.type === "cannon") return "C" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
     if (tile.type === "engine") return "E" + n + " " + (STACK_SHORT[tile.stack] || tile.stack);
+    if (tile.type === "signal_jammer") return "J" + n;
+    if (tile.type === "targeting_sensors") return "T" + n;
     return "";
   }
 
@@ -606,11 +621,40 @@
       return `Breacher link${bits.length ? " (" + bits.join(", ") + ")" : ""}`;
     }
     if (step.kind === "ability_trigger") return `⚡ ${step.name || "Ability"}`;
+    if (step.kind === "ability_link") return `⚡ ${ABILITY_LABELS[step.ability] || step.ability}`;
     if (step.kind === "spawn_fleet") {
       const where = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" }[step.location] || step.location;
       return `▣ Spawn ${step.count || 1} fleet craft — ${where}`;
     }
     return "Filler";
+  }
+
+  /* Letter/number drawn inside a printed progression square; empty = filler.
+     C/E = boss gains a cannon/engine action, B = breacher strike, F = fleet
+     spawn, ⚡ = ability trigger. */
+  function progressionBoxBadge(step) {
+    if (step.kind === "action_link") {
+      return {
+        main: step.action === "shoot" ? "C" : "E",
+        sub: STACK_SHORT[step.stack] || step.stack || "",
+      };
+    }
+    if (step.kind === "breacher_link") {
+      return { main: "B", sub: step.core !== undefined ? "core " + step.core : "" };
+    }
+    if (step.kind === "spawn_fleet") return { main: "F", sub: "×" + (step.count || 1) };
+    if (step.kind === "ability_trigger") return { main: "⚡", sub: (step.name || "").slice(0, 7) };
+    if (step.kind === "ability_link") {
+      return {
+        main: ABILITY_SHORT[step.ability] || "⚡",
+        sub: step.ability === "signal_jammer" ? "+2 def" : step.ability === "targeting_sensors" ? "+2 aim" : "",
+      };
+    }
+    return { main: "", sub: "" };
+  }
+
+  function abilityStepText(step) {
+    return step.name || "see design notes";
   }
 
   function moveStep(fromIndex, toIndex) {
@@ -820,7 +864,9 @@
       const badge = tile.type === "cannon" ? "C" + numbers[key(tile.q, tile.r)]
         : tile.type === "engine" ? "E" + numbers[key(tile.q, tile.r)]
         : tile.type === "shield_gen" ? "S" + tile.number
-        : tile.type === "core" ? "◉" : "";
+        : tile.type === "core" ? "◉"
+        : tile.type === "signal_jammer" ? "J" + numbers[key(tile.q, tile.r)]
+        : tile.type === "targeting_sensors" ? "T" + numbers[key(tile.q, tile.r)] : "";
       body += `<g><polygon data-hex="${tile.q},${tile.r}" points="${hexPoints(x, y, size - 0.5)}"
         fill="rgba(${tint},.42)" stroke="rgb(${tint})" stroke-width="1">
         <title>${esc(tile.type === "generic" ? "hull" : componentLabel(tile, numbers))} (${tile.q},${tile.r})</title></polygon>
@@ -846,14 +892,14 @@
         page: "#ffffff", text: "#111111", dim: "#555555", line: "#111111",
         hull: "#f4f4f4", generic: "#ffffff", attack: "#eeeeee", move: "#dddddd",
         shieldGen: "#e8e8e8", core: "#cfcfcf", lane: "#111111", fleet: "#f0f0f0",
-        progression: "#ffffff", breacher: "#e6e6e6",
+        progression: "#ffffff", breacher: "#e6e6e6", jammer: "#f8f8f8", sensors: "#e2e2e2",
       };
     }
     return {
       page: "#fffaf0", text: "#151923", dim: "#5f6675", line: "#283246",
       hull: "#f2ead8", generic: "#f8f3e7", attack: "#ffd2c7", move: "#ffe2a8",
       shieldGen: "#c7eaff", core: "#e8c8ff", lane: "#c54530", fleet: "#d6f3ff",
-      progression: "#ddd2ff", breacher: "#f3c4f0",
+      progression: "#ddd2ff", breacher: "#f3c4f0", jammer: "#c9f5e4", sensors: "#ffd3ec",
     };
   }
 
@@ -870,6 +916,8 @@
     if (tile.type === "engine") return colors.move;
     if (tile.type === "shield_gen") return colors.shieldGen;
     if (tile.type === "core") return colors.core;
+    if (tile.type === "signal_jammer") return colors.jammer;
+    if (tile.type === "targeting_sensors") return colors.sensors;
     return colors.generic;
   }
 
@@ -880,7 +928,9 @@
     const stacks = actionStackItems();
     const pageW = 1400;
     let pageH = 1900;
-    const breachBox = { x: 55, y: 175, w: 640, h: 640 };
+    // Full-page-width ship box; the progression track and everything else
+    // flow horizontally beneath it.
+    const breachBox = { x: 55, y: 175, w: pageW - 110, h: 640 };
     const baseShipSize = 34;
     const baseXy = (q, r) => [baseShipSize * 1.5 * q, baseShipSize * SQ * (r + q / 2)];
     const basePoints = design.tiles.length ? design.tiles.map((tile) => baseXy(tile.q, tile.r)) : [[0, 0]];
@@ -912,6 +962,8 @@
       if (tile.type === "engine") return "E" + numbers[key(tile.q, tile.r)];
       if (tile.type === "shield_gen") return "SG" + tile.number;
       if (tile.type === "core") return "◎" + tile.number;
+      if (tile.type === "signal_jammer") return "J" + numbers[key(tile.q, tile.r)];
+      if (tile.type === "targeting_sensors") return "T" + numbers[key(tile.q, tile.r)];
       return "";
     };
 
@@ -1074,8 +1126,48 @@
       return itemAction(item) === "shoot" ? colors.attack : colors.move;
     };
 
+    // Everything under the ship flows top-to-bottom: progression track first,
+    // then action stacks, optional lists, and the fleet/table aid at the very
+    // bottom of the page.
+    let cursorY = breachBox.y + breachBox.h + 56;
+    let side = "";
+
+    if (printOptions.progression) {
+      // The physical progress track: one square per step, marked left to
+      // right as the boss advances. Filler squares stay empty; linked squares
+      // carry the letter/number of the element they power.
+      side += `<text x="70" y="${cursorY}" class="ps-section">Progression Track</text>`;
+      cursorY += 24;
+      const triggers = design.progression.triggers || [];
+      const trigText = triggers.length
+        ? "Advance the marker one square each time: " + triggers.map((trigger) => TRIGGER_LABELS[trigger] || trigger).join(", ")
+        : "No progress triggers set.";
+      side += `<text x="70" y="${cursorY}" class="ps-small">${esc(trigText)}</text>`;
+      cursorY += 18;
+      const steps = design.progression.steps;
+      if (!steps.length) {
+        side += `<text x="70" y="${cursorY + 18}" class="ps-small">No progression steps.</text>`;
+        cursorY += 40;
+      }
+      const box = 46, boxGap = 10, boxRowH = box + 32;
+      const perRow = Math.max(1, Math.floor((pageW - 140 + boxGap) / (box + boxGap)));
+      steps.forEach((step, index) => {
+        const bx = 70 + (index % perRow) * (box + boxGap);
+        const by = cursorY + Math.floor(index / perRow) * boxRowH;
+        const badge = progressionBoxBadge(step);
+        side += `<g>
+          <rect x="${bx}" y="${by}" width="${box}" height="${box}" fill="${colors.page}" stroke="${colors.line}" stroke-width="2"/>
+          ${badge.main ? `<text x="${bx + box / 2}" y="${by + (badge.sub ? 22 : 29)}" text-anchor="middle" class="ps-badge">${esc(badge.main)}</text>` : ""}
+          ${badge.sub ? `<text x="${bx + box / 2}" y="${by + 38}" text-anchor="middle" class="ps-coord">${esc(badge.sub)}</text>` : ""}
+          <text x="${bx + box / 2}" y="${by + box + 16}" text-anchor="middle" class="ps-tier">${index + 1}</text>
+          <title>${esc(stepLabel(step))}</title>
+        </g>`;
+      });
+      if (steps.length) cursorY += Math.ceil(steps.length / perRow) * boxRowH + 26;
+    }
+
     const stackX = 70;
-    const stackY = 875;
+    const stackY = cursorY;
     const colW = 244;
     const colGap = 10;
     const rowH = 34;
@@ -1130,76 +1222,90 @@
         ${glyphMove(stackX + 4, legY2, 5.4, true)}${glyphMove(stackX + 13, legY2, 5.4, true)}${glyphMove(stackX + 22, legY2, 5.4, true)}<text x="${stackX + 34}" y="${legY2 + 4}" class="ps-small">Trio = fleet acts as a squadron</text>
         ${glyphBreacher(stackX + 330, legY2, 8)}<text x="${stackX + 343}" y="${legY2 + 4}" class="ps-small">Diamond = breacher core strike</text>
       </g>`;
+      cursorY = legY2 + 48;
     }
 
-    let side = "";
-    let sideY = 170;
     if (printOptions.components) {
-      side += `<text x="760" y="${sideY}" class="ps-section">Components</text>`;
-      sideY += 28;
+      side += `<text x="70" y="${cursorY}" class="ps-section">Components</text>`;
+      cursorY += 28;
       const components = design.tiles.filter((tile) => tile.type !== "generic");
       if (!components.length) {
-        side += `<text x="760" y="${sideY}" class="ps-small">No special components placed.</text>`;
-        sideY += 24;
+        side += `<text x="70" y="${cursorY}" class="ps-small">No special components placed.</text>`;
+        cursorY += 24;
       }
       components.forEach((tile) => {
-        side += `<text x="760" y="${sideY}" class="ps-list">${esc(componentBadge(tile))}</text>
-          <text x="840" y="${sideY}" class="ps-list">${esc(componentLabel(tile, numbers))} (${tile.q},${tile.r})</text>`;
-        sideY += 23;
+        side += `<text x="70" y="${cursorY}" class="ps-list">${esc(componentBadge(tile))}</text>
+          <text x="150" y="${cursorY}" class="ps-list">${esc(componentLabel(tile, numbers))} (${tile.q},${tile.r})</text>`;
+        cursorY += 23;
       });
-      sideY += 20;
+      cursorY += 20;
     }
     if (printOptions.laneList) {
-      side += `<text x="760" y="${sideY}" class="ps-section">Damage Lanes</text>`;
-      sideY += 28;
+      side += `<text x="70" y="${cursorY}" class="ps-section">Damage Lanes</text>`;
+      cursorY += 28;
       for (const region of design.shield_regions) {
         const gen = region.generator ? `SG at ${region.generator[0]},${region.generator[1]}` : "no generator";
-        side += `<text x="760" y="${sideY}" class="ps-list">Area ${region.number}: ${esc(gen)}</text>`;
-        sideY += 22;
+        side += `<text x="70" y="${cursorY}" class="ps-list">Area ${region.number}: ${esc(gen)}</text>`;
+        cursorY += 22;
         const lanes = [...region.lanes].sort((a, b) => a.roll - b.roll);
         const laneText = lanes.length
           ? lanes.map((lane) => `${lane.roll}->${lane.q},${lane.r}`).join("  ")
           : "no lane arrows";
-        side += `<text x="786" y="${sideY}" class="ps-small">${esc(laneText)}</text>`;
-        sideY += 24;
+        side += `<text x="96" y="${cursorY}" class="ps-small">${esc(laneText)}</text>`;
+        cursorY += 24;
       }
-      sideY += 12;
-    }
-    if (printOptions.progression) {
-      // A tick-off form: one square per tier for the players to mark with a
-      // pen as the boss climbs its track, plus how the track advances.
-      side += `<text x="760" y="${sideY}" class="ps-section">Progression Track</text>`;
-      sideY += 26;
-      const triggers = design.progression.triggers || [];
-      const trigText = triggers.length
-        ? "Tick a box each time: " + triggers.map((trigger) => TRIGGER_LABELS[trigger] || trigger).join(", ")
-        : "No progress triggers set.";
-      side += `<text x="760" y="${sideY}" class="ps-small">${esc(trigText)}</text>`;
-      sideY += 24;
-      if (!design.progression.steps.length) {
-        side += `<text x="760" y="${sideY}" class="ps-small">No progression steps.</text>`;
-        sideY += 24;
-      }
-      const boxSize = 18;
-      design.progression.steps.forEach((step, index) => {
-        const boxY = sideY - boxSize + 3;
-        side += `<rect x="760" y="${boxY}" width="${boxSize}" height="${boxSize}" rx="3" fill="${colors.page}" stroke="${colors.line}" stroke-width="1.8"/>
-          <text x="${760 + boxSize + 10}" y="${sideY}" class="ps-tier">T${index + 1}</text>
-          <text x="${760 + boxSize + 48}" y="${sideY}" class="ps-list">${esc(stepLabel(step))}</text>`;
-        sideY += 27;
-      });
-      sideY += 12;
+      cursorY += 12;
     }
     if (printOptions.fleet) {
+      // Table aid: sits below every other section, summarizing the enemy
+      // fleet and how the progression track changes what it does.
       const fleet = design.behavior?.fleet || defaultBehavior().fleet;
-      side += `<text x="760" y="${sideY}" class="ps-section">Fleet / Table Aids</text>`;
-      sideY += 28;
-      side += `<text x="760" y="${sideY}" class="ps-list">Fleet: ${fleet.count || 0} ${esc(fleet.kind || "craft")} at ${fleet.hp || 0} HP</text>`;
-      sideY += 22;
-      side += `<text x="760" y="${sideY}" class="ps-list">Roll 1 is a glancing blow.</text>`;
+      side += `<text x="70" y="${cursorY}" class="ps-section">Fleet / Table Aid</text>`;
+      cursorY += 28;
+      side += `<text x="70" y="${cursorY}" class="ps-list">Fleet: ${fleet.count || 0} ${esc(fleet.kind || "craft")} at ${fleet.hp || 0} HP each</text>`;
+      cursorY += 24;
+      const actionText = (stack) => (fleet.actions || [])
+        .filter((entry) => entry.stack === stack && (parseInt(entry.count, 10) || 0) > 0)
+        .map((entry) => `${entry.action === "shoot" ? "shoot" : "move"} ×${entry.count}`)
+        .join(", ");
+      const actionLines = FLEET_STACKS
+        .map((stack) => ({ stack, text: actionText(stack) }))
+        .filter((line) => line.text);
+      if (fleet.count > 0 && actionLines.length) {
+        side += `<text x="70" y="${cursorY}" class="ps-list">Fleet actions each boss stage:</text>`;
+        cursorY += 22;
+        for (const line of actionLines) {
+          side += `<text x="96" y="${cursorY}" class="ps-list">Action ${line.stack}: ${esc(line.text)}</text>`;
+          cursorY += 22;
+        }
+      }
+      const trackNotes = design.progression.steps
+        .map((step, index) => ({ step, index }))
+        .filter(({ step }) => ["spawn_fleet", "action_link", "ability_trigger", "ability_link"].includes(step.kind));
+      if (trackNotes.length) {
+        side += `<text x="70" y="${cursorY}" class="ps-list">When the progress marker reaches a numbered square:</text>`;
+        cursorY += 22;
+        for (const { step, index } of trackNotes) {
+          let note;
+          if (step.kind === "spawn_fleet") {
+            const where = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" }[step.location] || step.location;
+            note = `spawn ${step.count || 1} fleet craft at ${where}`;
+          } else if (step.kind === "action_link") {
+            note = `the boss gains a ${step.action === "shoot" ? "shoot" : "move"} action in stack ${step.stack}`;
+          } else if (step.kind === "ability_link") {
+            note = `the boss gains ${ABILITY_LABELS[step.ability] || step.ability}`;
+          } else {
+            note = `ability comes online — ${abilityStepText(step)}`;
+          }
+          side += `<text x="96" y="${cursorY}" class="ps-list">Square ${index + 1}: ${esc(note)}</text>`;
+          cursorY += 22;
+        }
+      }
+      side += `<text x="70" y="${cursorY}" class="ps-list">Damage-lane roll of 1 is always a glancing blow.</text>`;
+      cursorY += 24;
     }
 
-    pageH = Math.max(pageH, printOptions.stacks ? stackY + stackHeight + 140 : 0, sideY + 130);
+    pageH = Math.max(breachBox.y + breachBox.h + 220, cursorY + 130);
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
       <defs>
@@ -1423,6 +1529,10 @@
         <label>round ≥ <input data-f="round" type="number" min="1" max="99" value="${step.round ?? ""}" placeholder="—"></label>`;
     } else if (step.kind === "ability_trigger") {
       fields = `<label>name <input data-f="name" maxlength="80" value="${esc(step.name || "")}"></label>`;
+    } else if (step.kind === "ability_link") {
+      const abilities = META.ability_types || Object.keys(ABILITY_LABELS);
+      fields = `<label>grants <select data-f="ability">${abilities.map((ability) =>
+        `<option value="${ability}" ${step.ability === ability ? "selected" : ""}>${ABILITY_LABELS[ability] || ability}</option>`).join("")}</select></label>`;
     } else if (step.kind === "spawn_fleet") {
       const locations = META.spawn_locations || ["boss_front", "bauble", "fang"];
       const locationLabels = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" };
@@ -1442,6 +1552,7 @@
         <option value="action_link" ${step.kind === "action_link" ? "selected" : ""}>Action link</option>
         <option value="breacher_link" ${step.kind === "breacher_link" ? "selected" : ""}>Breacher link</option>
         <option value="ability_trigger" ${step.kind === "ability_trigger" ? "selected" : ""}>Ability trigger</option>
+        <option value="ability_link" ${step.kind === "ability_link" ? "selected" : ""}>Ability link</option>
         <option value="spawn_fleet" ${step.kind === "spawn_fleet" ? "selected" : ""}>Spawn fleet</option>
       </select>
       <span class="bd-step-fields">${fields}</span>
@@ -1505,6 +1616,7 @@
     if (kind === "action_link") return { kind, stack: META.action_stacks[0], action: "shoot" };
     if (kind === "breacher_link") return { kind, round: 1 };
     if (kind === "ability_trigger") return { kind, name: "New ability", notes: "" };
+    if (kind === "ability_link") return { kind, ability: (META.ability_types || ["signal_jammer"])[0] };
     if (kind === "spawn_fleet") return { kind, count: 1, location: "boss_front" };
     return { kind: "filler" };
   }

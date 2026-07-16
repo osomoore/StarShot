@@ -37,7 +37,7 @@
     queue: (action) => post("/lobby/queue", { action }),
     createMatch: (body) => post("/matches", body),
     bossDesigns: () => get("/boss-designs"),
-    joinMatch: (id) => post(`/matches/${id}/join`),
+    joinMatch: (id, body) => post(`/matches/${id}/join`, body),
     leaveMatch: (id) => post(`/matches/${id}/leave`),
     startMatch: (id) => post(`/matches/${id}/start`),
     abandonMatch: (id) => post(`/matches/${id}/abandon`),

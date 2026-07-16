@@ -119,6 +119,8 @@ def star_breach_to_dict(sb: StarBreachState, *, round_number: int = 1) -> dict:
         "boss_movement_this_action": sb.boss_movement_this_action,
         "repaired_ship_ids_this_action": list(sb.repaired_ship_ids_this_action),
         "progressed_source_ids_this_action": list(sb.progressed_source_ids_this_action),
+        "boss_defense_bonus": sb_spec.boss_defense_bonus(spec, sb.destroyed_hexes, set(sb.active_tiers)),
+        "boss_aim_bonus": sb_spec.boss_aim_bonus(spec, sb.destroyed_hexes, set(sb.active_tiers)),
         "boss_layout": sb_spec.boss_layout_to_dict(spec),
         "roles": {role.id: sb_data.role_to_dict(role) for role in sb_data.ROLES},
         "boss_spec": sb.boss_spec,

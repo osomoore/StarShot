@@ -104,7 +104,10 @@ Implemented expansions:
   Each active boss slot performs exactly one action; progress tiers reached
   mid-round only power slots from the next round (`active_tiers`). Shields:
   nose 1 charge (intrinsic), other arcs 3, each powered by one nose generator.
-  The host may choose the Prey at game creation, including an AI seat. AI
+  The host may choose the Prey at game creation, including an AI seat. The
+  host also picks their own role at launch and joiners pick from unclaimed
+  roles (seat column `star_breach_role`, `GameConfig.star_breach_role_preferences`);
+  unrequested roles deal round-robin so all four stay in play. AI
   personalities do not change because they are the Prey; in co-op, Salvage
   runs baubles, Corsair prioritizes hunter-killer craft, and Gunner prioritizes
   the boss. The v2 side panel uses tabs for Fleet and Log.
@@ -113,7 +116,10 @@ Admin tools:
 
 - Boss Ship Designer (admin console tab "Boss Designer"): hex editor for custom
   StarBreach-style bosses — hull tiles (generic / shield gen / cannon /
-  engine / core), shield regions with a powering generator and a
+  engine / core / signal jammer (+2 boss defense while intact) / targeting
+  sensors (+2 boss Aim while intact); the last two are passive: no action
+  stack element, and also grantable via "ability_link" progression steps —
+  spec field `tier_abilities`), shield regions with a powering generator and a
   configurable number of damage lanes (1-12 per region via a number ticker,
   default 7; the die is lane_count + 1 sides with roll 1 always a glancing
   blow — `region.lane_count` in the design, `lane_die` in the compiled spec;
@@ -205,7 +211,7 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 248 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 256 tests passing as of last session (2 API test modules require `fastapi` installed).
 - Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
   `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
   where units actually stood at that moment.

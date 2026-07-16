@@ -30,8 +30,14 @@ AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 # Half of the editable grid width; hexes must satisfy the axial-disk bound.
 GRID_RADIUS = 7
 
-TILE_TYPES = ("generic", "shield_gen", "cannon", "engine", "core")
+TILE_TYPES = ("generic", "shield_gen", "cannon", "engine", "core", "signal_jammer", "targeting_sensors")
 LEGACY_TILE_TYPES = {"firing_computer": "cannon", "fuel_tank": "engine"}
+
+# Passive component abilities: no action-stack element, active while the
+# component hex is intact — or granted outright by an ability_link
+# progression step. signal_jammer = +2 boss defense, targeting_sensors =
+# +2 boss Aim.
+ABILITY_TYPES = ("signal_jammer", "targeting_sensors")
 
 # Boss action stacks a Cannon / Engine / action-link step can feed.
 ACTION_STACKS = ("0.5", "1.5", "2.5", "3.5", "starbreach")
@@ -47,7 +53,7 @@ LANE_ROLLS = tuple(range(2, DEFAULT_LANE_COUNT + 2))
 def lane_rolls(lane_count: int) -> tuple[int, ...]:
     return tuple(range(2, int(lane_count) + 2))
 
-STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger", "spawn_fleet")
+STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger", "spawn_fleet", "ability_link")
 ACTION_TYPES = ("move", "shoot")
 
 # Where spawn_fleet steps place their craft.
@@ -301,6 +307,11 @@ def _normalize_step(raw, index: int) -> dict:
             raise BossDesignError(f"{label}.name must not be empty.")
         step["name"] = name[:80]
         step["notes"] = str(raw.get("notes", ""))[:400]
+    elif kind == "ability_link":
+        ability = raw.get("ability")
+        if ability not in ABILITY_TYPES:
+            raise BossDesignError(f"{label}.ability must be one of {', '.join(ABILITY_TYPES)}.")
+        step["ability"] = ability
     elif kind == "spawn_fleet":
         count = _as_int(raw.get("count", 1), f"{label}.count")
         if not 1 <= count <= SPAWN_MAX_COUNT:

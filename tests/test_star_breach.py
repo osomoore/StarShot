@@ -81,6 +81,34 @@ class StarBreachSetupTests(unittest.TestCase):
         self.assertEqual(set(state.players["solo"].roles), set(sbd.ROLE_ASSIGN_ORDER))
         self.assertEqual(state.star_breach.prey_player_id, "solo")
 
+    def test_role_preferences_are_honored(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("alice", "bob"),
+                seed=11,
+                active_expansions=("star_breach",),
+                star_breach_role_preferences={"bob": "bauble_runner"},
+            )
+        )
+        self.assertIn("bauble_runner", state.players["bob"].roles)
+        self.assertNotIn("bauble_runner", state.players["alice"].roles)
+        # Every role stays in play.
+        dealt = set(state.players["alice"].roles) | set(state.players["bob"].roles)
+        self.assertEqual(dealt, set(sbd.ROLE_ASSIGN_ORDER))
+
+    def test_conflicting_role_preferences_first_seat_wins(self):
+        state = create_initial_state(
+            GameConfig(
+                player_ids=("alice", "bob"),
+                seed=11,
+                active_expansions=("star_breach",),
+                star_breach_role_preferences={"alice": "tank", "bob": "tank"},
+            )
+        )
+        self.assertIn("tank", state.players["alice"].roles)
+        self.assertNotIn("tank", state.players["bob"].roles)
+        self.assertEqual(state.players["alice"].ship.shields, 3)  # tank extra charge
+
     def test_config_can_choose_prey(self):
         state = create_initial_state(
             GameConfig(

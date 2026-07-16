@@ -36,8 +36,8 @@ def starting_ship(index: int) -> ShipState:
     return _starting_ship_star_breach(index)
 
 
-def assign_roles(players: dict[str, PlayerState]) -> None:
-    _assign_star_breach_roles(players)
+def assign_roles(players: dict[str, PlayerState], preferences: dict | None = None) -> None:
+    _assign_star_breach_roles(players, preferences)
 
 
 def initialize(state: GameState, config: GameConfig | None = None) -> None:
@@ -135,12 +135,23 @@ def _starting_ship_star_breach(index: int) -> ShipState:
 # ---------------------------------------------------------------------------
 
 
-def _assign_star_breach_roles(players: dict[str, PlayerState]) -> None:
-    """Deal the four roles round-robin so every role ability is in play."""
+def _assign_star_breach_roles(players: dict[str, PlayerState], preferences: dict | None = None) -> None:
+    """Deal the four roles so every role ability is in play. Players who
+    requested a role get it first (first seat wins a conflict); leftover
+    roles go round-robin to whoever holds the fewest, in seat order."""
     player_list = list(players.values())
     assigned: dict[str, list[str]] = {player.id: [] for player in player_list}
-    for index, role_id in enumerate(sb_data.ROLE_ASSIGN_ORDER):
-        assigned[player_list[index % len(player_list)].id].append(role_id)
+    taken: set[str] = set()
+    for player in player_list:
+        wanted = (preferences or {}).get(player.id)
+        if wanted in sb_data.ROLES_BY_ID and wanted not in taken:
+            assigned[player.id].append(wanted)
+            taken.add(wanted)
+    for role_id in sb_data.ROLE_ASSIGN_ORDER:
+        if role_id in taken:
+            continue
+        target = min(range(len(player_list)), key=lambda index: (len(assigned[player_list[index].id]), index))
+        assigned[player_list[target].id].append(role_id)
     for player in player_list:
         player.roles = tuple(assigned[player.id])
         if "tank" in player.roles:
@@ -793,7 +804,9 @@ def _boss_attack(state: GameState) -> dict:
         attacker_label="starbreacher",
         attacker_position=firing_hex,
         distance=distance,
-        aim_bonus=0,
+        aim_bonus=sb_spec.boss_aim_bonus(
+            sb_spec.spec_for(sb), sb.destroyed_hexes, set(sb.active_tiers)
+        ),
     )
 
 
@@ -1007,10 +1020,11 @@ def _resolve_volley_vs_boss(
         _boss_token_hexes(sb),
         key=lambda hex_: hex_distance(attacker.ship.q, attacker.ship.r, hex_[0], hex_[1]),
     )
+    boss_defense_bonus = sb_spec.boss_defense_bonus(spec, sb.destroyed_hexes, set(sb.active_tiers))
     threshold = (
         profile["fixed_defense_threshold"]
         if profile["fixed_defense_threshold"] is not None
-        else distance + sb.boss_movement_this_action
+        else distance + sb.boss_movement_this_action + boss_defense_bonus
     )
     roll = _roll_attack(state)
     roll_total = roll + profile["aim_bonus"]
@@ -1110,6 +1124,7 @@ def _resolve_volley_vs_boss(
             "target_position": {"q": struck_hex[0], "r": struck_hex[1]},
             "distance": distance,
             "boss_movement": sb.boss_movement_this_action,
+            "boss_defense_bonus": boss_defense_bonus,
             "defense_threshold": threshold,
             "roll": roll,
             "roll_total": roll_total,
