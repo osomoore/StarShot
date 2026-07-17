@@ -984,5 +984,137 @@ class AdminTests(unittest.TestCase):
         )
 
 
+class DisplayNameTests(unittest.TestCase):
+    def admin_client(self) -> TestClient:
+        client = make_client()
+        client.get("/api/v2/admin/deck")  # seeds the admin account
+        login = client.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"})
+        self.assertEqual(login.status_code, 200, login.text)
+        return client
+
+    def user_id_for(self, admin: TestClient, username: str) -> int:
+        accounts = admin.get("/api/v2/admin/accounts").json()["accounts"]
+        return next(entry["id"] for entry in accounts if entry["username"] == username)
+
+    def test_display_name_defaults_to_username_and_can_change(self) -> None:
+        client = make_client()
+        register(client, "name_alice")
+        me = client.get("/api/v2/me").json()
+        self.assertEqual(me["user"]["display_name"], "name_alice")
+
+        result = client.post("/api/v2/profile/display-name", json={"display_name": "Salty Alice"})
+        self.assertEqual(result.status_code, 200, result.text)
+        payload = result.json()
+        self.assertFalse(payload["flagged"])
+        self.assertIsNone(payload["warning"])
+        self.assertEqual(payload["user"]["display_name"], "Salty Alice")
+
+        bad = client.post("/api/v2/profile/display-name", json={"display_name": "x<script>y"})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_random_name_endpoint(self) -> None:
+        client = make_client()
+        register(client, "name_random")
+        result = client.get("/api/v2/profile/random-name")
+        self.assertEqual(result.status_code, 200)
+        self.assertGreaterEqual(len(result.json()["name"]), 3)
+
+    def test_flagged_name_warns_hides_and_blocks_matchmaking(self) -> None:
+        client = make_client()
+        register(client, "name_flagged")
+        result = client.post("/api/v2/profile/display-name", json={"display_name": "Sh1t Storm"})
+        self.assertEqual(result.status_code, 200, result.text)
+        payload = result.json()
+        self.assertTrue(payload["flagged"])
+        self.assertIn("hidden from the leaderboards", payload["warning"])
+
+        board = client.get("/api/v2/leaderboard").json()
+        self.assertNotIn("name_flagged", [entry["username"] for entry in board["leaderboard"]])
+
+        queue = client.post("/api/v2/lobby/queue", json={"action": "join"})
+        self.assertEqual(queue.status_code, 403)
+
+        # AI-only raids stay open to flagged names; open-seat raids do not.
+        blocked = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 1})
+        self.assertEqual(blocked.status_code, 403)
+        allowed = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 0})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+
+        # Renaming to something clean restores standing.
+        clean = client.post("/api/v2/profile/display-name", json={"display_name": "Reformed Rob"})
+        self.assertFalse(clean.json()["flagged"])
+        queue = client.post("/api/v2/lobby/queue", json={"action": "join"})
+        self.assertEqual(queue.status_code, 200)
+        client.post("/api/v2/lobby/queue", json={"action": "leave"})
+
+    def test_seat_display_names_use_display_name(self) -> None:
+        client = make_client()
+        register(client, "name_seat")
+        client.post("/api/v2/profile/display-name", json={"display_name": "Dread Pirate Seat"})
+        result = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 0})
+        self.assertEqual(result.status_code, 200, result.text)
+        seats = result.json()["match"]["seat_list"]
+        human = next(seat for seat in seats if not seat["is_ai"])
+        self.assertEqual(human["display_name"], "Dread Pirate Seat")
+        self.assertEqual(human["player_id"], "name_seat")
+
+    def test_admin_ban_name_forces_rename(self) -> None:
+        client = make_client()
+        register(client, "name_banned")
+        client.post("/api/v2/profile/display-name", json={"display_name": "Innocent Looking"})
+        admin = self.admin_client()
+        user_id = self.user_id_for(admin, "name_banned")
+
+        result = admin.post(f"/api/v2/admin/accounts/{user_id}/ban-name")
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["banned_name"], "Innocent Looking")
+        self.assertIn("Innocent Looking", [entry["name"] for entry in result.json()["illegal_names"]])
+
+        me = client.get("/api/v2/me").json()["user"]
+        self.assertTrue(me["must_rename"])
+        self.assertTrue(me["name_flagged"])
+
+        # The banned name (any casing) cannot be re-taken.
+        retake = client.post("/api/v2/profile/display-name", json={"display_name": "innocent looking"})
+        self.assertEqual(retake.status_code, 400)
+
+        renamed = client.post("/api/v2/profile/display-name", json={"display_name": "Fresh Start"})
+        self.assertEqual(renamed.status_code, 200)
+        me = client.get("/api/v2/me").json()["user"]
+        self.assertFalse(me["must_rename"])
+        self.assertFalse(me["name_flagged"])
+
+        # Un-ban clears the list.
+        removed = admin.delete("/api/v2/admin/illegal-names/Innocent%20Looking")
+        self.assertEqual(removed.status_code, 200)
+        self.assertNotIn(
+            "Innocent Looking",
+            [entry["name"] for entry in removed.json()["illegal_names"]],
+        )
+
+    def test_admin_toggles_hide_from_leaderboard_and_matchmaking(self) -> None:
+        client = make_client()
+        register(client, "name_toggle")
+        admin = self.admin_client()
+        user_id = self.user_id_for(admin, "name_toggle")
+
+        result = admin.post(
+            f"/api/v2/admin/accounts/{user_id}/flags",
+            json={"leaderboard_ok": False, "matchmaking_ok": False},
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        board = client.get("/api/v2/leaderboard").json()
+        self.assertNotIn("name_toggle", [entry["username"] for entry in board["leaderboard"]])
+        queue = client.post("/api/v2/lobby/queue", json={"action": "join"})
+        self.assertEqual(queue.status_code, 403)
+
+        admin.post(
+            f"/api/v2/admin/accounts/{user_id}/flags",
+            json={"leaderboard_ok": True, "matchmaking_ok": True},
+        )
+        board = client.get("/api/v2/leaderboard").json()
+        self.assertIn("name_toggle", [entry["username"] for entry in board["leaderboard"]])
+
+
 if __name__ == "__main__":
     unittest.main()

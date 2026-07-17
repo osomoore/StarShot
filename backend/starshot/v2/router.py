@@ -81,10 +81,35 @@ def _check_maintenance(user: dict) -> None:
         raise HTTPException(status_code=503, detail=f"⚓ Under construction: {message}")
 
 
+def _display_name(user: dict) -> str:
+    return user.get("display_name") or user["username"]
+
+
+def _matchable(user: dict) -> bool:
+    """Player matchmaking eligibility: not admin-blocked, name not flagged."""
+    return bool(user.get("matchmaking_ok", 1)) and not user.get("name_flagged", 0)
+
+
+UNMATCHABLE_DETAIL = (
+    "Yer current name keeps ye off the player seas — change yer display name "
+    "(or see the admiral) to battle other captains. AI raids are still open."
+)
+
+
+def _check_matchable(user: dict) -> None:
+    if not _matchable(user):
+        raise HTTPException(status_code=403, detail=UNMATCHABLE_DETAIL)
+
+
 def _public_profile(user: dict) -> dict:
     store = get_v2_store()
     return {
         "username": user["username"],
+        "display_name": _display_name(user),
+        "name_flagged": bool(user.get("name_flagged", 0)),
+        "must_rename": bool(user.get("must_rename", 0)),
+        "matchmaking_ok": bool(user.get("matchmaking_ok", 1)),
+        "leaderboard_ok": bool(user.get("leaderboard_ok", 1)),
         "wins": user["wins"],
         "losses": user["losses"],
         "draws": user["draws"],
@@ -226,6 +251,57 @@ def change_password(body: PasswordChange, request: Request) -> dict:
     return {"ok": True}
 
 
+class DisplayNameChange(BaseModel):
+    display_name: str = Field(min_length=3, max_length=24)
+
+
+FLAGGED_NAME_WARNING = (
+    "That name be on the reprehensible side, captain. Ye may keep it, but yer "
+    "name will be hidden from the leaderboards and ye won't be matched "
+    "against other players until ye pick a friendlier one."
+)
+
+
+@router.post("/profile/display-name")
+def set_display_name(body: DisplayNameChange, request: Request) -> dict:
+    from starshot.v2 import names
+
+    user = _current_user(request)
+    store = get_v2_store()
+    proposed = " ".join(body.display_name.split())
+    if not names.valid_display_name(proposed):
+        raise HTTPException(
+            status_code=400,
+            detail="Display names are 3-24 characters: letters, digits, spaces, ' - _ or .",
+        )
+    if store.is_illegal_name(proposed):
+        raise HTTPException(
+            status_code=400,
+            detail="The admiral has banned that name from these seas. Pick another.",
+        )
+    flagged = names.name_is_objectionable(proposed)
+    store.set_display_name(user["id"], proposed, flagged)
+    return {
+        "user": _public_profile(store.get_user(user["id"])),
+        "flagged": flagged,
+        "warning": FLAGGED_NAME_WARNING if flagged else None,
+    }
+
+
+@router.get("/profile/random-name")
+def random_display_name(request: Request) -> dict:
+    from starshot.v2 import names
+
+    _current_user(request)
+    store = get_v2_store()
+    name = names.random_pirate_name()
+    for _attempt in range(10):
+        if not store.is_illegal_name(name):
+            break
+        name = names.random_pirate_name()
+    return {"name": name}
+
+
 @router.get("/players/{username}")
 def player_profile(username: str) -> dict:
     user = get_v2_store().get_user_by_name(username)
@@ -331,12 +407,15 @@ class ChallengeRequest(BaseModel):
 def send_challenge(body: ChallengeRequest, request: Request) -> dict:
     user = _current_user(request)
     _check_maintenance(user)
+    _check_matchable(user)
     store = get_v2_store()
     target = store.get_user_by_name(body.username)
     if target is None:
         raise HTTPException(status_code=404, detail="No such captain.")
     if target["id"] == user["id"]:
         raise HTTPException(status_code=400, detail="Duelling yerself is a court-martial offense.")
+    if not _matchable(target):
+        raise HTTPException(status_code=400, detail="That captain isn't taking challenges right now.")
     challenge_id = store.create_challenge(
         user["id"],
         target["id"],
@@ -362,18 +441,19 @@ def respond_challenge(challenge_id: str, body: ChallengeResponse, request: Reque
         store.set_challenge_status(challenge_id, "declined")
         return {"accepted": False}
     _check_maintenance(user)
+    _check_matchable(user)
     challenger = store.get_user(challenge["from_user_id"])
     store.leave_queue(user["id"])
     store.leave_queue(challenger["id"])
     match_id = store.create_match(
-        name=f"{challenger['username']} vs {user['username']} (duel)",
+        name=f"{_display_name(challenger)} vs {_display_name(user)} (duel)",
         host_user_id=challenger["id"],
         seats=2,
         status="open",
         active_expansions=challenge.get("active_expansions") or [],
     )
-    store.add_seat(match_id, 0, challenger["username"], challenger["username"], user_id=challenger["id"])
-    store.add_seat(match_id, 1, user["username"], user["username"], user_id=user["id"])
+    store.add_seat(match_id, 0, challenger["username"], _display_name(challenger), user_id=challenger["id"])
+    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"])
     game_id = start_match_game(store, store.get_match(match_id))
     store.set_challenge_status(challenge_id, "accepted", game_id=game_id)
     return {"accepted": True, "match_id": match_id, "game_id": game_id}
@@ -399,6 +479,7 @@ def quick_match(body: QueueRequest, request: Request) -> dict:
     user = _current_user(request)
     if body.action == "join":
         _check_maintenance(user)
+        _check_matchable(user)
     store = get_v2_store()
     if body.action == "leave":
         store.leave_queue(user["id"])
@@ -408,13 +489,13 @@ def quick_match(body: QueueRequest, request: Request) -> dict:
         return {"queued": True, "matched": False}
     opponent = store.get_user(opponent_id)
     match_id = store.create_match(
-        name=f"{opponent['username']} vs {user['username']}",
+        name=f"{_display_name(opponent)} vs {_display_name(user)}",
         host_user_id=opponent_id,
         seats=2,
         status="open",
     )
-    store.add_seat(match_id, 0, opponent["username"], opponent["username"], user_id=opponent_id)
-    store.add_seat(match_id, 1, user["username"], user["username"], user_id=user["id"])
+    store.add_seat(match_id, 0, opponent["username"], _display_name(opponent), user_id=opponent_id)
+    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"])
     match = store.get_match(match_id)
     game_id = start_match_game(store, match)
     return {"queued": False, "matched": True, "match_id": match_id, "game_id": game_id}
@@ -487,6 +568,8 @@ def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> 
 def create_match(body: CreateMatchRequest, request: Request) -> dict:
     user = _current_user(request)
     _check_maintenance(user)
+    if body.open_seats > 0:
+        _check_matchable(user)  # AI-only raids stay open to everyone
     for ai_type in body.ai_types:
         if ai_type not in AI_TYPES:
             raise HTTPException(status_code=400, detail=f"Unknown AI type: {ai_type}")
@@ -525,7 +608,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"Matches need {minimum} to 4 combatants.")
     store = get_v2_store()
     store.leave_queue(user["id"])  # starting your own battle cancels quick-match
-    name = body.name.strip() or f"{user['username']}'s raid"
+    name = body.name.strip() or f"{_display_name(user)}'s raid"
     match_id = store.create_match(
         name,
         user["id"],
@@ -540,7 +623,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         match_id,
         0,
         user["username"],
-        user["username"],
+        _display_name(user),
         user_id=user["id"],
         star_breach_role=host_role,
         ship_design_id=_validated_ship_design_id(body.ship_design_id, user),
@@ -572,6 +655,7 @@ class JoinMatchRequest(BaseModel):
 def join_match(match_id: str, request: Request, body: JoinMatchRequest | None = None) -> dict:
     user = _current_user(request)
     _check_maintenance(user)
+    _check_matchable(user)
     store = get_v2_store()
     existing = store.get_match(match_id)
     if existing is None:
@@ -588,7 +672,7 @@ def join_match(match_id: str, request: Request, body: JoinMatchRequest | None = 
             match_id,
             user["id"],
             user["username"],
-            user["username"],
+            _display_name(user),
             star_breach_role=role,
             ship_design_id=ship_design_id,
         )

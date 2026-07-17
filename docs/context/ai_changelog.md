@@ -2,6 +2,19 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-17 · Player display names & account moderation
+
+- Title: Player display names & account moderation
+- Build ID: `7c50b74afa16`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Players can now set a display name (defaults to their username) from the lobby user menu, with a 🎲 Random button that generates piratey names and bad puns (`backend/starshot/v2/names.py`).
+  - Proposed names run through a profanity/reprehensible screen (leetspeak-normalized substring + whole-word tiers with a Scunthorpe allowlist). Objectionable names are allowed but flagged: the player is told their name is hidden from leaderboards and they won't be matched against other players (quick match, challenges, and open-seat raids blocked; AI-only raids still allowed) until renamed.
+  - New admin "Accounts" tab lists every account (record, status, last seen) with per-player matchmaking and leaderboard toggles, plus "Ban name": adds the display name to an illegal-names list, immediately flags anyone wearing it, and forces a rename next time they reach the lobby. Banned names cannot be re-taken; the illegal list is editable.
+  - Match seats, match titles, leaderboards, titles, infamy, and Captains on Deck all show display names now (`users.display_name` + moderation columns, `illegal_names` table, idempotent migrations).
+  - Bumped `pirate.css`, `admin.css`, `api.js`, `lobby.js`, `admin.js` query strings.
+  - Verified with `python -m unittest discover -s tests` (296 tests passing, includes new `tests/test_v2_names.py` and `DisplayNameTests` in `tests/test_v2_api.py`) and `node --check` on the modified JS.
+
 ## 2026-07-16 22:58:41 -05:00
 
 - Title: Effect-based card labels

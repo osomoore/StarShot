@@ -272,3 +272,12 @@
   .feedback-admin-grid { grid-template-columns: 1fr; }
   .feedback-detail { margin-top: 0; }
 }
+
+/* ── accounts tab ─────────────────────────── */
+.illegal-names { display: flex; flex-wrap: wrap; gap: 8px; }
+.illegal-name-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(197, 62, 62, 0.14); border: 1px solid rgba(197, 62, 62, 0.5);
+  border-radius: 999px; padding: 2px 6px 2px 12px;
+}
+.accounts-table td { white-space: nowrap; }

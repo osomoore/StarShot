@@ -29,7 +29,16 @@ CREATE TABLE IF NOT EXISTS users (
     wins INTEGER NOT NULL DEFAULT 0,
     losses INTEGER NOT NULL DEFAULT 0,
     draws INTEGER NOT NULL DEFAULT 0,
-    games_played INTEGER NOT NULL DEFAULT 0
+    games_played INTEGER NOT NULL DEFAULT 0,
+    display_name TEXT,
+    name_flagged INTEGER NOT NULL DEFAULT 0,
+    matchmaking_ok INTEGER NOT NULL DEFAULT 1,
+    leaderboard_ok INTEGER NOT NULL DEFAULT 1,
+    must_rename INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS illegal_names (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
@@ -143,7 +152,18 @@ _MIGRATIONS = (
     "ALTER TABLE matches ADD COLUMN star_breach_boss_design_id TEXT",
     "ALTER TABLE match_seats ADD COLUMN star_breach_role TEXT",
     "ALTER TABLE match_seats ADD COLUMN ship_design_id TEXT",
+    "ALTER TABLE users ADD COLUMN display_name TEXT",
+    "ALTER TABLE users ADD COLUMN name_flagged INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN matchmaking_ok INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN leaderboard_ok INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN must_rename INTEGER NOT NULL DEFAULT 0",
 )
+
+# Effective public name: the chosen display name, or the username until one is set.
+_DISPLAY = "COALESCE(NULLIF(u.display_name, ''), u.username)"
+_DISPLAY_BARE = _DISPLAY.replace("u.", "")
+# Visible on leaderboards: not admin-delisted and not carrying a flagged name.
+_LISTED = "u.leaderboard_ok = 1 AND u.name_flagged = 0"
 
 
 def _now() -> str:
@@ -226,6 +246,81 @@ class V2Store:
         with self._connect() as conn:
             conn.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user_id))
 
+    # -- display names & account moderation ----------------------------------
+
+    def set_display_name(self, user_id: int, display_name: str, flagged: bool) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET display_name = ?, name_flagged = ?, must_rename = 0 WHERE id = ?",
+                (display_name, 1 if flagged else 0, user_id),
+            )
+
+    def set_user_flags(
+        self,
+        user_id: int,
+        matchmaking_ok: bool | None = None,
+        leaderboard_ok: bool | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            if matchmaking_ok is not None:
+                conn.execute(
+                    "UPDATE users SET matchmaking_ok = ? WHERE id = ?",
+                    (1 if matchmaking_ok else 0, user_id),
+                )
+            if leaderboard_ok is not None:
+                conn.execute(
+                    "UPDATE users SET leaderboard_ok = ? WHERE id = ?",
+                    (1 if leaderboard_ok else 0, user_id),
+                )
+
+    def add_illegal_name(self, name: str) -> int:
+        """Ban a display name. Every account currently wearing it is flagged
+        and forced to pick a new name next time they reach the lobby. Returns
+        how many accounts were caught wearing it."""
+        with self._connect(immediate=True) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO illegal_names (name, created_at) VALUES (?, ?)",
+                (name, _now()),
+            )
+            cursor = conn.execute(
+                f"UPDATE users SET must_rename = 1, name_flagged = 1 "
+                f"WHERE {_DISPLAY_BARE} = ? COLLATE NOCASE",
+                (name,),
+            )
+            return int(cursor.rowcount or 0)
+
+    def remove_illegal_name(self, name: str) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM illegal_names WHERE name = ?", (name,))
+            return int(cursor.rowcount or 0)
+
+    def list_illegal_names(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT name, created_at FROM illegal_names ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def is_illegal_name(self, name: str) -> bool:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT 1 FROM illegal_names WHERE name = ?", (name,)
+            ).fetchone() is not None
+
+    def list_accounts(self) -> list[dict]:
+        """Every account on the server, for the admin console."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""SELECT u.id, u.username, {_DISPLAY} AS display_name,
+                           u.wins, u.losses, u.draws, u.games_played, u.created_at,
+                           u.name_flagged, u.matchmaking_ok, u.leaderboard_ok, u.must_rename,
+                           p.last_seen
+                    FROM users u
+                    LEFT JOIN presence p ON p.user_id = u.id
+                    ORDER BY u.username COLLATE NOCASE""",
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def record_result(
         self,
         user_id: int,
@@ -254,10 +349,12 @@ class V2Store:
     def leaderboard(self, limit: int = 20) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT u.username, u.wins, u.losses, u.draws, u.games_played,
+                f"""SELECT u.username, {_DISPLAY} AS display_name,
+                          u.wins, u.losses, u.draws, u.games_played,
                           COUNT(f.id) AS feedback_count
                    FROM users u
                    LEFT JOIN feedback f ON f.user_id = u.id
+                   WHERE {_LISTED}
                    GROUP BY u.id
                    ORDER BY wins DESC, losses ASC, username ASC LIMIT ?""",
                 (limit,),
@@ -269,7 +366,7 @@ class V2Store:
             return self.leaderboard(limit)
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT u.id AS user_id, u.username,
+                f"""SELECT u.id AS user_id, u.username, {_DISPLAY} AS display_name,
                           COALESCE(r.wins, 0) AS wins,
                           COALESCE(r.losses, 0) AS losses,
                           COALESCE(r.draws, 0) AS draws,
@@ -280,7 +377,7 @@ class V2Store:
                    FROM users u
                    LEFT JOIN leaderboard_results r ON r.user_id = u.id AND r.category = ?
                    LEFT JOIN feedback f ON f.user_id = u.id
-                   WHERE COALESCE(r.games_played, 0) > 0
+                   WHERE COALESCE(r.games_played, 0) > 0 AND {_LISTED}
                    GROUP BY u.id
                    ORDER BY
                      CASE WHEN ? = 'ai' THEN COALESCE(r.score, 0) ELSE COALESCE(r.wins, 0) END DESC,
@@ -315,9 +412,11 @@ class V2Store:
     def infamy_leader(self) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
-                """SELECT u.id AS user_id, u.username, SUM(r.ship_losses) AS ship_losses
+                f"""SELECT u.id AS user_id, u.username, {_DISPLAY} AS display_name,
+                          SUM(r.ship_losses) AS ship_losses
                    FROM leaderboard_results r
                    JOIN users u ON u.id = r.user_id
+                   WHERE {_LISTED}
                    GROUP BY u.id
                    HAVING ship_losses > 0
                    ORDER BY ship_losses DESC, u.username ASC
@@ -328,24 +427,27 @@ class V2Store:
     def title_holders(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT u.id AS user_id, u.username, r.category, r.wins, r.score
+                f"""SELECT u.id AS user_id, u.username, {_DISPLAY} AS display_name,
+                          r.category, r.wins, r.score
                    FROM leaderboard_results r
                    JOIN users u ON u.id = r.user_id
-                   WHERE r.wins > 0 OR r.score > 0"""
+                   WHERE (r.wins > 0 OR r.score > 0) AND {_LISTED}"""
             ).fetchall()
             feedback_rows = conn.execute(
                 "SELECT user_id, COUNT(*) AS feedback_count FROM feedback GROUP BY user_id"
             ).fetchall()
             feedback = {int(row["user_id"]): int(row["feedback_count"]) for row in feedback_rows}
             users = conn.execute(
-                "SELECT id AS user_id, username, wins FROM users WHERE wins > 0"
+                f"""SELECT u.id AS user_id, u.username, {_DISPLAY} AS display_name, u.wins
+                    FROM users u WHERE u.wins > 0 AND {_LISTED}"""
             ).fetchall()
         scores: dict[int, dict] = {}
         for row in rows:
             user_id = int(row["user_id"])
             entry = scores.setdefault(
                 user_id,
-                {"user_id": user_id, "username": row["username"], "points": 0, "wins": 0},
+                {"user_id": user_id, "username": row["username"],
+                 "display_name": row["display_name"], "points": 0, "wins": 0},
             )
             wins = int(row["wins"] or 0)
             entry["points"] += int(row["score"] or 0) if row["category"] == "ai" else wins * 3
@@ -360,6 +462,7 @@ class V2Store:
             scores[user_id] = {
                 "user_id": user_id,
                 "username": row["username"],
+                "display_name": row["display_name"],
                 "points": wins * 3,
                 "wins": wins,
             }
@@ -564,11 +667,12 @@ class V2Store:
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=within_seconds)).isoformat()
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT u.id, u.username, u.wins, u.losses, COUNT(f.id) AS feedback_count
+                f"""SELECT u.id, u.username, {_DISPLAY} AS display_name,
+                          u.wins, u.losses, COUNT(f.id) AS feedback_count
                    FROM presence p
                    JOIN users u ON u.id = p.user_id
                    LEFT JOIN feedback f ON f.user_id = u.id
-                   WHERE p.last_seen > ?
+                   WHERE p.last_seen > ? AND u.matchmaking_ok = 1 AND u.name_flagged = 0
                    GROUP BY u.id
                    ORDER BY u.username COLLATE NOCASE""",
                 (cutoff,),

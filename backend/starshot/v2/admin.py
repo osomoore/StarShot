@@ -944,6 +944,65 @@ def ai_battle_detail(entry_id: str, request: Request) -> dict:
     return {"entry": entry}
 
 
+# ── account moderation ─────────────────────────────────────────────────────
+
+
+@admin_router.get("/accounts")
+def list_accounts(request: Request) -> dict:
+    _admin_user(request)
+    store = get_v2_store()
+    return {"accounts": store.list_accounts(), "illegal_names": store.list_illegal_names()}
+
+
+class AccountFlags(BaseModel):
+    matchmaking_ok: bool | None = None
+    leaderboard_ok: bool | None = None
+
+
+@admin_router.post("/accounts/{user_id}/flags")
+def set_account_flags(user_id: int, body: AccountFlags, request: Request) -> dict:
+    _admin_user(request)
+    store = get_v2_store()
+    if store.get_user(user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    store.set_user_flags(
+        user_id,
+        matchmaking_ok=body.matchmaking_ok,
+        leaderboard_ok=body.leaderboard_ok,
+    )
+    return {"ok": True, "accounts": store.list_accounts()}
+
+
+@admin_router.post("/accounts/{user_id}/ban-name")
+def ban_account_name(user_id: int, request: Request) -> dict:
+    """Add the player's current display name to the illegal list. Everyone
+    wearing that name is flagged (hidden/unmatched) and must rename next time
+    they reach the lobby."""
+    _admin_user(request)
+    store = get_v2_store()
+    user = store.get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    banned_name = user.get("display_name") or user["username"]
+    affected = store.add_illegal_name(banned_name)
+    return {
+        "ok": True,
+        "banned_name": banned_name,
+        "affected_accounts": affected,
+        "accounts": store.list_accounts(),
+        "illegal_names": store.list_illegal_names(),
+    }
+
+
+@admin_router.delete("/illegal-names/{name}")
+def remove_illegal_name(name: str, request: Request) -> dict:
+    _admin_user(request)
+    store = get_v2_store()
+    if not store.remove_illegal_name(name):
+        raise HTTPException(status_code=404, detail="That name isn't on the illegal list.")
+    return {"ok": True, "illegal_names": store.list_illegal_names()}
+
+
 @admin_router.get("/feedback")
 def feedback_summary(request: Request) -> dict:
     _admin_user(request)

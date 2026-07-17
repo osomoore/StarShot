@@ -117,7 +117,8 @@
       currentUser = me.user;
       renderProfile(me.user);
       renderLeaderboardBundle(board);
-      document.getElementById("lobby-user").textContent = me.user.username;
+      document.getElementById("lobby-user").textContent = me.user.display_name || me.user.username;
+      if (me.user.must_rename) openNameModal(true);
       document.getElementById("lobby-admin-link").classList.toggle("hidden", !me.is_admin);
       document.querySelector(".topbar-admin-row")?.classList.toggle("hidden", !me.is_admin);
     } catch (err) { /* transient */ }
@@ -618,7 +619,7 @@
       const row = document.createElement("div");
       row.className = "player-row";
       row.innerHTML = `<span class="player-dot">●</span>
-        <span class="player-name">${esc(player.username)}</span>
+        <span class="player-name">${esc(player.display_name || player.username)}</span>
         ${feedbackBadge(player.feedback_count)}
         <span class="player-record">${player.wins}W / ${player.losses}L</span>`;
       const button = document.createElement("button");
@@ -627,7 +628,7 @@
       button.addEventListener("click", async () => {
         try {
           await API.challenge(player.username, activeExpansions());
-          App.toast(`Gauntlet thrown at ${player.username}!`, true);
+          App.toast(`Gauntlet thrown at ${player.display_name || player.username}!`, true);
           refresh();
         } catch (error) { App.toast(error.message); }
       });
@@ -698,8 +699,12 @@
   function renderProfile(user) {
     const total = user.games_played || 0;
     const rate = total ? Math.round((user.wins / total) * 100) : 0;
+    const shownName = user.display_name || user.username;
+    const flaggedNote = user.name_flagged
+      ? `<br><span class="name-flagged-note">⚠ Yer name be hidden from leaderboards and ye won't face other captains until ye change it.</span>`
+      : "";
     document.getElementById("profile-card").innerHTML = `
-      <b>☠ ${esc(user.username)}</b><br>
+      <b>☠ ${esc(shownName)}</b>${shownName !== user.username ? ` <i class="profile-username">(${esc(user.username)})</i>` : ""}${flaggedNote}<br>
       ${feedbackBadge(user.feedback_count)}<br>
       Victories: <b>${user.wins}</b> · Defeats: <b>${user.losses}</b> · Draws: <b>${user.draws}</b><br>
       Battles fought: <b>${total}</b> · Win rate: <b>${rate}%</b><br>
@@ -728,7 +733,7 @@
     node.innerHTML = rows.map((entry) => `
       <div class="title-row">
         <span class="title-name">${esc(entry.title)}</span>
-        <span>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</span>
+        <span>${esc(entry.display_name || entry.username)} ${feedbackBadge(entry.feedback_count)}</span>
         <b>${entry.points}</b>
       </div>`).join("");
   }
@@ -784,7 +789,7 @@
       (timer || document.getElementById("leaderboard")).after(node);
     }
     node.innerHTML = infamy
-      ? `<div class="title-row"><span class="title-name">Davey Jones Locker</span><span>${esc(infamy.username)}</span><b>${infamy.ship_losses}</b></div>`
+      ? `<div class="title-row"><span class="title-name">Davey Jones Locker</span><span>${esc(infamy.display_name || infamy.username)}</span><b>${infamy.ship_losses}</b></div>`
       : `<div class="title-row empty-note">Davey Jones Locker is empty.</div>`;
   }
 
@@ -794,13 +799,13 @@
     if (board && board.key === "ai") {
       table.innerHTML = "<tr><th>#</th><th>Name</th><th>Score</th><th>Games Played</th><th>Avg Score</th></tr>" +
         entries.map((entry, index) => `
-        <tr><td>${index === 0 ? "#" + 1 : index + 1}</td><td>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
+        <tr><td>${index === 0 ? "#" + 1 : index + 1}</td><td>${esc(entry.display_name || entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
         <td>${entry.score}</td><td>${entry.games_played}</td><td>${Number(entry.average_score || 0).toFixed(2)}</td></tr>`).join("");
       return;
     }
     table.innerHTML = "<tr><th>#</th><th>Captain</th><th>W</th><th>L</th><th>Battles</th></tr>" +
       (entries || []).map((entry, index) => `
-        <tr><td>${index === 0 ? "👑" : index + 1}</td><td>${esc(entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
+        <tr><td>${index === 0 ? "👑" : index + 1}</td><td>${esc(entry.display_name || entry.username)} ${feedbackBadge(entry.feedback_count)}</td>
         <td>${entry.wins}</td><td>${entry.losses}</td><td>${entry.games_played}</td></tr>`).join("");
   }
 
@@ -959,6 +964,63 @@
       );
     }
     return lines.join("\n");
+  }
+
+  /* Display-name modal. Forced mode (admiral banned the name) can't be
+     dismissed until a new name is saved. */
+  let nameModalOpen = false;
+  function openNameModal(forced = false) {
+    if (nameModalOpen) return;
+    nameModalOpen = true;
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker name-modal">
+        <h3>${forced ? "⚓ The Admiral Demands a New Name" : "✏ Change Yer Display Name"}</h3>
+        ${forced
+          ? `<p class="feedback-copy">Yer current name has been struck from the registry. Pick a new one to keep sailing.</p>`
+          : `<p class="feedback-copy">This be the name other captains see. Yer sign-in name stays the same.</p>`}
+        <form id="name-form" class="feedback-form">
+          <label>Display name
+            <input id="name-input" type="text" minlength="3" maxlength="24" required
+              value="${esc((currentUser && (currentUser.display_name || currentUser.username)) || "")}">
+          </label>
+          <div class="feedback-actions">
+            <button type="button" class="btn ghost" id="name-random">🎲 Random</button>
+            ${forced ? "" : `<button type="button" class="btn ghost" id="name-cancel">Cancel</button>`}
+            <button type="submit" class="btn gold">Hoist the Name</button>
+          </div>
+          <div id="name-status" class="auth-error"></div>
+        </form>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => { overlay.remove(); nameModalOpen = false; };
+    if (!forced) {
+      overlay.querySelector("#name-cancel").addEventListener("click", close);
+      overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+    }
+    overlay.querySelector("#name-random").addEventListener("click", async () => {
+      try {
+        const result = await API.randomName();
+        overlay.querySelector("#name-input").value = result.name || "";
+      } catch (error) { overlay.querySelector("#name-status").textContent = error.message; }
+    });
+    overlay.querySelector("#name-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const status = overlay.querySelector("#name-status");
+      status.textContent = "";
+      try {
+        const result = await API.setDisplayName(overlay.querySelector("#name-input").value.trim());
+        currentUser = result.user;
+        close();
+        if (result.warning) {
+          App.toast(result.warning);
+        } else {
+          App.toast(`Henceforth ye sail as ${result.user.display_name}!`, true);
+        }
+        refresh().catch(() => {});
+      } catch (error) { status.textContent = error.message; }
+    });
   }
 
   function openFeedback(context = {}) {
@@ -1139,6 +1201,11 @@
       if (event.target.closest("#lobby-user-popup") || event.target.closest("#lobby-user-menu")) return;
       userPopup.classList.add("hidden");
       userMenu?.setAttribute("aria-expanded", "false");
+    });
+    document.getElementById("btn-change-name")?.addEventListener("click", () => {
+      userPopup?.classList.add("hidden");
+      userMenu?.setAttribute("aria-expanded", "false");
+      openNameModal(false);
     });
     document.getElementById("btn-logout").addEventListener("click", async () => {
       try { await API.logout(); } catch (err) {}

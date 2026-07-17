@@ -24,6 +24,8 @@
     login: (username, password) => post("/auth/login", { username, password }),
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
+    setDisplayName: (displayName) => post("/profile/display-name", { display_name: displayName }),
+    randomName: () => get("/profile/random-name"),
     leaderboard: () => get("/leaderboard"),
     submitFeedback: (body) => post("/feedback", body),
     clientEvent: (body) => fetch("/api/debug/client-event", {

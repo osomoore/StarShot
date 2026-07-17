@@ -17,16 +17,15 @@
     {
       icon: "🂠", title: "Your hand and the three stacks",
       body: `You draw <b>5 cards</b> (6 once your shields are gone). Load <b>up to two cards</b>
-        into each Action stack — current raids can mix move and attack cards, so click, drag, or click a stack first and then
+        into each Action stack, so click, drag, or click a stack first and then
         pick its cards. Leftover cards go to your discard, and your discard shuffles back in when your
         deck runs dry — nothing is lost forever.`,
     },
     {
       icon: "🔥", title: "Sealed… or OVERDRIVE",
-      body: `Each stack is covered <b>Sealed</b> (runs once) or flipped to <b>Overdrive</b> — the whole
-        order runs <b>twice</b>! The price: the seal card lands on top of your deck and wastes a draw
-        next round. Overdrive a sure shot or a long burn, not a gamble.
-        <br><br><i>Desperate faces (☄) are never copied by Overdrive.</i>`,
+      body: `Each stack is covered <b>Sealed</b> (runs once) or flipped to <b>Overdrive</b> — cards in the
+        order stack are doubled! The price: you lose a draw next round.
+        Overdrive a sure shot or a long burn, not a gamble.`,
     },
     {
       icon: "➤", title: "Flying your ship",
@@ -39,12 +38,12 @@
       body: `All attack cards in one stack combine into <b>one volley at one target</b>. To hit, roll
         <b>2d6 + Aim ≥ distance + the target's movement this Action + their defense</b>. The preview
         arrow shows your <b>predicted hit chance</b> before you commit. Two attack cards don't fire twice —
-        they stack bonuses like <b>Damage +1</b> into one bigger broadside.`,
+        they stack bonuses like <b>Damage +1</b> or <b>Aim +1</b> into one bigger broadside.`,
     },
     {
       icon: "🛡", title: "Shields and the d12 damage lanes",
       body: `You start with <b>2 shield charges</b>. One charge blocks ALL damage for that entire Action
-        step — but each attacker you block steals <b>1 VP</b>. Once shields are gone, every hit rolls a
+        step — but each attacker still gains <b>1 VP</b>. Once shields are gone, every hit rolls a
         <b>d12 damage lane</b>: the shot bores into your ship and destroys the first intact part in that
         lane. Lose your <b>Command Bridge</b> or <b>both Life Supports</b> and you're space dust.
         <br><br><i>Click any ship in the Fleet Registry to study its board and lanes.</i>`,
@@ -52,15 +51,15 @@
     {
       icon: "✦", title: "Baubles — the loot",
       body: `Numbered baubles pay out in their matching round: end the round <b>anywhere in the glowing
-        7-hex cluster</b> and claim the VP <b>plus a Desperation card</b>. The central <b>Fang</b> is
+        7-hex cluster</b> and claim the 2 VP <b>plus a Desperation card</b>. The central <b>Fang</b> is
         active every round — it bites for 1 damage, pays 1 VP… but in round 6 it's worth <b>6 VP</b>.
         Round 6 near the Fang is a knife fight.`,
     },
     {
       icon: "☄", title: "Desperation cards",
-      body: `Loot and battle damage feed you <b>Desperation cards</b> — two-faced monsters. The normal
-        face is a solid hybrid (move or +damage). The purple <b>DESPERATE face</b> is a single-use
-        haymaker: Move 10, guaranteed hits, wild maneuvers. Once spent, it returns to the shared deck.
+      body: `Loot and battle damage feed you <b>Desperation cards</b> — two-faced monsters. Most Desperation
+        card faces have a basic face - a solid hybrid (move or +damage). The purple <b>DESPERATE face</b> is a single-use
+        haymaker: Move 8, guaranteed hits, wild maneuvers. Once spent, it returns to the shared deck.
         Timing one perfectly wins games.`,
     },
     {

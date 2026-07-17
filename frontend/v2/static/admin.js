@@ -95,7 +95,7 @@
       document.getElementById("admin-user").textContent = "⚙ " + me.user.username;
       document.getElementById("admin-locked").classList.add("hidden");
       document.getElementById("admin-main").classList.remove("hidden");
-      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadFeedback(), loadChangelog()]);
+      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadAccounts(), loadFeedback(), loadChangelog()]);
     } catch (err) {
       showLocked("Sign in as the admiral to enter.");
     }
@@ -750,6 +750,111 @@
     entry.thoughts,
     entry.is_bug_report ? "bug report game log" : "",
   ].filter(Boolean).join(" ").toLowerCase();
+
+  // ── accounts ────────────────────────────────────────────────────────────
+  let accountsData = { accounts: [], illegal_names: [] };
+
+  async function loadAccounts() {
+    try {
+      const data = await get("/admin/accounts");
+      accountsData = { accounts: data.accounts || [], illegal_names: data.illegal_names || [] };
+      renderAccounts();
+    } catch (err) { /* not admin yet */ }
+  }
+
+  function accountStatus(account) {
+    const bits = [];
+    if (account.must_rename) bits.push('<span class="bug-pill">RENAME DUE</span>');
+    if (account.name_flagged && !account.must_rename) bits.push('<span class="bug-pill">FLAGGED NAME</span>');
+    if (account.last_seen) bits.push(`seen ${shortDateTime(account.last_seen)}`);
+    return bits.join(" ") || "—";
+  }
+
+  function renderAccounts() {
+    const body = document.getElementById("accounts-body");
+    if (!body) return;
+    const filter = (document.getElementById("accounts-filter").value || "").trim().toLowerCase();
+    const rows = accountsData.accounts.filter((account) =>
+      !filter || `${account.username} ${account.display_name}`.toLowerCase().includes(filter));
+    body.innerHTML = rows.length ? "" : `<tr><td colspan="9" class="muted">No accounts.</td></tr>`;
+    for (const account of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${esc(account.username)}</td>
+        <td>${esc(account.display_name)}</td>
+        <td>${account.wins}W / ${account.losses}L</td>
+        <td>${account.games_played}</td>
+        <td>${shortDateTime(account.created_at)}</td>
+        <td>${accountStatus(account)}</td>`;
+      const matchCell = document.createElement("td");
+      const matchButton = document.createElement("button");
+      matchButton.className = "btn small " + (account.matchmaking_ok ? "gold" : "ghost");
+      matchButton.textContent = account.matchmaking_ok ? "On" : "Off";
+      matchButton.title = "Toggle player matchmaking for this account";
+      matchButton.addEventListener("click", () => setAccountFlags(account.id, { matchmaking_ok: !account.matchmaking_ok }));
+      matchCell.appendChild(matchButton);
+      tr.appendChild(matchCell);
+      const boardCell = document.createElement("td");
+      const boardButton = document.createElement("button");
+      boardButton.className = "btn small " + (account.leaderboard_ok ? "gold" : "ghost");
+      boardButton.textContent = account.leaderboard_ok ? "On" : "Off";
+      boardButton.title = "Toggle leaderboard listing for this account";
+      boardButton.addEventListener("click", () => setAccountFlags(account.id, { leaderboard_ok: !account.leaderboard_ok }));
+      boardCell.appendChild(boardButton);
+      tr.appendChild(boardCell);
+      const actions = document.createElement("td");
+      const ban = document.createElement("button");
+      ban.className = "btn crimson small";
+      ban.textContent = "Ban name";
+      ban.title = "Add this account's display name to the illegal list and force a rename";
+      ban.addEventListener("click", async () => {
+        if (!confirm(`Ban the name "${account.display_name}"? Anyone wearing it must rename next time they reach the lobby.`)) return;
+        try {
+          const result = await post(`/admin/accounts/${account.id}/ban-name`);
+          accountsData = { accounts: result.accounts || [], illegal_names: result.illegal_names || [] };
+          renderAccounts();
+          toast(`"${result.banned_name}" struck from the registry (${result.affected_accounts} account${result.affected_accounts === 1 ? "" : "s"}).`, true);
+        } catch (error) { toast(error.message); }
+      });
+      actions.appendChild(ban);
+      tr.appendChild(actions);
+      body.appendChild(tr);
+    }
+    const illegalNode = document.getElementById("illegal-names");
+    if (!accountsData.illegal_names.length) {
+      illegalNode.textContent = "None banned yet.";
+    } else {
+      illegalNode.innerHTML = "";
+      for (const entry of accountsData.illegal_names) {
+        const chip = document.createElement("span");
+        chip.className = "illegal-name-chip";
+        chip.innerHTML = `<b>${esc(entry.name)}</b>`;
+        const remove = document.createElement("button");
+        remove.className = "btn ghost small";
+        remove.textContent = "✕";
+        remove.title = "Remove from the illegal list";
+        remove.addEventListener("click", async () => {
+          try {
+            const result = await del("/admin/illegal-names/" + encodeURIComponent(entry.name));
+            accountsData.illegal_names = result.illegal_names || [];
+            renderAccounts();
+          } catch (error) { toast(error.message); }
+        });
+        chip.appendChild(remove);
+        illegalNode.appendChild(chip);
+      }
+    }
+  }
+
+  async function setAccountFlags(userId, flags) {
+    try {
+      const result = await post(`/admin/accounts/${userId}/flags`, flags);
+      accountsData.accounts = result.accounts || [];
+      renderAccounts();
+    } catch (error) { toast(error.message); }
+  }
+
+  document.getElementById("accounts-filter").addEventListener("input", renderAccounts);
 
   async function loadFeedback() {
     try {
