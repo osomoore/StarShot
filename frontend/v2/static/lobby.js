@@ -40,6 +40,18 @@
   const feedbackBadge = (count) => Number(count || 0) > 0
     ? `<span class="feedback-badge" title="Feedback shared ${Number(count)} time${Number(count) === 1 ? "" : "s"}">★ ${Number(count)}</span>`
     : "";
+  const EXPANSION_META = {
+    star_command: { label: "SC", name: "StarCommand" },
+    star_breach: { label: "SB", name: "StarBreach" },
+  };
+  function expansionBadges(match) {
+    const expansions = match.active_expansions || [];
+    if (!expansions.length) return "";
+    return `<span class="match-expansions">${expansions.map((id) => {
+      const meta = EXPANSION_META[id] || { label: id.slice(0, 2).toUpperCase(), name: id };
+      return `<span class="match-expansion" title="${esc(meta.name)}">${esc(meta.label)}</span>`;
+    }).join("")}</span>`;
+  }
 
   async function enter() {
     App.showScreen("lobby");
@@ -503,7 +515,7 @@
         turnBadge += ` <span class="badge-fled">🏳 ${esc(fled.join(", "))} abandoned</span>`;
       }
       row.innerHTML = `<div>
-          <div class="match-name">${esc(match.name)} ${turnBadge}</div>
+          <div class="match-name">${esc(match.name)} ${expansionBadges(match)} ${turnBadge}</div>
           <div class="match-meta">${esc(names)} · ${seatsTaken}/${match.seats} ships · ${match.status}${match.turn && match.turn.round_number ? ` · round ${match.turn.round_number}` : ""}</div>
         </div>`;
       const actions = document.createElement("div");
@@ -792,8 +804,6 @@
         <td>${entry.wins}</td><td>${entry.losses}</td><td>${entry.games_played}</td></tr>`).join("");
   }
 
-  const FEEDBACK_RENDER_WARNING = "If you're playing via starshot-1i2t.onrender.com, it is a free server that doesn't keep data between sessions. Please submit feedback via the /r/StarShotBoardgame subreddit instead. After making your feedback report, use the Copy to clipboard for /r/StarShotBoardgame posting button.";
-
   async function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
@@ -821,7 +831,102 @@
       gameId: context.gameId || "",
       isBugReport: !!document.getElementById("feedback-bug-report")?.checked,
       gameLog: "",
+      screenshotDataUrl: "",
     };
+  }
+
+  function feedbackScreenshotStyles() {
+    const chunks = [];
+    for (const sheet of document.styleSheets || []) {
+      try {
+        for (const rule of sheet.cssRules || []) chunks.push(rule.cssText);
+      } catch (error) {
+        // Cross-origin font sheets can refuse cssRules; the local app CSS is enough.
+      }
+    }
+    chunks.push(`
+      html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070b16;color:#e8e0cc}
+      *{box-sizing:border-box}
+    `);
+    return chunks.join("\n");
+  }
+
+  function replaceCanvasesForScreenshot(cloneRoot) {
+    const cloneCanvases = [...cloneRoot.querySelectorAll("canvas")];
+    const liveCanvases = [...document.querySelectorAll("canvas")];
+    cloneCanvases.forEach((cloneCanvas, index) => {
+      const liveCanvas = cloneCanvas.id
+        ? document.getElementById(cloneCanvas.id)
+        : liveCanvases[index];
+      if (!liveCanvas || !liveCanvas.toDataURL) return;
+      try {
+        const rect = liveCanvas.getBoundingClientRect();
+        const image = document.createElement("img");
+        image.src = liveCanvas.toDataURL("image/png");
+        image.id = cloneCanvas.id || "";
+        image.className = cloneCanvas.className || "";
+        image.setAttribute("style", cloneCanvas.getAttribute("style") || "");
+        image.style.width = `${Math.max(1, Math.round(rect.width || liveCanvas.width || 1))}px`;
+        image.style.height = `${Math.max(1, Math.round(rect.height || liveCanvas.height || 1))}px`;
+        cloneCanvas.replaceWith(image);
+      } catch (error) {
+        cloneCanvas.remove();
+      }
+    });
+  }
+
+  async function captureAppScreenshot() {
+    const overlay = document.getElementById("feedback-overlay");
+    const wasHidden = overlay?.classList.contains("hidden");
+    overlay?.classList.add("hidden");
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    try {
+      const rawWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1));
+      const rawHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
+      const scale = Math.min(1, 1200 / Math.max(rawWidth, rawHeight));
+      const width = Math.max(1, Math.round(rawWidth * scale));
+      const height = Math.max(1, Math.round(rawHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.fillStyle = "#060a14";
+      ctx.fillRect(0, 0, rawWidth, rawHeight);
+      const bodyClone = document.body.cloneNode(true);
+      bodyClone.querySelector("#feedback-overlay")?.remove();
+      replaceCanvasesForScreenshot(bodyClone);
+      const cssText = feedbackScreenshotStyles();
+      const cssCdata = cssText.replace(/\]\]>/g, "]]]]><![CDATA[>");
+      const html = new XMLSerializer().serializeToString(bodyClone);
+      const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${rawWidth}" height="${rawHeight}" viewBox="0 0 ${rawWidth} ${rawHeight}">
+        <foreignObject x="0" y="0" width="${rawWidth}" height="${rawHeight}">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width:${rawWidth}px;height:${rawHeight}px;overflow:hidden;background:#070b16;">
+            <style><![CDATA[${cssCdata}]]></style>
+            ${html}
+          </div>
+        </foreignObject>
+      </svg>`;
+      const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      try {
+        const image = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = url;
+        });
+        ctx.drawImage(image, 0, 0, rawWidth, rawHeight);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+      return canvas.toDataURL("image/png");
+    } catch (error) {
+      console.warn("[StarShot feedback screenshot]", error);
+      return "";
+    } finally {
+      if (!wasHidden) overlay?.classList.remove("hidden");
+    }
   }
 
   function feedbackPostText(payload) {
@@ -857,7 +962,6 @@
   }
 
   function openFeedback(context = {}) {
-    alert(FEEDBACK_RENDER_WARNING);
     let overlay = document.getElementById("feedback-overlay");
     if (!overlay) {
       overlay = document.createElement("div");
@@ -871,7 +975,6 @@
     box.className = "picker feedback-modal";
     box.innerHTML = `
       <h3>Feedback and Bugs</h3>
-      <p class="feedback-host-warning">${FEEDBACK_RENDER_WARNING}</p>
       <p class="feedback-copy">We're in playtest, and would appreciate your feedback immensely. You'll even get a badge for sharing your thoughts!</p>
       <form id="feedback-form" class="feedback-form">
         <label>Rating
@@ -891,7 +994,7 @@
         ${context.gameId ? `
         <label class="feedback-bug-report">
           <input id="feedback-bug-report" type="checkbox">
-          <span>report a bug - include the game log</span>
+          <span>report a bug - include the game log and board screenshot</span>
         </label>` : ""}
         <div class="feedback-actions">
           <button type="button" class="btn ghost" id="feedback-copy-reddit">Copy to clipboard for /r/StarShotBoardgame posting</button>
@@ -947,6 +1050,13 @@
       status.textContent = "";
       try {
         const payload = currentFeedbackPayload(context, rating);
+        if (payload.isBugReport) {
+          status.textContent = "Capturing app screenshot...";
+          payload.screenshotDataUrl = await captureAppScreenshot();
+          if (!payload.screenshotDataUrl) {
+            status.textContent = "Screenshot capture failed; sending bug report with the game log only.";
+          }
+        }
         const result = await API.submitFeedback({
           rating: payload.rating,
           liked: payload.liked,
@@ -955,6 +1065,7 @@
           match_id: payload.matchId || null,
           game_id: payload.gameId || null,
           is_bug_report: payload.isBugReport,
+          screenshot_data_url: payload.screenshotDataUrl || "",
         });
         overlay.classList.add("hidden");
         App.toast(`Feedback sent - badge count: ${result.feedback_count}`, true);

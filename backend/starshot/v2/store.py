@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     game_id TEXT,
     is_bug_report INTEGER NOT NULL DEFAULT 0,
     game_log TEXT NOT NULL DEFAULT '',
+    screenshot_data_url TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS leaderboard_results (
@@ -138,6 +139,7 @@ _MIGRATIONS = (
     "ALTER TABLE leaderboard_results ADD COLUMN ship_losses INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE feedback ADD COLUMN is_bug_report INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE feedback ADD COLUMN game_log TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE feedback ADD COLUMN screenshot_data_url TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE matches ADD COLUMN star_breach_boss_design_id TEXT",
     "ALTER TABLE match_seats ADD COLUMN star_breach_role TEXT",
     "ALTER TABLE match_seats ADD COLUMN ship_design_id TEXT",
@@ -392,6 +394,7 @@ class V2Store:
         game_id: str | None = None,
         is_bug_report: bool = False,
         game_log: str = "",
+        screenshot_data_url: str = "",
     ) -> dict:
         feedback_id = uuid.uuid4().hex[:12]
         created_at = _now()
@@ -399,8 +402,8 @@ class V2Store:
             conn.execute(
                 """INSERT INTO feedback
                    (id, user_id, rating, liked, disliked, thoughts, match_id, game_id,
-                    is_bug_report, game_log, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_bug_report, game_log, screenshot_data_url, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     feedback_id,
                     user_id,
@@ -412,6 +415,7 @@ class V2Store:
                     game_id,
                     1 if is_bug_report else 0,
                     game_log,
+                    screenshot_data_url,
                     created_at,
                 ),
             )
@@ -456,6 +460,16 @@ class V2Store:
                 (user_id,),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def delete_feedback(self, feedback_id: str) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM feedback WHERE id = ?", (feedback_id,))
+            return int(cursor.rowcount or 0)
+
+    def delete_feedback_for_user(self, user_id: int) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM feedback WHERE user_id = ?", (user_id,))
+            return int(cursor.rowcount or 0)
 
     # -- settings ------------------------------------------------------------
 

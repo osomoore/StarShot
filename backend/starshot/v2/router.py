@@ -248,6 +248,7 @@ class FeedbackRequest(BaseModel):
     match_id: str | None = Field(default=None, max_length=40)
     game_id: str | None = Field(default=None, max_length=80)
     is_bug_report: bool = False
+    screenshot_data_url: str = Field(default="", max_length=2_500_000)
 
 
 @router.post("/feedback")
@@ -255,6 +256,7 @@ def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
     user = _current_user(request)
     store = get_v2_store()
     game_log = ""
+    screenshot_data_url = ""
     if body.is_bug_report and body.game_id:
         match = store.get_match_by_game(body.game_id)
         if match and seat_for_user(match, user["id"]):
@@ -262,6 +264,12 @@ def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
                 game_log = build_debug_log(store.load_game(body.game_id), match, game_id=body.game_id)
             except KeyError:
                 game_log = ""
+            if body.screenshot_data_url.startswith((
+                "data:image/png;base64,",
+                "data:image/jpeg;base64,",
+                "data:image/webp;base64,",
+            )):
+                screenshot_data_url = body.screenshot_data_url
     feedback = store.create_feedback(
         user_id=user["id"],
         rating=body.rating,
@@ -272,6 +280,7 @@ def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
         game_id=body.game_id,
         is_bug_report=body.is_bug_report,
         game_log=game_log,
+        screenshot_data_url=screenshot_data_url,
     )
     return {
         "ok": True,

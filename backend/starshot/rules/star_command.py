@@ -26,7 +26,7 @@ CAPTAINS: tuple[Captain, ...] = (
     Captain("malcolm_manderly", 'Malcolm "Sarge" Manderly', "Sarge", "+2 to all Attack Rolls."),
     Captain("anya_andrews", 'Anya "Fura" Andrews', "Fura", "No Shields. Her fourth action is not implemented in this build."),
     Captain("riley_rounder", 'Riley "Turbo" Rounder', "Turbo", "+1 Move from Move cards, but no bonus defense from movement."),
-    Captain("danny_davos", 'Danny "Drifter" Davos', "Drifter", "Moves 2 tiles forward at the beginning of Cleanup."),
+    Captain("danny_davos", 'Danny "Drifter" Davos', "Drifter", "Before baubles score in Cleanup, drift 2 tiles straight forward."),
     Captain("carlos_connor", 'Carlos "Danger" Connor', "Danger", "Gains 1 VP whenever he loses a ship component."),
     Captain("knute_knuckles", 'Knute "Rocky" Knuckles', "Rocky", "Bridge and Life Support components take 2 hits to destroy."),
     Captain("beto_briego", 'Beto "Golden" Briego', "Golden", "+1 VP and +1 Desperation card from Baubles."),

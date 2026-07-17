@@ -962,6 +962,25 @@ def feedback_for_user(user_id: int, request: Request) -> dict:
     }
 
 
+@admin_router.delete("/feedback/{feedback_id}")
+def delete_feedback(feedback_id: str, request: Request) -> dict:
+    _admin_user(request)
+    deleted = get_v2_store().delete_feedback(feedback_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Feedback entry not found.")
+    return {"ok": True, "deleted": deleted}
+
+
+@admin_router.delete("/feedback/users/{user_id}")
+def delete_feedback_for_user(user_id: int, request: Request) -> dict:
+    _admin_user(request)
+    user = get_v2_store().get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    deleted = get_v2_store().delete_feedback_for_user(user_id)
+    return {"ok": True, "deleted": deleted}
+
+
 # ── project download ───────────────────────────────────────────────────────
 
 @admin_router.get("/ai-changelog")

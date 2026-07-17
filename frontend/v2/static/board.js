@@ -325,6 +325,13 @@
       label.textContent =
         (playerId === youId ? "★ " : "") + shortName(playerId);
       if (titleMap[playerId] === "Pirate King") label.textContent = "Cpt.";
+      const tip = el("title", {}, group);
+      if (playerId !== youId && players[youId]?.ship) {
+        const distance = hexDistance(players[youId].ship.q || 0, players[youId].ship.r || 0, ship.q || 0, ship.r || 0);
+        tip.textContent = `${nameMap[playerId] || playerId} - ${distance} hex${distance === 1 ? "" : "es"} away. Click for ship details.`;
+      } else {
+        tip.textContent = `${nameMap[playerId] || playerId} - click for ship details.`;
+      }
       group.addEventListener("click", () => { if (onShipClick) onShipClick(playerId); });
       shipEls[playerId] = { group, body };
     });

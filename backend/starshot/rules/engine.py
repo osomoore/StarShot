@@ -725,8 +725,9 @@ def _resolve_stack_engineering(
         card = card_by_id(selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
         if effect.repair_components:
+            count = _engineering_component_count(effect.repair_components, stack)
             before = sorted(player.ship.destroyed_components)
-            restored = _repair_components(player, selection.repair_component_ids, effect.repair_components)
+            restored = _repair_components(player, selection.repair_component_ids, count)
             if restored:
                 repairs.append(
                     {
@@ -737,12 +738,13 @@ def _resolve_stack_engineering(
                     }
                 )
         if effect.reconfigure_components:
+            count = _engineering_component_count(effect.reconfigure_components, stack)
             before = sorted(player.ship.destroyed_components)
             moved = _reconfigure_components(
                 player,
                 selection.reconfigure_from_component_ids,
                 selection.reconfigure_to_component_ids,
-                effect.reconfigure_components,
+                count,
             )
             if moved:
                 reconfigures.append(
@@ -765,6 +767,10 @@ def _resolve_stack_engineering(
                 "reconfigures": reconfigures,
             }
         )
+
+
+def _engineering_component_count(base_count: int, stack: ActionStack) -> int:
+    return base_count * 2 if _overdrive_copies_action(stack) else base_count
 
 
 def _repair_components(player: PlayerState, component_ids: tuple[str, ...], count: int) -> list[str]:
@@ -1684,7 +1690,7 @@ def _validate_stack(
         effective_family = _selected_card_family(card, selection)
         families.add(effective_family)
         effect = _card_effect(card, selection, stack.seal_mode)
-        _validate_engineering_selection(player, selection, effect)
+        _validate_engineering_selection(player, selection, effect, stack)
         if effective_family == CardFamily.MOVE:
             move_choice = _normalize_move_choice(selection.orientation)
             if move_choice not in _card_orientation_options(card, selection):
@@ -1706,12 +1712,13 @@ def _validate_stack(
         raise RulesError("All targeted attacks in a stack must target the same player.")
 
 
-def _validate_engineering_selection(player: PlayerState, selection: OrderCardSelection, effect) -> None:
+def _validate_engineering_selection(player: PlayerState, selection: OrderCardSelection, effect, stack: ActionStack) -> None:
     layout = layout_for_ship(player.ship)
     if effect.repair_components:
+        count = _engineering_component_count(effect.repair_components, stack)
         ids = selection.repair_component_ids
-        if len(ids) != effect.repair_components:
-            raise RulesError(f"Hull Repair must select {effect.repair_components} damaged component(s).")
+        if len(ids) != count:
+            raise RulesError(f"Hull Repair must select {count} damaged component(s).")
         _ensure_unique_component_ids(ids, layout)
         destroyed = set(player.ship.destroyed_components)
         for component_id in ids:
@@ -1724,7 +1731,7 @@ def _validate_engineering_selection(player: PlayerState, selection: OrderCardSel
             player,
             selection.reconfigure_from_component_ids,
             selection.reconfigure_to_component_ids,
-            effect.reconfigure_components,
+            _engineering_component_count(effect.reconfigure_components, stack),
         )
 
 

@@ -926,7 +926,7 @@
       <div class="opt-sub">d12 damage lanes enter from the rim; a shot destroys the first intact
         component along its lane. Lose the Bridge or both Life Supports and the ship is done.</div>
       ${knocked}
-      ${ShipView.fullShipSVG(ship)}
+      ${ShipView.fullShipSVG(ship, { lanes: true })}
       <button class="btn ghost picker-cancel" id="ship-modal-close">Close</button>`;
     overlay.appendChild(box);
     document.getElementById("ship-modal-close").addEventListener("click", hidePicker);
@@ -1407,7 +1407,7 @@
       resolve(playerId);
       return;
     }
-    if (document.documentElement.dataset.device === "phone") {
+    if (document.documentElement.dataset.device === "phone" || playerId !== you) {
       showShipModal(playerId);
     }
   }
@@ -2290,6 +2290,63 @@
     return picked;
   }
 
+  function engineeringMultiplierForSlot(slot) {
+    return slot && slot.seal === "overdrive" && overdriveCopiesAction() ? 2 : 1;
+  }
+
+  function engineeringCount(card, field, slotIndex = null) {
+    const base = Number(card?.desperate_face?.[field] || 0);
+    if (!base) return 0;
+    const slot = slotIndex === null || slotIndex === undefined ? null : draft.slots[slotIndex];
+    return base * engineeringMultiplierForSlot(slot);
+  }
+
+  async function completeEngineeringSelection(selection, slotIndex) {
+    const face = selection.card?.desperate_face || {};
+    if (face.repair_components) {
+      const count = engineeringCount(selection.card, "repair_components", slotIndex);
+      if ((selection.repair_component_ids || []).length < count) {
+        const extra = await pickComponents(
+          "Restore which additional hull tile?",
+          damagedComponents().filter((component) => !(selection.repair_component_ids || []).includes(component.id)),
+          count - (selection.repair_component_ids || []).length
+        );
+        orderTrace(extra ? "repair_components_extra_selected" : "repair_components_extra_cancelled", { card_id: selection.card_id, component_ids: extra || [], slot_index: slotIndex });
+        if (!extra) return false;
+        selection.repair_component_ids = [...(selection.repair_component_ids || []), ...extra];
+      }
+    }
+    if (face.reconfigure_components) {
+      const count = engineeringCount(selection.card, "reconfigure_components", slotIndex);
+      if ((selection.reconfigure_from_component_ids || []).length < count) {
+        const fromExtra = await pickComponents(
+          "Move additional damage from...",
+          damagedComponents().filter((component) => !(selection.reconfigure_from_component_ids || []).includes(component.id)),
+          count - (selection.reconfigure_from_component_ids || []).length
+        );
+        orderTrace(fromExtra ? "reconfigure_from_extra_selected" : "reconfigure_from_extra_cancelled", { card_id: selection.card_id, component_ids: fromExtra || [], slot_index: slotIndex });
+        if (!fromExtra) return false;
+        const allFrom = [...(selection.reconfigure_from_component_ids || []), ...fromExtra];
+        const interimDestroyed = new Set(destroyedComponentIds());
+        allFrom.forEach((id) => interimDestroyed.delete(id));
+        const toExtra = await pickComponents(
+          "Move additional damage to...",
+          intactComponents().filter((component) => (
+            !allFrom.includes(component.id)
+            && !(selection.reconfigure_to_component_ids || []).includes(component.id)
+            && isAdjacentToIntact(component, interimDestroyed)
+          )),
+          count - (selection.reconfigure_to_component_ids || []).length
+        );
+        orderTrace(toExtra ? "reconfigure_to_extra_selected" : "reconfigure_to_extra_cancelled", { card_id: selection.card_id, component_ids: toExtra || [], slot_index: slotIndex });
+        if (!toExtra) return false;
+        selection.reconfigure_from_component_ids = allFrom;
+        selection.reconfigure_to_component_ids = [...(selection.reconfigure_to_component_ids || []), ...toExtra];
+      }
+    }
+    return true;
+  }
+
   async function beginPlacement(card, presetSlot = null) {
     orderTrace("placement_started", {
       card_id: card.id,
@@ -2399,13 +2456,13 @@
 
     if (selection.face === "desperate" && card.desperate_face) {
       if (card.desperate_face.repair_components) {
-        const picked = await pickComponents("Restore which hull tile?", damagedComponents(), card.desperate_face.repair_components);
+        const picked = await pickComponents("Restore which hull tile?", damagedComponents(), engineeringCount(card, "repair_components", presetSlot));
         orderTrace(picked ? "repair_components_selected" : "repair_components_cancelled", { card_id: card.id, component_ids: picked || [] });
         if (!picked) return;
         selection.repair_component_ids = picked;
       }
       if (card.desperate_face.reconfigure_components) {
-        const count = card.desperate_face.reconfigure_components;
+        const count = engineeringCount(card, "reconfigure_components", presetSlot);
         const from = await pickComponents("Move damage from...", damagedComponents(), count);
         orderTrace(from ? "reconfigure_from_selected" : "reconfigure_from_cancelled", { card_id: card.id, component_ids: from || [] });
         if (!from) return;
@@ -2512,6 +2569,10 @@
       if (slotIndex === null || slotIndex === undefined) return;
     }
     const slot = draft.slots[slotIndex];
+    if (selection.face === "desperate" && selection.card?.desperate_face) {
+      const engineeringOk = await completeEngineeringSelection(selection, slotIndex);
+      if (!engineeringOk) return;
+    }
     // Targeted attacks in one stack must agree on the target.
     if (selection.family === "attack" && slot.cards.length) {
       const existing = slot.cards[0].target_player_id;
@@ -2674,6 +2735,12 @@
     }
     [q, r] = clampHex(q, r);
     return { pos: { q, r, facing }, moved: value };
+  }
+
+  function simDrifter(pos) {
+    const [dq, dr] = Board.DIRECTIONS[((pos.facing % 6) + 6) % 6];
+    const [q, r] = clampHex(pos.q + dq * 2, pos.r + dr * 2);
+    return { q, r, facing: pos.facing };
   }
 
   function previewPositionBeforeSlot(slotIndex) {
@@ -2904,6 +2971,15 @@
         }
       }
     });
+    if (captainId(me) === "danny_davos") {
+      const before = { ...pos };
+      pos = simDrifter(pos);
+      items.push({ kind: "path", points: [{ q: before.q, r: before.r }, { q: pos.q, r: pos.r }], color: "#9ee7ff" });
+      items.push({
+        kind: "ghost", q: pos.q, r: pos.r, facing: pos.facing,
+        label: "Drift before baubles", color: "#9ee7ff",
+      });
+    }
     Board.renderPreview(items);
   }
 

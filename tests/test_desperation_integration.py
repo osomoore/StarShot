@@ -2,6 +2,8 @@
 
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from starshot.rules import (
     ActionStack,
@@ -10,6 +12,7 @@ from starshot.rules import (
     GamePhase,
     OrderCardSelection,
     OrdersSubmission,
+    RulesConfig,
     RulesError,
     SealMode,
     create_initial_state,
@@ -658,6 +661,32 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertNotIn("forward_ion_cannon", state.players["red"].ship.destroyed_components)
         self.assertEqual(state.players["red"].ship.damage_taken, 0)
         self.assertTrue(any(e["type"] == "engineering_resolved" for e in state.event_log))
+
+    def test_overdrive_hull_repair_restores_additional_component(self):
+        state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
+        self._set_hand(state, "red", "desp_hull_repair_a")
+        state.players["red"].ship.destroyed_components.update({"forward_ion_cannon", "port_shields"})
+        state.players["red"].ship.damage_taken = 2
+
+        config = RulesConfig(allow_overdrive_desperation=True)
+        with patch("starshot.rules.engine.active_catalog", return_value=SimpleNamespace(id=state.deck_set_id, rules_config=config)):
+            state = submit_orders(state, "red", OrdersSubmission(stacks=(
+                ActionStack(1, SealMode.OVERDRIVE, (
+                    OrderCardSelection(
+                        "desp_hull_repair_a",
+                        face="desperate",
+                        repair_component_ids=("forward_ion_cannon", "port_shields"),
+                    ),
+                )),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )))
+            state = submit_orders(state, "blue", self._empty_orders())
+            state = resolve_next_step(state)
+
+        self.assertNotIn("forward_ion_cannon", state.players["red"].ship.destroyed_components)
+        self.assertNotIn("port_shields", state.players["red"].ship.destroyed_components)
+        self.assertEqual(state.players["red"].ship.damage_taken, 0)
 
     def test_reconfigure_moves_two_damage_markers(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))

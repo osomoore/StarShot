@@ -722,6 +722,28 @@
   // feedback
   let feedbackEntries = [];
   const stars = (rating) => "★".repeat(Number(rating || 0)) + "☆".repeat(Math.max(0, 5 - Number(rating || 0)));
+  function screenshotExtension(dataUrl) {
+    const match = /^data:image\/([a-z0-9.+-]+);base64,/i.exec(dataUrl || "");
+    const type = (match && match[1] || "png").toLowerCase();
+    return type === "jpeg" ? "jpg" : type.replace(/[^a-z0-9]/g, "") || "png";
+  }
+  function screenshotBlock(entry) {
+    if (!entry.is_bug_report) return "";
+    if (!entry.screenshot_data_url) {
+      return `<h4>Board Screenshot</h4><p class="feedback-screenshot-missing">No screenshot was captured for this bug report.</p>`;
+    }
+    const url = esc(entry.screenshot_data_url);
+    const ext = screenshotExtension(entry.screenshot_data_url);
+    const name = esc(`starshot-bug-${entry.id || "screenshot"}.${ext}`);
+    return `<h4>Board Screenshot</h4>
+      <div class="feedback-screenshot-actions">
+        <a class="btn ghost small" href="${url}" target="_blank" rel="noopener">Open full size</a>
+        <a class="btn ghost small" href="${url}" download="${name}">Download ${esc(ext.toUpperCase())}</a>
+      </div>
+      <a href="${url}" target="_blank" rel="noopener" title="Open screenshot full size">
+        <img class="feedback-screenshot" src="${url}" alt="Bug report board screenshot">
+      </a>`;
+  }
   const feedbackText = (entry) => [
     entry.liked,
     entry.disliked,
@@ -765,12 +787,18 @@
       const detail = document.getElementById("feedback-detail");
       const entries = data.entries || [];
       detail.innerHTML = `
-        <h3 class="panel-sub">${esc(data.user.username)} - ${entries.length} repl${entries.length === 1 ? "y" : "ies"}</h3>
+        <div class="feedback-detail-head">
+          <h3 class="panel-sub">${esc(data.user.username)} - ${entries.length} repl${entries.length === 1 ? "y" : "ies"}</h3>
+          ${entries.length ? `<button class="btn ghost small" id="feedback-delete-user" type="button">Delete all</button>` : ""}
+        </div>
         ${entries.map((entry) => `
-          <article class="feedback-entry">
+          <article class="feedback-entry" data-feedback-id="${esc(entry.id)}">
             <div class="feedback-entry-head">
               <span>${entry.is_bug_report ? '<span class="bug-pill">BUG REPORT</span> ' : ""}<span class="feedback-rating">${stars(entry.rating)}</span></span>
-              <span>${new Date(entry.created_at).toLocaleString()}</span>
+              <span class="feedback-entry-actions">
+                <span>${new Date(entry.created_at).toLocaleString()}</span>
+                <button class="btn ghost small feedback-delete-one" type="button" data-feedback-id="${esc(entry.id)}">Delete</button>
+              </span>
             </div>
             ${entry.match_id || entry.game_id ? `<div class="feedback-context">${entry.match_id ? `Match ${esc(entry.match_id)}` : ""}${entry.match_id && entry.game_id ? " · " : ""}${entry.game_id ? `Game ${esc(entry.game_id)}` : ""}</div>` : ""}
             <h4>What I liked</h4>
@@ -779,8 +807,31 @@
             <p>${esc(entry.disliked || "-")}</p>
             <h4>General Thoughts</h4>
             <p>${esc(entry.thoughts || "-")}</p>
+            ${screenshotBlock(entry)}
             ${entry.game_log ? `<h4>Included Game Log</h4><pre class="feedback-game-log">${esc(entry.game_log)}</pre>` : ""}
           </article>`).join("")}`;
+      detail.querySelector("#feedback-delete-user")?.addEventListener("click", async () => {
+        if (!confirm(`Delete all feedback from ${data.user.username}? This cannot be undone.`)) return;
+        try {
+          const result = await del("/admin/feedback/users/" + encodeURIComponent(userId));
+          toast(`Deleted ${result.deleted || 0} feedback entr${Number(result.deleted || 0) === 1 ? "y" : "ies"}.`, true);
+          await loadFeedback();
+          openFeedbackDetail(userId);
+        } catch (error) { toast(error.message); }
+      });
+      detail.querySelectorAll(".feedback-delete-one").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          const feedbackId = button.dataset.feedbackId;
+          if (!feedbackId || !confirm("Delete this feedback entry? This cannot be undone.")) return;
+          try {
+            await del("/admin/feedback/" + encodeURIComponent(feedbackId));
+            toast("Feedback entry deleted.", true);
+            await loadFeedback();
+            openFeedbackDetail(userId);
+          } catch (error) { toast(error.message); }
+        });
+      });
     } catch (error) { toast(error.message); }
   }
 

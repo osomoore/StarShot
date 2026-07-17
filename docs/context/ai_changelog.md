@@ -2,6 +2,47 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 20:47:35 -05:00
+
+- Title: Full app screenshots
+- Build ID: `adc4913`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Changed bug-report screenshots from board-only captures to a full visible app-window snapshot with the feedback popup hidden.
+  - Replaces live canvases in the snapshot with image data first, then scales the final capture to a max 1200px edge for storage.
+  - Verified with `node --check frontend/v2/static/lobby.js`, backend `py_compile` sanity checks, and `git diff --check` (CRLF warnings only).
+
+## 2026-07-16 20:41:19 -05:00
+
+- Title: Feedback admin cleanup
+- Build ID: `adc4913`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Made bug-report screenshot capture smaller and more explicit when capture fails; admin now shows a screenshot section for every bug report, including a no-screenshot note.
+  - Removed the Render/Reddit warning alert and message from the feedback form while keeping the Reddit clipboard copy action.
+  - Added admin controls and endpoints to delete one feedback entry or all feedback entries for a user.
+  - Verified with `node --check` on `admin.js` and `lobby.js`, plus `python -m py_compile` on touched v2 backend modules.
+
+## 2026-07-16 20:34:45 -05:00
+
+- Title: Screenshot admin actions
+- Build ID: `adc4913`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Added admin feedback controls to open bug-report board screenshots full-size in a new tab or download them as PNG files.
+  - Verified with `node --check frontend/v2/static/admin.js`.
+
+## 2026-07-16 20:26:23 -05:00
+
+- Title: Battle UX fixes
+- Build ID: `adc4913`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Added overdrive-aware Hull Repair/Reconfigure component counts in rules validation/resolution and the v2 order picker.
+  - Added player ship damage-lane labels in the expanded ship modal, enemy board-click ship details with hover distance text, lobby expansion chips, and a desktop 2x mini boss attack-stack widget.
+  - Added bug-report board screenshots with admin display, and clarified/previewed Drifter's pre-bauble cleanup drift.
+  - Verified with `node --check` on `game.js`, `lobby.js`, `board.js`, and `admin.js`; `python -m py_compile` on touched backend modules; `python -m unittest tests.test_desperation_integration`; and `git diff --check` (CRLF warnings only).
+
 ## 2026-07-16 19:50:07 -05:00
 
 - Title: Player ship designer

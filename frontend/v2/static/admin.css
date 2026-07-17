@@ -132,14 +132,19 @@
   background: #0d1426; border: 1px solid var(--panel-edge); border-radius: 8px;
   margin-top: 43px; max-height: 68vh; overflow: auto; padding: 12px;
 }
+.feedback-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.feedback-detail-head .panel-sub { margin: 0; }
 .feedback-entry {
   border: 1px solid rgba(42,53,84,.8); border-radius: 8px;
   background: #081020; color: var(--ink); margin-bottom: 10px; padding: 10px 12px;
 }
 .feedback-entry-head { display: flex; justify-content: space-between; gap: 10px; color: var(--ink-dim); font-size: 12px; }
+.feedback-entry-actions { align-items: center; display: flex; gap: 8px; }
 .feedback-context { color: var(--ink-dim); font-size: 11px; margin-top: 3px; }
 .feedback-entry h4 { color: var(--gold); font-size: 11px; margin: 10px 0 3px; text-transform: uppercase; letter-spacing: .06em; }
 .feedback-entry p { white-space: pre-wrap; line-height: 1.45; margin: 0; }
+.feedback-screenshot-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 8px; }
+.feedback-screenshot-missing { color: var(--ink-dim); font-style: italic; }
 .feedback-game-log {
   background: #050914;
   border: 1px solid var(--panel-edge);
