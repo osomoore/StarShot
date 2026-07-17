@@ -2,6 +2,17 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 19:50:07 -05:00
+
+- Title: Player ship designer
+- Build ID: `9f629c1bf382`
+- AI agent: Claude Fable 5
+- Summary:
+  - Added the Player Ship Designer so players can create battle-ready radius-2 ship layouts with budgeted shields, draw, core armor, Signal Jammers, and Targeting Sensors.
+  - Added player ship layout compilation/storage, per-player and admin ship design APIs, lobby ship selection, Build New Content hub support, and a bundled `vanguard` example design.
+  - Updated engine, StarBreach, serialization, card draw, ship rendering, and match creation/join/launch validation to use per-ship compiled layouts and jammer/sensor bonuses.
+  - Verification recorded in the handoff: new coverage in `tests/test_player_ships.py`.
+
 ## 2026-07-16 17:10:42 -05:00
 
 - Title: StarBreach docking bays and public bosses
