@@ -1047,6 +1047,20 @@ h1, h2, .brand, .poster-title, .banner-text {
 .card.in-slot .card-name { font-size: 10px; }
 .card.in-slot .card-text { font-size: 8px; }
 .card.in-slot:hover { transform: translateY(-4px) scale(1.35) !important; }
+.card.in-slot.compact-slot .card-name,
+.card.in-slot.compact-slot .use-tag {
+  display: none;
+}
+.card.in-slot.compact-slot .card-icon {
+  margin-top: 7px;
+}
+.card.in-slot.compact-slot .card-text {
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.18;
+  padding: 5px 7px 0;
+}
 .card.desperate-face { background: linear-gradient(168deg, #33204e 0%, #241540 55%, #180e2e 100%); }
 .card.desperate-face .card-trim { border-color: var(--desperate); }
 .card.selected { outline: 2px solid var(--gold-bright); box-shadow: 0 0 18px rgba(212,167,72,.6); }
@@ -1590,6 +1604,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .order-slot {
     min-height: 146px;
     padding: 8px 5px;
+    grid-template-rows: auto minmax(76px, 1fr) minmax(42px, auto);
   }
 
   :root[data-device="phone"] .slot-shot-preview {
@@ -1614,8 +1629,31 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .seal-toggle {
-    height: 26px;
-    width: 54px;
+    height: 38px;
+    width: 76px;
+  }
+
+  :root[data-device="phone"] .seal-mode-text {
+    font-size: 11px;
+  }
+
+  :root[data-device="phone"] .seal-toggle.overdrive .seal-mode-text {
+    font-size: 9px;
+  }
+
+  :root[data-device="phone"] .seal-control {
+    gap: 7px;
+    grid-template-columns: minmax(76px, auto) minmax(34px, auto);
+    min-height: 42px;
+    position: relative;
+    z-index: 2;
+  }
+
+  :root[data-device="phone"] .seal-details-button {
+    font-size: 15px;
+    height: 34px;
+    line-height: 32px;
+    width: 34px;
   }
 
   :root[data-device="phone"] .card.in-slot {

@@ -38,6 +38,25 @@
     return bits.join(", ") || "Fire cannons";
   }
 
+  function describeCompactBasic(card) {
+    const effect = card.effect || {};
+    const family = effect.family || card.family;
+    if (card.is_hybrid) {
+      return `Move ${effect.value || card.value} / ${describeCompactAttack(card, effect)}`;
+    }
+    if (family === "move") return `Move ${effect.value || card.value}`;
+    return describeCompactAttack(card, effect);
+  }
+
+  function describeCompactAttack(card, effect) {
+    const bits = [];
+    const aimBonus = Number(effect.aim_bonus || 0) || Number(effect.value || card.value || 0);
+    const damageBonus = Number(effect.damage_bonus || 0);
+    if (aimBonus) bits.push("Aim +" + aimBonus);
+    if (damageBonus) bits.push("Damage +" + damageBonus);
+    return bits.join(", ") || "Fire";
+  }
+
   function describeDesperate(face) {
     if (!face) return "";
     const bits = [];
@@ -72,28 +91,29 @@
     return (card.effect && card.effect.family) === "move" || card.family === "move" ? "fam-move" : "fam-attack";
   }
 
-  /* Build a card element. options: {inSlot, faceUsed, useTag, onClick} */
+  /* Build a card element. options: {inSlot, faceUsed, useTag, compactSlot, onClick} */
   function cardEl(card, options = {}) {
     const node = document.createElement("div");
     const desperateUsed = options.faceUsed === "desperate";
     node.className = "card " + familyClass(card)
       + (card.desperate_face && !desperateUsed ? " has-desperate" : "")
       + (desperateUsed ? " desperate-face" : "")
-      + (options.inSlot ? " in-slot" : "");
+      + (options.inSlot ? " in-slot" : "")
+      + (options.compactSlot ? " compact-slot" : "");
     const family = desperateUsed ? card.desperate_face.family : (card.effect && card.effect.family) || card.family;
     const icon = familyIcon(family, !desperateUsed && card.is_hybrid);
     const text = desperateUsed
       ? describeDesperate(card.desperate_face)
       : card.no_basic_face
         ? "☄ " + describeDesperate(card.desperate_face)
-        : describeBasic(card);
+        : options.compactSlot ? describeCompactBasic(card) : describeBasic(card);
     node.innerHTML = `
       <div class="card-trim"></div>
       <div class="card-top"><span>${family === "move" ? "MOVE" : family === "attack" ? "ATTACK" : "CMD"}</span><span>${desperateUsed ? "☄" : "⚓"}</span></div>
       <div class="card-icon">${icon}</div>
       <div class="card-name">${escapeHtml(card.name)}</div>
       <div class="card-text">${escapeHtml(text)}</div>
-      ${options.useTag ? `<div class="use-tag">${escapeHtml(options.useTag)}</div>` : ""}`;
+      ${options.useTag && !options.compactSlot ? `<div class="use-tag">${escapeHtml(options.useTag)}</div>` : ""}`;
     if (options.onClick) node.addEventListener("click", options.onClick);
     return node;
   }

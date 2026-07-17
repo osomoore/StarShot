@@ -2,6 +2,28 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-17 06:44:58 -05:00
+
+- Title: Compact mobile action cards
+- Build ID: `e66364211f35`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Added a mobile-only compact rendering mode for action-slot cards that hides card names and target/orientation tags.
+  - Basic attack cards now show shortened action-slot text such as `Aim +2` instead of target/volley wording; target and zone details remain in Shot Info.
+  - Bumped the v2 `cards.js` asset query string.
+  - Verified with `node --check frontend/v2/static/cards.js` and `node --check frontend/v2/static/game.js`.
+
+## 2026-07-17 06:35:15 -05:00
+
+- Title: Mobile order controls
+- Build ID: `e66364211f35`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Mobile now returns to the map immediately after a successful Seal Orders submit.
+  - Enlarged the mobile Shot Info and Sealed/Overdrive controls while reserving a stable control row so card text does not crowd them.
+  - Bumped the v2 `pirate.css` and `game.js` asset query strings.
+  - Verified with `node --check frontend/v2/static/game.js` and `git diff --check` (CRLF warnings only).
+
 ## 2026-07-17 · Player display names & account moderation
 
 - Title: Player display names & account moderation

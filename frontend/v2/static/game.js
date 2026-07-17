@@ -152,6 +152,10 @@
     hidePicker();
   }
 
+  function compactActionCards() {
+    return document.documentElement.dataset.device === "phone";
+  }
+
   function emptyDraft() {
     return { slots: [newSlot(), newSlot(), newSlot()] };
   }
@@ -1184,7 +1188,12 @@
             : String(target).startsWith("boss:") ? `Boss ${areaDisplayName(String(target).split(":")[1])}`
             : String(target).startsWith("craft:") ? "Hunter" : Board.shortName(target))
           : Cards.orientationLabel(selection.orientation || "forward").split(" ")[0];
-        cardsBox.appendChild(Cards.cardEl(card, { inSlot: true, faceUsed: selection.face, useTag: tag }));
+        cardsBox.appendChild(Cards.cardEl(card, {
+          inSlot: true,
+          faceUsed: selection.face,
+          useTag: tag,
+          compactSlot: compactActionCards(),
+        }));
       }
       if (!stack || !(stack.cards || []).length) {
         const hint = document.createElement("span");
@@ -1249,6 +1258,7 @@
         inSlot: true,
         faceUsed: selection.face,
         useTag: useTag(selection),
+        compactSlot: compactActionCards(),
         onClick: ordering ? () => { removeFromSlot(index, selection); } : null,
       });
       mini.title = "Click to return to hand";
@@ -2626,6 +2636,9 @@
       saveDraft();
       Board.clearPreview();
       App.toast("Orders sealed. Fair winds!", true);
+      if (document.documentElement.dataset.device === "phone") {
+        showMobileMap();
+      }
       applyPayload(response, false);
     } catch (error) {
       orderTrace("submit_failed", { message: error.message || String(error), status: error.status || null });
