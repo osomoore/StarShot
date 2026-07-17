@@ -85,7 +85,7 @@
   let mode = "structure";  // structure | shields | progression
   let tool = { type: "generic", number: 1, stack: "0.5" };
   let currentRegion = null; // ship region number being edited
-  let shieldSub = "hexes";  // hexes | lanes
+  let shieldSub = "hexes";  // hexes | power | lanes
   let stackLanes = false;   // lanes sub-mode: clicks stack a second lane on a hex
   let printTone = "color";  // color | bw
   let printOptions = {
@@ -400,18 +400,23 @@
     const tile = tileAt(q, r);
     if (!tile) return;
     if (shieldSub === "hexes") {
-      if (tile.type === "shield_gen") {
-        // Clicking a generator assigns it as the region's power source.
-        region.generator = [q, r];
+      const index = region.hexes.findIndex(([hq, hr]) => hq === q && hr === r);
+      if (index >= 0) {
+        region.hexes.splice(index, 1);
+        region.lanes = region.lanes.filter((lane) => !(lane.q === q && lane.r === r));
       } else {
-        const index = region.hexes.findIndex(([hq, hr]) => hq === q && hr === r);
-        if (index >= 0) {
-          region.hexes.splice(index, 1);
-          region.lanes = region.lanes.filter((lane) => !(lane.q === q && lane.r === r));
-        } else {
-          region.hexes.push([q, r]);
-        }
+        region.hexes.push([q, r]);
       }
+    } else if (shieldSub === "power") {
+      if (tile.type !== "shield_gen") {
+        setStatus("Pick a Shield Gen tile as this region's power source.", false);
+        return;
+      }
+      if (tile.number !== region.number) {
+        setStatus(`That generator is numbered ${tile.number}; Region ${region.number} needs SG${region.number}.`, false);
+        return;
+      }
+      region.generator = [q, r];
     } else {
       laneClick(region, q, r);
     }
@@ -1444,7 +1449,7 @@
     }
     const generatorText = region.generator
       ? `shield gen at (${region.generator[0]},${region.generator[1]})`
-      : "<b>none — click a Shield Gen tile to power this region</b>";
+      : "<b>none - use Power Source, then click an SG tile</b>";
     const rolls = regionRolls(region);
     const laneCount = rolls.length;
     const topRoll = rolls[rolls.length - 1];
@@ -1457,6 +1462,7 @@
         <label>Start charges <input id="bd-region-charges" type="number" min="0" max="9" value="${region.charges ?? 3}"></label>
         <label>Max charges <input id="bd-region-maxcharges" type="number" min="0" max="9" value="${region.max_charges ?? 3}"></label>
         ${shieldSub === "hexes" ? '<button class="btn ghost small" id="bd-region-unshielded" type="button">Unshielded</button>' : ""}
+        ${shieldSub === "power" && region.generator ? '<button class="btn ghost small" id="bd-region-clear-generator" type="button">Clear source</button>' : ""}
       </div>
       <div class="bd-charges-row">
         <label>Damage lanes <input id="bd-region-lanecount" type="number" min="1" max="${META.max_lane_count || 12}" value="${laneCount}"></label>
@@ -1464,8 +1470,10 @@
       </div>
       <div>Lanes assigned: ${used.join(", ") || "none"}${missing.length ? ` · ${used.length}/${laneCount}` : ` · all ${laneCount}`}</div>
       <div class="admin-note">${shieldSub === "hexes"
-        ? "Click hull hexes to add/remove them from this region; click a Shield Gen tile to set the power source."
-        : `Click a region hex to assign the next lane (2-${topRoll}). Click again to rotate its entry face; past the last face, the lane is cleared. Tick the box to stack a second lane on a laned hex.`}</div>`;
+        ? "Click hull hexes to add/remove them from this protected region. Shield Gen tiles can be protected here like any other hull tile."
+        : shieldSub === "power"
+          ? `Click SG${region.number} to set the generator that powers this region. The generator may belong to another protected region.`
+          : `Click a region hex to assign the next lane (2-${topRoll}). Click again to rotate its entry face; past the last face, the lane is cleared. Tick the box to stack a second lane on a laned hex.`}</div>`;
     const chargesInput = info.querySelector("#bd-region-charges");
     const maxInput = info.querySelector("#bd-region-maxcharges");
     const applyCharges = () => {
@@ -1480,6 +1488,12 @@
     info.querySelector("#bd-region-unshielded")?.addEventListener("click", () => {
       region.charges = 0;
       region.max_charges = 0;
+      markDirty();
+      renderShieldPanel();
+      renderBoard();
+    });
+    info.querySelector("#bd-region-clear-generator")?.addEventListener("click", () => {
+      region.generator = null;
       markDirty();
       renderShieldPanel();
       renderBoard();
@@ -1823,6 +1837,7 @@
               </div>
               <div class="bd-shieldsubs">
                 <button class="btn ghost small bd-shieldsub active" data-sub="hexes">Protected Hexes</button>
+                <button class="btn ghost small bd-shieldsub" data-sub="power">Power Source</button>
                 <button class="btn ghost small bd-shieldsub" data-sub="lanes">Damage Lanes</button>
               </div>
               <div id="bd-lane-tools" class="bd-lane-tools hidden">

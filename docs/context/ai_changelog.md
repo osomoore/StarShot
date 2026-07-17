@@ -2,6 +2,17 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 20:59:08 -05:00
+
+- Title: Shield source assignment
+- Build ID: `26e75b0`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Split StarBreach boss designer shield-region editing into Protected Hexes, Power Source, and Damage Lanes modes.
+  - Protected Hexes now lets Shield Gen tiles be protected like any other hull tile; Power Source mode intentionally selects or clears the matching Shield Gen that powers the active region.
+  - Added coverage for one region shielding another region's source generator.
+  - Verified with `node --check frontend/v2/static/bossdesigner.js`, `python -m unittest tests.test_boss_designer tests.test_boss_spec`, and `git diff --check` (CRLF warnings only).
+
 ## 2026-07-16 20:47:35 -05:00
 
 - Title: Full app screenshots

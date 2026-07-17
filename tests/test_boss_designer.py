@@ -257,6 +257,22 @@ class ValidateTests(unittest.TestCase):
         raw["shield_regions"][0]["hexes"].append([0, 0])  # core: fully surrounded
         self.assertEqual(self._problems(raw), [])
 
+    def test_region_can_shield_another_regions_generator(self):
+        raw = make_design()
+        raw["tiles"][-1] = {"q": 0, "r": 1, "type": "shield_gen", "number": 2}
+        footprint = {(tile["q"], tile["r"]) for tile in raw["tiles"]}
+        facing = boss_designs.edge_facings(-1, 0, footprint)[0]
+        raw["shield_regions"].append(
+            {
+                "number": 2,
+                "hexes": [[-1, 0]],
+                "generator": [0, 1],
+                "lanes": [{"roll": 2, "q": -1, "r": 0, "facing": facing}],
+            }
+        )
+
+        self.assertEqual(self._problems(raw), [])
+
     def test_lane_facing_must_be_edge_face(self):
         raw = make_design()
         raw["shield_regions"][0]["lanes"][0]["facing"] = 3  # points at the core
