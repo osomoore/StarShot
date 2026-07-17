@@ -432,22 +432,29 @@ def _living_players(state: GameState) -> list[PlayerState]:
 
 
 def _enemy_pick_target(state: GameState, distance_to: callable) -> PlayerState | None:
-    """Shared enemy targeting: the Tank's Proximity Jammer overrides, else The
-    Prey, else the nearest living player."""
+    """Shared enemy targeting: pick The Prey, else the nearest living player,
+    then apply the Tank's Proximity Jammer — if that target is within 3 hexes
+    of the Tank, the Tank steps in and takes the hit instead."""
     sb = state.star_breach
     assert sb is not None
-    tank = _player_with_role(state, "tank")
-    if tank is not None:
-        tank_distance = distance_to(tank)
-        if tank_distance is not None and tank_distance <= sb_data.TANK_PROXIMITY_JAMMER_RANGE:
-            return tank
     prey = state.players.get(sb.prey_player_id)
     if prey is not None and not prey.eliminated and not prey.ship.destroyed:
-        return prey
-    living = _living_players(state)
-    if not living:
-        return None
-    return min(living, key=lambda player: (distance_to(player) or 10**6, player.id))
+        primary = prey
+    else:
+        living = _living_players(state)
+        if not living:
+            return None
+        primary = min(living, key=lambda player: (distance_to(player) or 10**6, player.id))
+    tank = _player_with_role(state, "tank")
+    if (
+        tank is not None
+        and tank.id != primary.id
+        and not tank.eliminated
+        and not tank.ship.destroyed
+        and hex_distance(tank.ship.q, tank.ship.r, primary.ship.q, primary.ship.r) <= sb_data.TANK_PROXIMITY_JAMMER_RANGE
+    ):
+        return tank
+    return primary
 
 
 def _roll_d8(state: GameState) -> int:

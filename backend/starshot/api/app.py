@@ -118,6 +118,14 @@ def v2_admin_page() -> FileResponse:
     return FileResponse(page, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/v2/about")
+def v2_about_page() -> FileResponse:
+    page = V2_FRONTEND_DIR / "about.html"
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="about page not built")
+    return FileResponse(page, headers={"Cache-Control": "no-store"})
+
+
 class CreateGameRequest(BaseModel):
     player_ids: list[str] = Field(min_length=2, max_length=4)
     seed: int | None = None

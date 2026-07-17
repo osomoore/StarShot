@@ -410,11 +410,16 @@
     overlay.className = "overlay";
     overlay.innerHTML = `
       <div class="picker">
-        <h3>StarBreach — Bauble Breacher</h3>
+        <h3>StarBreach — Bauble Breacher <span class="badge-alpha">ALPHA</span></h3>
+        <p class="tutorial-alpha-note">StarBreach is still in Alpha — rules and balance may shift as it's tested. Bug reports and feedback are very welcome.</p>
         <div class="tutorial-steps">
           <div><b>1.</b> Everyone is on the same side against the StarBreacher and its Hunter-Killer fleet.</div>
           <div><b>2.</b> One captain is <b>The Prey</b>. Win by ending Round 6 inside The Fang. If The Prey is destroyed, everyone loses.</div>
-          <div><b>3.</b> Each captain has a role: Bauble Runner, Tank, Engineer, or Fighting Ace.</div>
+          <div><b>3.</b> Each captain has a role, with its own ability:</div>
+          <div class="tutorial-role"><b>Bauble Runner</b> — Move distances are doubled on basic movement (not boosted further by Overdrive, and movement gives no defense bonus). When they collect a Bauble, every player draws one bonus card.</div>
+          <div class="tutorial-role"><b>Tank</b> — Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 3 hexes of the Tank, the Tank steps in and takes the hit instead; attacks against the Tank roll one fewer die.</div>
+          <div class="tutorial-role"><b>Engineer</b> — Draws two extra cards. Attack orders can target allies as repairs instead: 1d6, a hit restores one HP; each ship can only be repaired once per action.</div>
+          <div class="tutorial-role"><b>Fighting Ace</b> — Each attack gets one extra die against fleet craft, or shifts the Boss Damage Lane roll by ±1. No Overdrive penalty on Attack-only orders.</div>
           <div><b>4.</b> The boss acts between your actions. Hitting The Prey advances its Progress Track — destroy Cannons and Engines to slow it down.</div>
         </div>
         <button class="btn gold picker-cancel" id="star-breach-tutorial-ok">Got it</button>

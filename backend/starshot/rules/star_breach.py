@@ -77,7 +77,7 @@ ROLES: tuple[StarBreachRole, ...] = (
     StarBreachRole(
         "tank",
         "Tank",
-        "Starts with one extra Shield Charge. Proximity Jammer: enemies within 3 hexes target the Tank; enemy attacks against the Tank roll one fewer die.",
+        "Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 3 hexes of the Tank, the Tank steps in and takes the hit instead; enemy attacks against the Tank roll one fewer die.",
     ),
     StarBreachRole(
         "engineer",

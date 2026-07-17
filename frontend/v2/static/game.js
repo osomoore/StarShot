@@ -19,6 +19,9 @@
   let replayOrdersByRound = null;
   let endgameShown = false;
   let draft = null;
+  let sealedSlots = null;   // snapshot of my slots at the moment I sealed orders, for preview while waiting
+  let sealedRound = null;
+  let sealedAt = null;
   let pendingFetch = false;
   let sideTab = "registry";
   const scenarioStatusSignatures = new Map();
@@ -477,6 +480,23 @@
   function titleFor(playerId) {
     const seat = match && match.seat_list.find((s) => s.player_id === playerId);
     return seat && seat.title ? seat.title : "";
+  }
+
+  /* Names of still-active captains who haven't sealed orders yet this round. */
+  function waitingOnPlayers() {
+    return seatOrder().filter((playerId) => {
+      if (playerId === you) return false;
+      const player = view.players[playerId];
+      if (!player || player.eliminated || (player.ship || {}).destroyed) return false;
+      return !player.has_submitted_orders;
+    }).map((playerId) => displayName(playerId));
+  }
+
+  function formatElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
 
   /* Pretty label for any attack target: player, boss area, or fleet craft. */
@@ -1125,10 +1145,20 @@
     if (!ordering) {
       const note = document.createElement("div");
       note.className = "hand-note";
-      if (view.phase === "complete") note.textContent = "The battle is decided.";
-      else if (me.eliminated || (me.ship || {}).destroyed) note.textContent = "Yer ship rests in the black. Watch the fireworks.";
-      else if (me.has_submitted_orders) note.textContent = "Orders sealed. Waiting on the other captains…";
-      else note.textContent = "Resolving the round…";
+      if (view.phase === "complete") { note.textContent = "The battle is decided."; Board.clearPreview(); }
+      else if (me.eliminated || (me.ship || {}).destroyed) { note.textContent = "Yer ship rests in the black. Watch the fireworks."; Board.clearPreview(); }
+      else if (me.has_submitted_orders) {
+        if (sealedRound !== view.round_number) {
+          sealedRound = view.round_number;
+          sealedAt = Date.now();
+          sealedSlots = null;
+        }
+        const waiting = waitingOnPlayers();
+        const who = waiting.length ? `Waiting on ${waiting.join(", ")}` : "Waiting on the last stragglers";
+        note.innerHTML = `⚓ Orders sealed. ${esc(who)}.<br><span class="waiting-timer">⏱ ${esc(formatElapsed(Date.now() - sealedAt))}</span>`;
+        computePreview();
+      }
+      else { note.textContent = "Resolving the round…"; Board.clearPreview(); }
       handArea.appendChild(note);
       els["orders-hint"].textContent = "";
       return;
@@ -2630,6 +2660,9 @@
     els["btn-submit-orders"].disabled = true;
     try {
       const response = await API.submitOrders(gameId, payload);
+      sealedSlots = draft.slots.map((slot) => ({ seal: slot.seal, cards: slot.cards.map((c) => ({ ...c })) }));
+      sealedRound = view.round_number;
+      sealedAt = Date.now();
       draft = emptyDraft();
       armedSlot = null;
       orderTrace("submit_succeeded");
@@ -2783,10 +2816,10 @@
     return pos;
   }
 
-  function attackProjectionsForSlot(slotIndex, startPos = null) {
+  function attackProjectionsForSlot(slotIndex, startPos = null, slotsOverride = null) {
     const me = myPlayer();
     if (!view || !me || !me.ship) return [];
-    const slot = draft.slots[slotIndex];
+    const slot = (slotsOverride || draft.slots)[slotIndex];
     if (!slot) return [];
     const pos = startPos ? { ...startPos } : previewPositionAfterSlot(previewPositionBeforeSlot(slotIndex), slot);
     const attackSelections = slot.cards.filter((s) => s.family === "attack");
@@ -2937,12 +2970,16 @@
   function computePreview() {
     if (!view || view.phase !== "give_orders") { Board.clearPreview(); return; }
     const me = myPlayer();
-    if (!me || me.has_submitted_orders || !me.ship || me.ship.destroyed) { Board.clearPreview(); return; }
+    if (!me || !me.ship || me.ship.destroyed) { Board.clearPreview(); return; }
+    const slots = me.has_submitted_orders
+      ? (sealedRound === view.round_number ? sealedSlots : null)
+      : draft.slots;
+    if (!slots) { Board.clearPreview(); return; }
     let pos = { q: me.ship.q, r: me.ship.r, facing: me.ship.facing };
     const items = [];
     const color = Board.colorOf(you);
     const numerals = ["I", "II", "III"];
-    draft.slots.forEach((slot, index) => {
+    slots.forEach((slot, index) => {
       const overdriven = slot.seal === "overdrive";
       const actionCopy = overdriven && overdriveCopiesAction();
       const cardCopy = overdriven && overdriveCopiesCards();
@@ -2971,7 +3008,7 @@
         });
       }
       if (attackSelections.length) {
-        for (const projection of attackProjectionsForSlot(index, pos)) {
+        for (const projection of attackProjectionsForSlot(index, pos, slots)) {
           items.push({
             kind: "shot",
             from: projection.from,

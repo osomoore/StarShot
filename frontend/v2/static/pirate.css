@@ -436,6 +436,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .badge-ai { background: rgba(139,111,201,.25); color: #c9b3ee; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
 .badge-you { background: rgba(212,167,72,.25); color: var(--gold-bright); border-radius: 4px; padding: 1px 6px; font-size: 10px; }
 .badge-title { background: rgba(62,168,155,.22); color: #9ce7db; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
+.badge-alpha { background: rgba(224,86,60,.25); color: #ff9b7f; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; vertical-align: middle; }
 .badge-wait { color: var(--ink-dim); font-size: 10px; }
 .badge-ready { color: var(--move); font-size: 10px; }
 
@@ -464,6 +465,8 @@ h1, h2, .brand, .poster-title, .banner-text {
   width: 18px;
 }
 .tutorial-steps { display: grid; gap: 10px; text-align: left; color: var(--ink-dim); font-size: 13px; line-height: 1.4; }
+.tutorial-role { margin-left: 18px; padding-left: 10px; border-left: 2px solid rgba(212,167,72,.3); }
+.tutorial-alpha-note { text-align: left; font-size: 12px; font-style: italic; color: #ff9b7f; margin: -4px 0 10px; }
 
 .log-actions {
   display: flex;
@@ -1086,6 +1089,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .hand-area .card .card-text { font-size: 10.5px; }
 .hand-area .card:hover { transform: translateY(-8px) scale(1.12) !important; }
 .hand-note { color: var(--ink-dim); font-style: italic; text-align: center; width: 100%; padding: 30px 10px; }
+.hand-note .waiting-timer { display: inline-block; margin-top: 8px; color: var(--gold-bright); font-style: normal; font-size: 13px; letter-spacing: 0.02em; }
 
 .captain-choice { width: 100%; text-align: center; }
 .captain-choice h3 { font-family: "Pirata One", serif; color: var(--gold-bright); font-size: 22px; margin-bottom: 12px; }
@@ -1219,7 +1223,10 @@ h1, h2, .brand, .poster-title, .banner-text {
 
 @media (max-width: 760px), (any-pointer: coarse) and (max-width: 1366px) {
   :root[data-device="phone"] {
-    --mobile-hud-space: calc(78px + env(safe-area-inset-bottom));
+    /* Reserves room for the fixed Orders/Fleet/Map HUD bar (~66px tall) plus a
+       comfortable clearance margin so board overlays (boss mini-board, ship
+       tokens) never sit flush against it. */
+    --mobile-hud-space: calc(100px + env(safe-area-inset-bottom));
   }
 
   :root[data-device="phone"] body {
@@ -1407,7 +1414,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .game-grid {
     display: block;
     flex: 1 1 auto;
-    inset: 0 0 var(--mobile-hud-space) 0;
+    inset: calc(58px + env(safe-area-inset-top)) 0 var(--mobile-hud-space) 0;
     padding: 0;
     position: fixed;
   }
@@ -1420,7 +1427,9 @@ h1, h2, .brand, .poster-title, .banner-text {
     left: 0;
     position: fixed;
     right: 0;
-    top: 0;
+    /* Starts below the fixed topbar so the board isn't half-hidden behind it
+       (which used to skew the SVG's centered viewBox lower than it should be). */
+    top: calc(58px + env(safe-area-inset-top));
     width: 100vw;
   }
 
@@ -1435,7 +1444,8 @@ h1, h2, .brand, .poster-title, .banner-text {
     flex-direction: row;
     left: auto;
     right: 10px;
-    top: calc(58px + env(safe-area-inset-top));
+    /* board-wrap's own top is already below the topbar; just a small gap here. */
+    top: 8px;
     z-index: 24;
   }
 
@@ -1460,6 +1470,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .boss-mini-board {
+    bottom: 20px;
     max-width: 240px;
     padding: 7px 9px;
   }

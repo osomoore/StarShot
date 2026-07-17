@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About — StarShot</title>
+<link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=47">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
+<style>
+  .about-wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 60px; }
+  .about-wrap .panel { margin-bottom: 20px; }
+  .about-wrap p { font-family: "IM Fell English", serif; font-size: 17px; line-height: 1.65; color: var(--ink-dim); margin: 0 0 14px; }
+  .about-wrap p:last-child { margin-bottom: 0; }
+  .about-wrap .signature { color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 22px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<canvas id="starfield"></canvas>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-skull">☠</span> StarShot <span class="brand-tag">about</span></div>
+  <div class="topbar-right">
+    <a class="btn ghost small" href="/v2">← Back to the game</a>
+  </div>
+</header>
+
+<div class="about-wrap">
+  <div class="panel">
+    <h2 class="panel-title">⚓ About StarShot</h2>
+    <p>StarShot is a digital adaptation of a physical tabletop board game of the same name, built and maintained by a single developer, <strong>Admiral Aranthar</strong>.</p>
+    <p>Board games have been a lifelong love — prototyping cardboard, brainstorming mechanics, and gathering friends around a table led to designing StarShot as a physical game first. This site is an attempt to bring that game to life digitally, so crews can set sail without needing everyone in the same room.</p>
+    <p>StarShot is a free-time project, worked on around a day job and the rest of life. That means updates come in bursts, bugs may linger longer than you'd like, and not every piece of feedback can be acted on right away. But every bit of input, bug reports, feature ideas, balance gripes is read and appreciated.  Help me shape where the game goes next!</p>
+    <p>Thanks for playing, and for your patience as this crew of one keeps the ship sailing.</p>
+    <div class="signature">— Admiral Aranthar</div>
+  </div>
+</div>
+
+<script src="/v2/static/starfield.js?v=1"></script>
+</body>
+</html>

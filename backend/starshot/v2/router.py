@@ -101,6 +101,28 @@ def _check_matchable(user: dict) -> None:
         raise HTTPException(status_code=403, detail=UNMATCHABLE_DETAIL)
 
 
+MAX_ACTIVE_MATCHES = 10
+
+
+def _check_active_match_limit(user: dict) -> None:
+    """Cap how many open/active raids a captain can have going at once
+    (admins are exempt, since they need to test freely)."""
+    from starshot.v2.admin import admin_usernames
+
+    if user["username"].lower() in admin_usernames():
+        return
+    store = get_v2_store()
+    if store.active_match_count_for_user(user["id"]) >= MAX_ACTIVE_MATCHES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Ye already have {MAX_ACTIVE_MATCHES} raids underway — that's the most a captain "
+                "can juggle at once. Finish one, or hit the 🏳 next to a raid under Your Battles to "
+                "abandon it, before launching or joining another."
+            ),
+        )
+
+
 def _public_profile(user: dict) -> dict:
     store = get_v2_store()
     return {
@@ -442,6 +464,7 @@ def respond_challenge(challenge_id: str, body: ChallengeResponse, request: Reque
         return {"accepted": False}
     _check_maintenance(user)
     _check_matchable(user)
+    _check_active_match_limit(user)
     challenger = store.get_user(challenge["from_user_id"])
     store.leave_queue(user["id"])
     store.leave_queue(challenger["id"])
@@ -568,6 +591,7 @@ def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> 
 def create_match(body: CreateMatchRequest, request: Request) -> dict:
     user = _current_user(request)
     _check_maintenance(user)
+    _check_active_match_limit(user)
     if body.open_seats > 0:
         _check_matchable(user)  # AI-only raids stay open to everyone
     for ai_type in body.ai_types:
@@ -656,6 +680,7 @@ def join_match(match_id: str, request: Request, body: JoinMatchRequest | None = 
     user = _current_user(request)
     _check_maintenance(user)
     _check_matchable(user)
+    _check_active_match_limit(user)
     store = get_v2_store()
     existing = store.get_match(match_id)
     if existing is None:

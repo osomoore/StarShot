@@ -319,8 +319,8 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
 
     def test_enemy_attacks_target_prey_and_advance_progress_once_per_source(self):
         state = _coop_state()
-        # Keep the tank far away so the jammer stays out of the picture.
-        state.players["bob"].ship.q, state.players["bob"].ship.r = 0, 13
+        # Keep the tank far from the prey (alice) so the jammer stays out of the picture.
+        state.players["bob"].ship.q, state.players["bob"].ship.r = 0, -11
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
         with patch("starshot.rules.engine._roll_d6_sum", return_value=30):
@@ -336,10 +336,11 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
 
     def test_tank_proximity_jammer_redirects_and_reduces_dice(self):
         state = _coop_state()
-        craft = next(c for c in state.star_breach.fleet if c.id == "hk_green")
-        # Tank (bob) sits within jammer range of the craft; prey is far away.
-        state.players["bob"].ship.q, state.players["bob"].ship.r = craft.q + 2, craft.r
-        state.players["alice"].ship.q, state.players["alice"].ship.r = 0, 13
+        # Tank (bob) guards within jammer range of the prey (alice); the craft's
+        # attack would otherwise target alice, but bob steps in and takes the hit.
+        state.players["bob"].ship.q, state.players["bob"].ship.r = (
+            state.players["alice"].ship.q, state.players["alice"].ship.r + 2,
+        )
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
         with patch("starshot.rules.engine._roll_d6_sum", return_value=30):

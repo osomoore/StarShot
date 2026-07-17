@@ -939,6 +939,15 @@ class V2Store:
             ).fetchall()
         return [match for row in rows if (match := self.get_match(row["id"]))]
 
+    def active_match_count_for_user(self, user_id: int) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT COUNT(DISTINCT m.id) AS n FROM matches m JOIN match_seats s ON s.match_id = m.id
+                   WHERE s.user_id = ? AND s.abandoned = 0 AND m.status IN ('open', 'active')""",
+                (user_id,),
+            ).fetchone()
+        return row["n"] if row else 0
+
     def mark_seat_abandoned(self, match_id: str, user_id: int, stats_exempt: bool = False) -> None:
         with self._connect() as conn:
             conn.execute(

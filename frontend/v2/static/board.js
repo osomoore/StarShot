@@ -3,6 +3,7 @@
   const HEX = 16;               // hex size in svg units
   const SQRT3 = Math.sqrt(3);
   const RADIUS = 14;            // board radius (matches engine hex.py)
+  const TANK_GUARD_RANGE = 3;   // hexes: StarBreach Tank's Proximity Jammer radius
   const DIRECTIONS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const SEAT_COLORS = ["#d15252", "#4f86d1", "#3ea86b", "#d4a748"];
 
@@ -313,6 +314,13 @@
         transform: `translate(${x},${y})`,
         "data-player": playerId,
       }, shipLayer);
+      if ((player.roles || []).includes("tank") && !ship.destroyed) {
+        el("circle", {
+          cx: 0, cy: 0, r: TANK_GUARD_RANGE * HEX * SQRT3,
+          fill: "rgba(158,231,255,.05)", stroke: "#9ee7ff", "stroke-width": 1,
+          "stroke-dasharray": "2 6", opacity: 0.5, class: "tank-guard-radius",
+        }, group);
+      }
       const body = el("g", { transform: `rotate(${facingAngle(ship.facing || 0)})` }, group);
       body.innerHTML = shipMarkup(color);
       if ((ship.shields || 0) > 0 && !ship.destroyed) {
