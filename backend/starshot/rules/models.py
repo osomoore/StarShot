@@ -104,6 +104,9 @@ class Card:
     family: CardFamily
     value: int
     is_base: bool = True
+    base_damage: int = 1
+    aim_bonus: int = 0
+    damage_bonus: int = 0
     orientation_options: tuple[str, ...] = ("forward", "turn_left", "turn_right")
     requires_target: bool = True
     is_hybrid: bool = False

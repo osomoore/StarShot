@@ -16,15 +16,25 @@
 
   function describeBasic(card) {
     const effect = card.effect || {};
-    if (card.is_hybrid) return `Move ${effect.value || card.value} — or — Cannons +1 dmg`;
-    if ((effect.family || card.family) === "move") {
+    const family = effect.family || card.family;
+    if (card.is_hybrid) {
+      return `Move ${effect.value || card.value} — or — ${describeBasicAttack(card, effect, { includeTarget: false })}`;
+    }
+    if (family === "move") {
       const turns = (effect.orientation_options || []).length > 1 ? " (may turn first)" : "";
       return `Move ${effect.value || card.value}${turns}`;
     }
+    return describeBasicAttack(card, effect);
+  }
+
+  function describeBasicAttack(card, effect, options = {}) {
     const bits = [];
-    if (card.requires_target) bits.push("Targeted volley");
-    if (/damage \+?(\d)/i.test(card.name)) bits.push("+" + RegExp.$1 + " damage");
-    if (/aim \+?(\d)/i.test(card.name)) bits.push("aim +" + RegExp.$1);
+    const includeTarget = options.includeTarget !== false;
+    const aimBonus = Number(effect.aim_bonus || 0) || Number(effect.value || card.value || 0);
+    const damageBonus = Number(effect.damage_bonus || 0);
+    if (includeTarget && card.requires_target) bits.push("Targeted volley");
+    if (aimBonus) bits.push("aim +" + aimBonus);
+    if (damageBonus) bits.push("+" + damageBonus + " damage");
     return bits.join(", ") || "Fire cannons";
   }
 

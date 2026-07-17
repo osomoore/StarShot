@@ -2,6 +2,26 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-16 22:58:41 -05:00
+
+- Title: Effect-based card labels
+- Build ID: `586d8737b815`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Changed v2 card rendering so basic attack card labels use parsed effect fields instead of reading bonuses from the display name.
+  - Bumped the v2 `cards.js` asset query string.
+  - Verified with `node --check frontend/v2/static/cards.js` and `python -m unittest tests.test_card_effects tests.test_deck_data tests.test_serialization`.
+
+## 2026-07-16 21:46:34 -05:00
+
+- Title: Fixed deck attack bonuses
+- Build ID: `586d8737b815`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Confirmed new games were using the admin-selected Deck Rework 7/16/26 deck set, but the active deck data still encoded base damage cards as targeted Aim cards.
+  - Corrected the Deck Rework base deck entries and taught front-face cards to preserve parsed attack aim/damage bonuses through loading and serialization.
+  - Verified with `python -m unittest tests.test_card_effects tests.test_deck_data tests.test_serialization` and a direct load of the active custom deck catalog.
+
 ## 2026-07-16 20:59:08 -05:00
 
 - Title: Shield source assignment

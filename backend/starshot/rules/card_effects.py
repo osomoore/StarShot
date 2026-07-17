@@ -155,14 +155,14 @@ def card_attack_base_damage(card: Card, selection: OrderCardSelection, seal_mode
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
         return desperate_face.base_damage
-    return 1
+    return card.base_damage
 
 
 def card_attack_aim_bonus(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -> int:
     desperate_face = desperate_face_for(card, selection)
     if desperate_face is not None:
         return desperate_face.aim_bonus
-    return card_value(card, selection, seal_mode)
+    return card.aim_bonus or card_value(card, selection, seal_mode)
 
 
 def card_requires_target(card: Card, selection: OrderCardSelection) -> bool:
@@ -188,12 +188,12 @@ def card_value(card: Card, selection: OrderCardSelection, seal_mode: SealMode) -
 
 def card_aim_bonus(card: Card, selection: OrderCardSelection) -> int:
     desperate_face = desperate_face_for(card, selection)
-    return desperate_face.aim_bonus if desperate_face is not None else 0
+    return desperate_face.aim_bonus if desperate_face is not None else card.aim_bonus
 
 
 def card_damage_bonus(card: Card, selection: OrderCardSelection) -> int:
     desperate_face = desperate_face_for(card, selection)
-    return desperate_face.damage_bonus if desperate_face is not None else 0
+    return desperate_face.damage_bonus if desperate_face is not None else card.damage_bonus
 
 
 def card_defense_bonus(card: Card, selection: OrderCardSelection) -> int:
@@ -297,6 +297,9 @@ def static_card_effect_summary(card: Card) -> dict:
     return {
         "family": card.family.value,
         "value": card.value,
+        "base_damage": card.base_damage,
+        "aim_bonus": card.aim_bonus,
+        "damage_bonus": card.damage_bonus,
         "requires_target": card.requires_target,
         "orientation_options": list(card.orientation_options),
         "is_hybrid": card.is_hybrid,

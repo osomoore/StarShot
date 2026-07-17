@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 from starshot.rules import GameConfig, create_initial_state
+from starshot.rules.card_effects import interpret_card
 from starshot.rules.deck_data import active_catalog, default_deck_set_path, load_deck_catalog
+from starshot.rules.models import OrderCardSelection, SealMode
 
 
 class DeckDataTests(unittest.TestCase):
@@ -64,6 +66,21 @@ class DeckDataTests(unittest.TestCase):
         self.assertTrue(drift_king.desperate_face.double_turn_after_move)
         self.assertEqual(drift_king.desperate_face.orientation_options, ("turn_right", "turn_left"))
         self.assertEqual(drift_king.desperate_face.value, 4)
+
+    def test_core_0_3_base_damage_card_is_damage_not_aim(self):
+        catalog = load_deck_catalog(Path("resources/decks/core_0_3"))
+
+        damage_card = catalog.base_card_map["targeted_attack_damage_1_a"]
+        effect = interpret_card(
+            damage_card,
+            OrderCardSelection(damage_card.id, target_player_id="blue"),
+            SealMode.SEALED,
+        )
+
+        self.assertEqual(damage_card.aim_bonus, 0)
+        self.assertEqual(damage_card.damage_bonus, 1)
+        self.assertEqual(effect.attack.aim_bonus, 0)
+        self.assertEqual(effect.attack.damage, 2)
 
     def test_duplicate_card_ids_are_rejected_on_load(self):
         with tempfile.TemporaryDirectory() as temp_dir:

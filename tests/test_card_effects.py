@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
 
 from starshot.rules.card_effects import interpret_card
+from starshot.rules.deck_data import load_deck_catalog
 from starshot.rules.decks import card_by_id
 from starshot.rules.desperation import desperation_card_by_id
 from starshot.rules.models import CardFamily, OrderCardSelection, SealMode
@@ -30,6 +32,21 @@ class CardEffectsTests(unittest.TestCase):
         self.assertEqual(effect.attack.aim_bonus, 2)
         self.assertEqual(effect.attack.damage, 1)
         self.assertTrue(effect.attack.requires_target)
+
+    def test_basic_attack_damage_bonus_is_preserved_from_deck_data(self):
+        catalog = load_deck_catalog(Path("resources/decks/core_0_3"))
+        card = catalog.base_card_map["targeted_attack_damage_1_a"]
+        effect = interpret_card(
+            card,
+            OrderCardSelection(card.id, target_player_id="blue"),
+            SealMode.SEALED,
+        )
+
+        self.assertEqual(effect.family, CardFamily.ATTACK)
+        self.assertIsNotNone(effect.attack)
+        self.assertEqual(effect.attack.aim_bonus, 0)
+        self.assertEqual(effect.attack.damage_bonus, 1)
+        self.assertEqual(effect.attack.damage, 2)
 
     def test_hybrid_basic_face_uses_selected_mode(self):
         card = desperation_card_by_id("desp_steady_shot_a")
