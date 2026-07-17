@@ -8,7 +8,7 @@ In StarBreach, one to four players work together against a massive alien StarBre
 
 Unless otherwise stated below, all normal StarShot rules remain in effect.
 
-Scenario: Bauble Breacher
+Scenario: Vault Breacher
 Player Objective
 
 One player is designated The Prey at the start of the game.
@@ -28,11 +28,11 @@ Each player chooses one role.
 
 If playing with fewer than four players, one player may control multiple roles.
 
-Bauble Runner
+Vault Runner
 Move distances are doubled on basic movement.
 This doubling is not increased in Overdrive.
 Movement gives no defense bonus.
-Whenever this player collects a Bauble, every player draws one bonus card.
+Whenever this player collects a Vault, every player draws one bonus card.
 Tank
 Begins with one additional Shield Charge.
 Proximity Jammer: While within three hexes of an enemy, that enemy targets the Tank instead of any other valid target. Enemy attacks against the Tank roll one fewer attack die.
@@ -56,7 +56,7 @@ Enemy Fleet
 
 The StarBreacher commands a supporting fleet.
 
-The Bauble Breacher scenario begins with:
+The Vault Breacher scenario begins with:
 
 Blue Hunter-Killer
 Green Hunter-Killer
@@ -91,15 +91,15 @@ If unavailable, use the normal target priority.
 Passive
 
 +1 Aim on all attacks.
-Bauble Runner
+Vault Runner
 
 (Not used in this scenario.)
 
 Movement
 
-Move toward this round's Bauble.
-If unreachable, move toward next round's Bauble.
-During Round 6, if no Bauble objective remains, move toward The Prey.
+Move toward this round's Vault.
+If unreachable, move toward next round's Vault.
+During Round 6, if no Vault objective remains, move toward The Prey.
 
 Attack
 
@@ -139,7 +139,7 @@ which Damage Lane table is used,
 which Shield Generators protect that area,
 and which components belong to that section.
 
-The Bauble Breacher ship contains four functional regions:
+The Vault Breacher ship contains four functional regions:
 
 Forward Shields
 Port Cannons
@@ -256,7 +256,7 @@ it is a Base slot,
 its linked component remains intact, or
 its required Progress Tier has been reached.
 
-The Bauble Breacher scenario begins with:
+The Vault Breacher scenario begins with:
 
 Action 0.5 (Attack)
 Base

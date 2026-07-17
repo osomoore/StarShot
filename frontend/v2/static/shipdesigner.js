@@ -90,7 +90,7 @@
       if (!response.ok) {
         let detail = (payload && payload.detail) || `Request failed (${response.status})`;
         if (response.status === 404 && detail === "Not Found") {
-          detail = "Not Found — the running server predates the Ship Designer; restart the server.";
+          detail = "Not Found — the running server predates StarDock; restart the server.";
         }
         throw new Error(detail);
       }
@@ -263,7 +263,7 @@
       root().innerHTML = `
         <div class="sd-wrap">
           <div class="sd-head">
-            <h2 class="panel-title">🚀 ${isAdmin ? "Global Ship Designs" : "My Ships"} ${limitNote}</h2>
+            <h2 class="panel-title">🚀 ${isAdmin ? "Global Ship Designs" : 'StarDock <span class="badge-alpha">ALPHA</span>'} ${limitNote}</h2>
             <div class="sd-head-actions">
               <input id="sd-new-name" type="text" maxlength="40" placeholder="New ship name">
               <button id="sd-new" class="btn gold small">＋ New design</button>
@@ -271,6 +271,7 @@
               <input id="sd-import-file" type="file" accept="application/json" class="hidden">
             </div>
           </div>
+          ${isAdmin ? "" : '<p class="tutorial-alpha-note">StarDock is still in Alpha — rules and balance may shift as it\'s tested. Bug reports and feedback are very welcome.</p>'}
           <div class="sd-blurb">Spend <b>${META.point_budget} points</b>: 1 per shield charge, 1 per card drawn,
             1 per tile armoring the Core's damage lanes, 1 per Jammer/Sensor. Place exactly
             <b>${META.max_tiles} tiles</b> — 1 Core, 2 Life Supports, the rest is up to you.
@@ -586,7 +587,10 @@
       overlay.className = "bd-player-overlay";
       overlay.innerHTML = `
         <div class="bd-player-shell">
-          <button class="btn ghost small bd-player-close" id="sd-player-close">✕ Back to Port</button>
+          <div class="bd-player-toprow">
+            <button class="btn ghost small bd-player-close" id="sd-player-close">✕ Back to Port</button>
+            <button class="btn ghost small" id="sd-player-help">❓ Help</button>
+          </div>
           <div id="player-shipdesign"></div>
         </div>`;
       document.body.appendChild(overlay);
@@ -594,6 +598,7 @@
         overlay.classList.add("hidden");
         document.dispatchEvent(new CustomEvent("shipdesigner-closed"));
       });
+      overlay.querySelector("#sd-player-help").addEventListener("click", () => showHowto());
     }
     overlay.classList.remove("hidden");
     if (!playerDesigner) {
@@ -608,13 +613,13 @@
   }
 
   const LS_HOWTO = "ss_shipdesigner_howto_seen";
-  function maybeShowHowto() {
-    try { if (localStorage.getItem(LS_HOWTO)) return; localStorage.setItem(LS_HOWTO, "1"); } catch (err) { return; }
+  function showHowto() {
     const howto = document.createElement("div");
     howto.className = "overlay bd-howto-overlay";
     howto.innerHTML = `
       <div class="picker">
-        <h3>🚀 Ship Designer — how it works</h3>
+        <h3>🚀 StarDock <span class="badge-alpha">ALPHA</span> — how it works</h3>
+        <p class="tutorial-alpha-note">StarDock is still in Alpha — rules and balance may shift as it's tested. Bug reports and feedback are very welcome.</p>
         <div class="tutorial-steps">
           <div><b>1.</b> You have <b>19 points</b>: shield charges (1 each), base card draw (1 per card), Core armor (1 per tile on the Core's three axes), Signal Jammers and Targeting Sensors (1 each).</div>
           <div><b>2.</b> Place exactly <b>15 tiles</b> on the 19-space grid — 1 Core and 2 Life Supports are required, everything must stay connected. Four spaces stay empty.</div>
@@ -625,6 +630,10 @@
       </div>`;
     document.body.appendChild(howto);
     howto.querySelector("#sd-howto-ok").addEventListener("click", () => howto.remove());
+  }
+  function maybeShowHowto() {
+    try { if (localStorage.getItem(LS_HOWTO)) return; localStorage.setItem(LS_HOWTO, "1"); } catch (err) { return; }
+    showHowto();
   }
 
   // Admin page: lazy-boot inside the #tab-shipdesign tab.
@@ -638,5 +647,5 @@
     adminTabs.forEach((tab) => tab.addEventListener("click", adminDesigner.boot));
   }
 
-  window.ShipDesigner = { openPlayerDesigner, createShipDesigner };
+  window.ShipDesigner = { openPlayerDesigner, createShipDesigner, showHowto };
 })();

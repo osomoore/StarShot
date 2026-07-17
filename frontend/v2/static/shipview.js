@@ -103,13 +103,20 @@
     for (const component of components) {
       const [x, y] = hexXY(component.q, component.r, size);
       const dead = destroyed.has(component.id);
+      const selectable = !!(opts.selectableIds && opts.selectableIds.has(component.id));
+      const picked = !!(opts.pickedIds && opts.pickedIds.has(component.id));
+      const cellClasses = ["ship-cell"];
+      if (selectable) cellClasses.push("selectable");
+      if (picked) cellClasses.push("picked");
       const color = dead ? "#3a1418" : (TYPE_COLORS[component.type] || "#888");
-      cells += `<polygon points="${hexPointsAt(x, y, size - 1.6)}" fill="${color}"
+      cells += `<g class="${cellClasses.join(" ")}" data-component-id="${component.id}">
+        <polygon points="${hexPointsAt(x, y, size - 1.6)}" fill="${color}"
           stroke="${dead ? "#c33e3e" : "#0a0f1e"}" stroke-width="2">
           <title>${component.name}${dead ? " — DESTROYED" : ""}</title></polygon>
         <text x="${x}" y="${y - 6}" text-anchor="middle" font-size="13">${dead ? "✕" : (TYPE_ICONS[component.type] || "")}</text>
         <text x="${x}" y="${y + 9}" text-anchor="middle" font-size="6.5" fill="#10182b"
-          font-family="Space Grotesk" font-weight="600">${component.name.replace(/(Port |Starboard |Forward |Aft )/, "").toUpperCase()}</text>`;
+          font-family="Space Grotesk" font-weight="600">${component.name.replace(/(Port |Starboard |Forward |Aft )/, "").toUpperCase()}</text>
+      </g>`;
     }
 
     // Damage lane markers: each lane is a straight line of hexes; the shot

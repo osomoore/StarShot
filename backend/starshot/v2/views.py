@@ -38,7 +38,7 @@ def redact_event(event: dict, viewer_id: str | None) -> dict:
         for field_name in stripped:
             result.pop(field_name, None)
         result["redacted"] = True
-    if event_type == "bauble_awarded" and viewer_id is not None:
+    if event_type == "vault_awarded" and viewer_id is not None:
         awards = []
         for award in result.get("awards", []):
             award = dict(award)

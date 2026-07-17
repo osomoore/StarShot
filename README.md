@@ -18,7 +18,7 @@ process default; v2 selects its deck set per request with
   views (opponents' hands/decks/orders and the RNG cursor are never sent),
   and server-side AI pilots.
 - **AI pilots** (`backend/starshot/v2/ai.py`): Salvage Captain Morrigan
-  (bauble runner), Corsair Blackvane (hunter-killer), Gunner Redbeard
+  (vault runner), Corsair Blackvane (hunter-killer), Gunner Redbeard
   (blaster). They use the engine's own `interpret_card` for planning, predict
   target movement from actual history, and price overdrive for the 0.3
   no-overheat rules.

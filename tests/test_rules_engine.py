@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from starshot.rules import (
     ActionStack,
-    BaubleState,
+    VaultState,
     GameConfig,
     GamePhase,
     OrderCardSelection,
@@ -16,7 +16,7 @@ from starshot.rules import (
     resolve_next_step,
     submit_orders,
 )
-from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, BAUBLE_MAX_RANDOM_DISTANCE, bauble_hexes
+from starshot.rules.vaults import VAULT_MAX_CENTER_DISTANCE, VAULT_MAX_RANDOM_DISTANCE, vault_hexes
 from starshot.rules.decks import card_by_id
 from starshot.rules.hex import BOARD_RADIUS, hex_distance
 
@@ -37,12 +37,12 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.players["red"].ship.facing, 0)
         self.assertEqual((state.players["blue"].ship.q, state.players["blue"].ship.r), (11, 0))
         self.assertEqual(state.players["blue"].ship.facing, 3)
-        self.assertEqual(len(state.baubles), 11)
-        self.assertEqual([bauble.number for bauble in state.baubles].count(1), 2)
-        self.assertEqual([bauble.number for bauble in state.baubles].count(5), 2)
-        self.assertEqual([bauble.number for bauble in state.baubles].count(6), 1)
-        self.assertEqual(len({(bauble.q, bauble.r) for bauble in state.baubles}), 11)
-        fang = [bauble for bauble in state.baubles if bauble.is_fang][0]
+        self.assertEqual(len(state.vaults), 11)
+        self.assertEqual([vault.number for vault in state.vaults].count(1), 2)
+        self.assertEqual([vault.number for vault in state.vaults].count(5), 2)
+        self.assertEqual([vault.number for vault in state.vaults].count(6), 1)
+        self.assertEqual(len({(vault.q, vault.r) for vault in state.vaults}), 11)
+        fang = [vault for vault in state.vaults if vault.is_fang][0]
         self.assertEqual((fang.q, fang.r), (0, 0))
 
     def test_rejects_invalid_player_count(self):
@@ -246,7 +246,7 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.phase, GamePhase.ACTION_3)
 
         state = resolve_next_step(state)
-        self.assertEqual(state.phase, GamePhase.AWARD_BAUBLES)
+        self.assertEqual(state.phase, GamePhase.AWARD_VAULTS)
         self.assertNotIn("controlled_move_2_a", {card.id for card in state.players["red"].overheat})
 
         state = resolve_next_step(state)
@@ -474,39 +474,39 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(volley["target_movement"], 4)
         self.assertEqual(volley["defense_threshold"], volley["distance"] + 4 + volley["target_defense_bonus"])
 
-    def test_baubles_are_placed_without_overlap_and_later_rounds_are_nearer_center(self):
+    def test_vaults_are_placed_without_overlap_and_later_rounds_are_nearer_center(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "yellow"), seed=11))
-        positions = {(bauble.q, bauble.r) for bauble in state.baubles}
-        occupied_bauble_hexes = set()
+        positions = {(vault.q, vault.r) for vault in state.vaults}
+        occupied_vault_hexes = set()
 
-        self.assertEqual(len(state.baubles), 11)
-        self.assertEqual(len(positions), len(state.baubles))
-        for bauble in state.baubles:
-            footprint = set(bauble_hexes(bauble.q, bauble.r))
+        self.assertEqual(len(state.vaults), 11)
+        self.assertEqual(len(positions), len(state.vaults))
+        for vault in state.vaults:
+            footprint = set(vault_hexes(vault.q, vault.r))
             self.assertTrue(all(hex_distance(0, 0, q, r) <= BOARD_RADIUS for q, r in footprint))
-            self.assertTrue(occupied_bauble_hexes.isdisjoint(footprint))
-            occupied_bauble_hexes.update(footprint)
+            self.assertTrue(occupied_vault_hexes.isdisjoint(footprint))
+            occupied_vault_hexes.update(footprint)
 
         for number in range(1, 6):
-            numbered = [bauble for bauble in state.baubles if bauble.number == number]
+            numbered = [vault for vault in state.vaults if vault.number == number]
             self.assertEqual(len(numbered), 2)
-            max_distance = min(BAUBLE_MAX_CENTER_DISTANCE[number], BAUBLE_MAX_RANDOM_DISTANCE)
-            self.assertTrue(all(hex_distance(0, 0, bauble.q, bauble.r) <= max_distance for bauble in numbered))
+            max_distance = min(VAULT_MAX_CENTER_DISTANCE[number], VAULT_MAX_RANDOM_DISTANCE)
+            self.assertTrue(all(hex_distance(0, 0, vault.q, vault.r) <= max_distance for vault in numbered))
 
-        for index, bauble in enumerate(state.baubles):
-            for other in state.baubles[index + 1 :]:
-                self.assertGreaterEqual(hex_distance(bauble.q, bauble.r, other.q, other.r), 4)
+        for index, vault in enumerate(state.vaults):
+            for other in state.vaults[index + 1 :]:
+                self.assertGreaterEqual(hex_distance(vault.q, vault.r, other.q, other.r), 4)
 
-        early_baubles = [bauble for bauble in state.baubles if bauble.number in {1, 2}]
-        for bauble in early_baubles:
+        early_vaults = [vault for vault in state.vaults if vault.number in {1, 2}]
+        for vault in early_vaults:
             for player in state.players.values():
-                self.assertGreater(hex_distance(bauble.q, bauble.r, player.ship.q, player.ship.r), 3)
+                self.assertGreater(hex_distance(vault.q, vault.r, player.ship.q, player.ship.r), 3)
 
-    def test_award_baubles_scores_matching_round_baubles_in_range(self):
+    def test_award_vaults_scores_matching_round_vaults_in_range(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 1
-        state.baubles = [BaubleState(id="bauble_1_test", number=1, q=0, r=0, victory_points=2)]
+        state.vaults = [VaultState(id="vault_1_test", number=1, q=0, r=0, victory_points=2)]
         state.players["red"].ship.q = 1
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 2
@@ -517,16 +517,16 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.phase, GamePhase.CLEANUP)
         self.assertEqual(state.players["red"].victory_points, 2)
         self.assertEqual(state.players["blue"].victory_points, 0)
-        self.assertEqual(state.baubles[0].claimed_by, ["red"])
-        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]
+        self.assertEqual(state.vaults[0].claimed_by, ["red"])
+        award = [event for event in state.event_log if event["type"] == "vault_awarded"][0]
         self.assertEqual(award["awards"][0]["player_id"], "red")
         self.assertTrue(award["awards"][0]["desperation_card_drawn"])
 
     def test_fang_scores_every_round_and_shields_block_damage(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 2
-        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.vaults = [VaultState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 1
         state.players["red"].ship.shields = 1
@@ -538,7 +538,7 @@ class RulesEngineTests(unittest.TestCase):
         self.assertEqual(state.players["red"].victory_points, 1)
         self.assertEqual(state.players["red"].ship.shields, 0)
         self.assertEqual(state.players["red"].ship.damage_taken, 0)
-        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        award = [event for event in state.event_log if event["type"] == "vault_awarded"][0]["awards"][0]
         self.assertFalse(award["desperation_card_drawn"])
         self.assertEqual(award["fang_damage"], 1)
         self.assertTrue(award["shielded"])
@@ -547,9 +547,9 @@ class RulesEngineTests(unittest.TestCase):
 
     def test_fang_unshielded_damage_rolls_one_lane(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 3
-        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.vaults = [VaultState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 1
         state.players["red"].ship.shields = 0
@@ -560,16 +560,16 @@ class RulesEngineTests(unittest.TestCase):
 
         self.assertEqual(state.players["red"].victory_points, 1)
         self.assertEqual(state.players["red"].ship.damage_taken, 1)
-        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        award = [event for event in state.event_log if event["type"] == "vault_awarded"][0]["awards"][0]
         self.assertFalse(award["shielded"])
         self.assertEqual(award["damage_applied"], 1)
         self.assertEqual(len(award["damage_shots"]), 1)
 
     def test_fang_awards_six_vp_on_round_six(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 6
-        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.vaults = [VaultState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 1
         state.players["red"].ship.shields = 1
@@ -579,7 +579,7 @@ class RulesEngineTests(unittest.TestCase):
         state = resolve_next_step(state)
 
         self.assertEqual(state.players["red"].victory_points, 6)
-        award = [event for event in state.event_log if event["type"] == "bauble_awarded"][0]["awards"][0]
+        award = [event for event in state.event_log if event["type"] == "vault_awarded"][0]["awards"][0]
         self.assertEqual(award["vp_awarded"], 6)
         self.assertTrue(award["shielded"])
 
@@ -1030,7 +1030,7 @@ class RulesEngineTests(unittest.TestCase):
         state.active_expansions = ("star_command",)
         state.active_starfall_id = "take_cover"
         state.active_starfall_round = state.round_number
-        state.baubles = [BaubleState(id="safe", number=1, q=0, r=0, victory_points=2)]
+        state.vaults = [VaultState(id="safe", number=1, q=0, r=0, victory_points=2)]
         state.players["red"].ship.q = 4
         state.players["red"].ship.r = 0
         state.players["red"].ship.shields = 2

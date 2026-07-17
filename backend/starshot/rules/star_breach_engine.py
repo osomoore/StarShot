@@ -16,7 +16,7 @@ from starshot.rules.engine import (
     _selected_card_family,
     _ship_in_facing_cone_120,
 )
-from starshot.rules.baubles import ship_inside_bauble
+from starshot.rules.vaults import ship_inside_vault
 from starshot.rules.decks import card_by_id
 from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GameConfig, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
 from starshot.rules import star_breach as sb_data
@@ -75,7 +75,7 @@ def before_player_action(state: GameState, action_number: int) -> None:
         state.star_breach.progressed_source_ids_this_action = []
 
 
-def before_award_baubles(state: GameState) -> None:
+def before_award_vaults(state: GameState) -> None:
     if state.star_breach is not None:
         state.star_breach.progressed_source_ids_this_action = []
     _resolve_boss_phase(state, "3.5")
@@ -84,14 +84,14 @@ def before_award_baubles(state: GameState) -> None:
     _resolve_boss_phase(state, "starbreach")
 
 
-def bauble_awarded(state: GameState, player: PlayerState, award: dict) -> bool:
-    if "bauble_runner" not in player.roles:
+def vault_awarded(state: GameState, player: PlayerState, award: dict) -> bool:
+    if "vault_runner" not in player.roles:
         return False
-    award["bauble_runner_bonus_draw"] = True
+    award["vault_runner_bonus_draw"] = True
     return True
 
 
-def after_award_baubles(state: GameState) -> None:
+def after_award_vaults(state: GameState) -> None:
     _check_star_breach_defeat(state)
 
 
@@ -125,7 +125,7 @@ def move_defense_distance(
     *,
     overdrive_copy: bool,
 ) -> int:
-    if state.star_breach is not None and "bauble_runner" in player.roles:
+    if state.star_breach is not None and "vault_runner" in player.roles:
         return 0
     return distance
 
@@ -240,7 +240,7 @@ def _star_breach_result(state: GameState, *, final_round_complete: bool) -> Game
         return GameResult(winner_ids=(), reason="star_breach_prey_destroyed")
     if final_round_complete:
         fang = _fang(state)
-        if fang is not None and ship_inside_bauble(prey.ship, fang):
+        if fang is not None and ship_inside_vault(prey.ship, fang):
             return GameResult(winner_ids=tuple(state.players), reason="star_breach_victory")
         return GameResult(winner_ids=(), reason="star_breach_objective_failed")
     return None
@@ -283,13 +283,13 @@ _SPAWN_COLORS = ("red", "purple", "orange", "blue", "green", "yellow")
 
 def _spawn_anchor_hex(state: GameState, location: str) -> tuple[int, int]:
     """Board hex a spawn clusters around: directly in front of the boss nose,
-    the current round's bauble, or The Fang."""
+    the current round's vault, or The Fang."""
     sb = state.star_breach
     assert sb is not None
-    if location == "bauble":
-        for bauble in state.baubles:
-            if not bauble.is_fang and bauble.number == min(state.round_number, 5):
-                return (bauble.q, bauble.r)
+    if location == "vault":
+        for vault in state.vaults:
+            if not vault.is_fang and vault.number == min(state.round_number, 5):
+                return (vault.q, vault.r)
     elif location == "fang":
         fang = _fang(state)
         if fang is not None:
@@ -378,7 +378,7 @@ def _star_breach_move_distance_multiplier(
     *,
     overdrive_copy: bool,
 ) -> int:
-    if state.star_breach is None or "bauble_runner" not in player.roles or overdrive_copy:
+    if state.star_breach is None or "vault_runner" not in player.roles or overdrive_copy:
         return 1
     effect = _card_effect(card, selection, stack.seal_mode)
     if effect.family == CardFamily.MOVE and effect.move is not None and not effect.is_desperate_face:
@@ -648,7 +648,7 @@ def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
         sb.facing = best_direction
         moved += 1
         sb.boss_movement_this_action += 1
-        _collect_enemy_baubles(state, "boss", _boss_token_hexes(sb), label="starbreacher")
+        _collect_enemy_vaults(state, "boss", _boss_token_hexes(sb), label="starbreacher")
     return {
         "before": before,
         "after": {"anchor_q": sb.anchor_q, "anchor_r": sb.anchor_r, "facing": sb.facing},
@@ -691,7 +691,7 @@ def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
         craft.q, craft.r = best[2], best[3]
         craft.movement_this_action += 1
         moved += 1
-    _collect_enemy_baubles(state, "fleet", ((craft.q, craft.r),), label=craft.id)
+    _collect_enemy_vaults(state, "fleet", ((craft.q, craft.r),), label=craft.id)
     return {"craft_id": craft.id, "before": before, "after": [craft.q, craft.r], "moved": moved}
 
 
@@ -790,33 +790,33 @@ def _advance_boss_progress(state: GameState, amount: int) -> None:
     )
 
 
-def _collect_enemy_baubles(
+def _collect_enemy_vaults(
     state: GameState, source: str, positions: tuple[tuple[int, int], ...], *, label: str
 ) -> None:
-    """Designed bosses may progress by snatching baubles: when the trigger is
-    enabled, the boss token (or a fleet craft) covering a bauble claims it
+    """Designed bosses may progress by snatching vaults: when the trigger is
+    enabled, the boss token (or a fleet craft) covering a vault claims it
     once and advances the track. The Fang is never taken."""
     sb = state.star_breach
     assert sb is not None
     triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
-    if triggers is None or f"bauble_pickup_{source}" not in triggers:
+    if triggers is None or f"vault_pickup_{source}" not in triggers:
         return
-    from starshot.rules.baubles import BAUBLE_RADIUS
+    from starshot.rules.vaults import VAULT_RADIUS
 
-    for bauble in state.baubles:
-        if bauble.is_fang or "starbreacher" in bauble.claimed_by:
+    for vault in state.vaults:
+        if vault.is_fang or "starbreacher" in vault.claimed_by:
             continue
         if any(
-            hex_distance(q, r, bauble.q, bauble.r) <= BAUBLE_RADIUS for q, r in positions
+            hex_distance(q, r, vault.q, vault.r) <= VAULT_RADIUS for q, r in positions
         ):
-            bauble.claimed_by.append("starbreacher")
+            vault.claimed_by.append("starbreacher")
             state.event_log.append(
                 {
-                    "type": "boss_bauble_pickup",
+                    "type": "boss_vault_pickup",
                     "round": state.round_number,
                     "source": source,
                     "collector": label,
-                    "bauble_id": bauble.id,
+                    "vault_id": vault.id,
                 }
             )
             _advance_boss_progress(state, 1)

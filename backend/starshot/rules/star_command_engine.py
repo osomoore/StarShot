@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from starshot.rules.baubles import ship_inside_bauble
+from starshot.rules.vaults import ship_inside_vault
 from starshot.rules.desperation import draw_desperation_card
 from starshot.rules.hex import clamp_to_board, move_forward
 from starshot.rules.models import GameState, PlayerState
@@ -96,7 +96,7 @@ def reveal_starfall_for_round(state: GameState) -> None:
     starfall_id = state.starfall_deck.pop(0)
     state.active_starfall_id = starfall_id
     state.active_starfall_round = state.round_number
-    state.starfall_bauble_number = None
+    state.starfall_vault_number = None
     event = {
         "type": "starfall_revealed",
         "round": state.round_number,
@@ -112,8 +112,8 @@ def reveal_starfall_for_round(state: GameState) -> None:
     elif starfall_id == "gravity_burst":
         event["movement"] = base._pull_all_ships_toward_fang(state, 2)
     elif starfall_id == "stars_align":
-        state.starfall_bauble_number = base._roll_d6_no_six(state)
-        event["bauble_number"] = state.starfall_bauble_number
+        state.starfall_vault_number = base._roll_d6_no_six(state)
+        event["vault_number"] = state.starfall_vault_number
     elif starfall_id == "safe_harbor":
         restored = []
         for player in state.players.values():
@@ -149,21 +149,21 @@ def cleanup_start(state: GameState) -> None:
         for player in state.players.values():
             if player.eliminated or player.ship.destroyed:
                 continue
-            if any(ship_inside_bauble(player.ship, bauble) for bauble in state.baubles):
+            if any(ship_inside_vault(player.ship, vault) for vault in state.vaults):
                 continue
             targets.append(player)
         results = [base._apply_environmental_damage_to_player(state, player, 2) for player in targets]
         state.event_log.append({"type": "starfall_take_cover_damage", "round": state.round_number, "targets": results})
 
 
-def bauble_open_this_round(state: GameState, bauble) -> bool:
-    if bauble.is_fang:
+def vault_open_this_round(state: GameState, vault) -> bool:
+    if vault.is_fang:
         return True
-    if bauble.number == state.round_number:
+    if vault.number == state.round_number:
         return True
-    if active_starfall(state, "most_dangerous_game") and 1 <= bauble.number <= 5:
+    if active_starfall(state, "most_dangerous_game") and 1 <= vault.number <= 5:
         return True
-    if active_starfall(state, "stars_align") and bauble.number == state.starfall_bauble_number:
+    if active_starfall(state, "stars_align") and vault.number == state.starfall_vault_number:
         return True
     return False
 

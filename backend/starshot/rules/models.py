@@ -9,7 +9,7 @@ class GamePhase(StrEnum):
     ACTION_1 = "action_1"
     ACTION_2 = "action_2"
     ACTION_3 = "action_3"
-    AWARD_BAUBLES = "award_baubles"
+    AWARD_VAULTS = "award_vaults"
     CLEANUP = "cleanup"
     COMPLETE = "complete"
 
@@ -183,7 +183,7 @@ class PlayerState:
 
 
 @dataclass(slots=True)
-class BaubleState:
+class VaultState:
     id: str
     number: int
     q: int
@@ -224,7 +224,7 @@ class FleetCraftState:
 class StarBreachState:
     """Cooperative boss-scenario state for the StarBreach expansion."""
 
-    scenario_id: str = "bauble_breacher"
+    scenario_id: str = "vault_breacher"
     prey_player_id: str = ""
     # Board token: the nose hex and the facing of the last movement.
     anchor_q: int = 0
@@ -242,7 +242,7 @@ class StarBreachState:
     repaired_ship_ids_this_action: list[str] = field(default_factory=list)
     progressed_source_ids_this_action: list[str] = field(default_factory=list)
     # Compiled boss spec for designed bosses (see rules/star_breach_spec.py);
-    # None means the stock Bauble Breacher scenario.
+    # None means the stock Vault Breacher scenario.
     boss_spec: dict | None = None
 
 
@@ -257,7 +257,7 @@ class GameResult:
 class GameState:
     players: dict[str, PlayerState]
     deck_set_id: str = ""
-    baubles: list[BaubleState] = field(default_factory=list)
+    vaults: list[VaultState] = field(default_factory=list)
     desperation_deck: DesperationDeck = field(default_factory=DesperationDeck)
     round_number: int = 1
     phase: GamePhase = GamePhase.GIVE_ORDERS
@@ -271,7 +271,7 @@ class GameState:
     starfall_deck: list[str] = field(default_factory=list)
     active_starfall_id: str | None = None
     active_starfall_round: int | None = None
-    starfall_bauble_number: int | None = None
+    starfall_vault_number: int | None = None
 
     @property
     def active_player_ids(self) -> tuple[str, ...]:

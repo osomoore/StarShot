@@ -64,9 +64,9 @@ class StarBreachSetupTests(unittest.TestCase):
         state = _coop_state()
         sb = state.star_breach
         self.assertIsNotNone(sb)
-        self.assertEqual(sb.scenario_id, "bauble_breacher")
+        self.assertEqual(sb.scenario_id, "vault_breacher")
         self.assertEqual(sb.prey_player_id, "alice")
-        self.assertEqual(state.players["alice"].roles, ("bauble_runner", "fighting_ace"))
+        self.assertEqual(state.players["alice"].roles, ("vault_runner", "fighting_ace"))
         self.assertEqual(state.players["bob"].roles, ("tank", "engineer"))
         self.assertEqual(state.players["bob"].ship.shields, 3)
         self.assertEqual(len(state.players["bob"].hand), 7)  # engineer draws +2
@@ -87,11 +87,11 @@ class StarBreachSetupTests(unittest.TestCase):
                 player_ids=("alice", "bob"),
                 seed=11,
                 active_expansions=("star_breach",),
-                star_breach_role_preferences={"bob": "bauble_runner"},
+                star_breach_role_preferences={"bob": "vault_runner"},
             )
         )
-        self.assertIn("bauble_runner", state.players["bob"].roles)
-        self.assertNotIn("bauble_runner", state.players["alice"].roles)
+        self.assertIn("vault_runner", state.players["bob"].roles)
+        self.assertNotIn("vault_runner", state.players["alice"].roles)
         # Every role stays in play.
         dealt = set(state.players["alice"].roles) | set(state.players["bob"].roles)
         self.assertEqual(dealt, set(sbd.ROLE_ASSIGN_ORDER))
@@ -237,7 +237,7 @@ class StarBreachCombatTests(unittest.TestCase):
         state.players["alice"].ship.q, state.players["alice"].ship.r = 0, -11
         state.star_breach.shield_hp["forward"] = 0
         # Alice is the Fighting Ace: kill the ace shift by making lane 2 dead too.
-        state.players["alice"].roles = ("bauble_runner",)
+        state.players["alice"].roles = ("vault_runner",)
         _set_hand(state, "alice", "targeted_attack_aim_1_a")
         deck_before = len(state.players["alice"].deck)
         state = self._submit_both(state, _attack_orders("targeted_attack_aim_1_a", "boss:forward"))
@@ -431,9 +431,9 @@ class StarBreachOutcomeTests(unittest.TestCase):
 
 
 class StarBreachRoleHelperTests(unittest.TestCase):
-    def test_bauble_runner_overdrive_is_not_penalty_exempt(self):
+    def test_vault_runner_overdrive_is_not_penalty_exempt(self):
         state = _coop_state()
-        alice = state.players["alice"]  # bauble runner + fighting ace
+        alice = state.players["alice"]  # vault runner + fighting ace
         move_stack = ActionStack(1, SealMode.OVERDRIVE, (OrderCardSelection("controlled_move_1_a"),))
         attack_stack = ActionStack(
             2, SealMode.OVERDRIVE, (OrderCardSelection("targeted_attack_aim_1_a", target_player_id="boss:forward"),)
@@ -444,7 +444,7 @@ class StarBreachRoleHelperTests(unittest.TestCase):
         self.assertFalse(_star_breach_overdrive_exempt(state, bob, move_stack))
         self.assertFalse(_star_breach_overdrive_exempt(state, bob, attack_stack))
 
-    def test_bauble_runner_overdrive_does_not_redouble_basic_movement(self):
+    def test_vault_runner_overdrive_does_not_redouble_basic_movement(self):
         state = _coop_state()
         alice = state.players["alice"]
         alice.ship.q, alice.ship.r, alice.ship.facing = 0, 0, 0
@@ -476,17 +476,17 @@ class StarBreachRoleHelperTests(unittest.TestCase):
         self.assertEqual(state.players["alice"].ship.movement_this_action, 0)
         self.assertEqual([event["movement_this_action"] for event in movements], [0, 0])
 
-    def test_bauble_runner_bauble_grants_all_players_bonus_draws(self):
+    def test_vault_runner_vault_grants_all_players_bonus_draws(self):
         state = _coop_state()
-        bauble = next(b for b in state.baubles if b.number == 1 and not b.is_fang)
-        state.players["alice"].ship.q, state.players["alice"].ship.r = bauble.q, bauble.r
-        state.phase = GamePhase.AWARD_BAUBLES
+        vault = next(b for b in state.vaults if b.number == 1 and not b.is_fang)
+        state.players["alice"].ship.q, state.players["alice"].ship.r = vault.q, vault.r
+        state.phase = GamePhase.AWARD_VAULTS
         with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
             state = resolve_next_step(state)
         self.assertEqual(state.players["alice"].bonus_draws_pending, 1)
         self.assertEqual(state.players["bob"].bonus_draws_pending, 1)
-        award_event = next(event for event in state.event_log if event["type"] == "bauble_awarded")
-        self.assertTrue(award_event["awards"][0]["bauble_runner_bonus_draw"])
+        award_event = next(event for event in state.event_log if event["type"] == "vault_awarded")
+        self.assertTrue(award_event["awards"][0]["vault_runner_bonus_draw"])
 
     def test_fighting_ace_lane_choice_avoids_glancing_and_finds_components(self):
         state = _coop_state()

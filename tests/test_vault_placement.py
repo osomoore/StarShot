@@ -1,8 +1,8 @@
-"""Regression: random bauble placement must never fail game creation.
+"""Regression: random vault placement must never fail game creation.
 
-The original greedy placement (baubles 1..5 in order, no retry) could strand
-bauble 5 — its ring is the tightest — and crash create_initial_state with
-BaublePlacementError roughly once in a few hundred games.
+The original greedy placement (vaults 1..5 in order, no retry) could strand
+vault 5 — its ring is the tightest — and crash create_initial_state with
+VaultPlacementError roughly once in a few hundred games.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import unittest
 from random import Random
 
 from starshot.rules import create_initial_state
-from starshot.rules.baubles import BAUBLE_MAX_CENTER_DISTANCE, create_baubles
+from starshot.rules.vaults import VAULT_MAX_CENTER_DISTANCE, create_vaults
 from starshot.rules.hex import hex_distance
 from starshot.rules.models import GameConfig, PlayerState, ShipState
 
@@ -26,24 +26,24 @@ def four_players() -> dict[str, PlayerState]:
     return players
 
 
-class BaublePlacementTests(unittest.TestCase):
-    def test_many_random_layouts_place_all_baubles(self) -> None:
+class VaultPlacementTests(unittest.TestCase):
+    def test_many_random_layouts_place_all_vaults(self) -> None:
         players = four_players()
         for seed in range(400):
-            baubles = create_baubles(Random(seed), players)
-            numbered = [bauble for bauble in baubles if not bauble.is_fang]
+            vaults = create_vaults(Random(seed), players)
+            numbered = [vault for vault in vaults if not vault.is_fang]
             self.assertEqual(len(numbered), 10, f"seed {seed}")
-            for bauble in numbered:
+            for vault in numbered:
                 self.assertLessEqual(
-                    hex_distance(0, 0, bauble.q, bauble.r),
-                    BAUBLE_MAX_CENTER_DISTANCE[bauble.number],
-                    f"seed {seed}: bauble {bauble.id} outside its ring",
+                    hex_distance(0, 0, vault.q, vault.r),
+                    VAULT_MAX_CENTER_DISTANCE[vault.number],
+                    f"seed {seed}: vault {vault.id} outside its ring",
                 )
 
     def test_many_unseeded_game_creations_succeed(self) -> None:
         for _ in range(150):
             state = create_initial_state(GameConfig(player_ids=("red", "blue", "green", "gold")))
-            self.assertEqual(len(state.baubles), 11)
+            self.assertEqual(len(state.vaults), 11)
 
 
 if __name__ == "__main__":

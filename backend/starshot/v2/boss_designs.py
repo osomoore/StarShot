@@ -66,7 +66,7 @@ STEP_KINDS = ("filler", "action_link", "breacher_link", "ability_trigger", "spaw
 ACTION_TYPES = ("move", "shoot")
 
 # Where spawn_fleet steps place their craft.
-SPAWN_LOCATIONS = ("boss_front", "bauble", "fang")
+SPAWN_LOCATIONS = ("boss_front", "vault", "fang")
 SPAWN_MAX_COUNT = 3
 
 # Player-owned designs are capped so the library stays browsable.
@@ -82,8 +82,8 @@ FLEET_MAX_ACTION_COUNT = 9
 FLEET_STACKS = ("0.5", "1.5", "2.5", "3.5")
 
 TRIGGER_TYPES = (
-    "bauble_pickup_boss",
-    "bauble_pickup_fleet",
+    "vault_pickup_boss",
+    "vault_pickup_fleet",
     "prey_hull_damage_boss",
     "prey_hull_damage_fleet",
     "player_kill",

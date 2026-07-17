@@ -2,7 +2,7 @@
 
 Three personalities ported from the v1 client-side JS and improved:
 
-- ``bauble_runner`` — plans multi-stack routes to the current round's baubles,
+- ``vault_runner`` — plans multi-stack routes to the current round's vaults,
   contests The Fang, and shoots opportunistically with leftover stacks.
 - ``hunter_killer`` — commits to one prey, repositions until a volley is
   likely, then fires with overdrive and desperate faces on good odds.
@@ -59,15 +59,15 @@ AI_LEVELS = {
 }
 
 AI_TYPES = {
-    "bauble_runner": "Salvage Captain",
-    "hunter_killer": "Corsair",
-    "blaster": "Gunner",
+    "vault_runner": "Freebooter",
+    "hunter_killer": "Bloodthirsty",
+    "blaster": "Cannoneer",
 }
 
 AI_DISPLAY_NAMES = {
-    "bauble_runner": "Salvage Captain Morrigan",
-    "hunter_killer": "Corsair Blackvane",
-    "blaster": "Gunner Redbeard",
+    "vault_runner": "Freebooter Ben Gunn",
+    "hunter_killer": "Bloodthirsty Blackbeard",
+    "blaster": "Cannoneer Israel Hands",
 }
 
 # P(2d6 >= n)
@@ -569,23 +569,23 @@ def fallback_orders() -> OrdersSubmission:
 
 
 # --------------------------------------------------------------------------
-# Bauble targets
+# Vault targets
 # --------------------------------------------------------------------------
 
 
-def _round_baubles(state: GameState, me: PlayerState) -> list:
-    """Baubles worth chasing this round, best value first."""
+def _round_vaults(state: GameState, me: PlayerState) -> list:
+    """Vaults worth chasing this round, best value first."""
     ship = me.ship
     scored = []
-    for bauble in state.baubles:
-        active = bauble.is_fang or bauble.number == state.round_number
-        if not active or me.id in bauble.claimed_by:
+    for vault in state.vaults:
+        active = vault.is_fang or vault.number == state.round_number
+        if not active or me.id in vault.claimed_by:
             continue
-        distance = max(0, hex_distance(ship.q, ship.r, bauble.q, bauble.r) - 1)
-        value = bauble.victory_points + (0 if bauble.is_fang else 1)  # numbered: + desperation card
-        if bauble.is_fang and state.round_number < 6:
+        distance = max(0, hex_distance(ship.q, ship.r, vault.q, vault.r) - 1)
+        value = vault.victory_points + (0 if vault.is_fang else 1)  # numbered: + desperation card
+        if vault.is_fang and state.round_number < 6:
             value = max(1, value - 1)  # Fang bites back before the payoff round
-        scored.append((value / (1.0 + distance), distance, bauble))
+        scored.append((value / (1.0 + distance), distance, vault))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [item[2] for item in scored]
 
@@ -646,17 +646,17 @@ def _plan_route(
 # --------------------------------------------------------------------------
 
 
-def _plan_bauble_runner(situation: Situation) -> OrdersSubmission:
+def _plan_vault_runner(situation: Situation) -> OrdersSubmission:
     state, me = situation.state, situation.me
     moves = list(situation.hand_moves)
     attacks = list(situation.hand_attacks)
     plans: list[StackPlan] = []
     pos = situation.pos
 
-    targets = _round_baubles(state, me)
+    targets = _round_vaults(state, me)
     route: list[MoveStackOption] | None = None
-    for bauble in targets[:3]:
-        route = _plan_route(situation, moves, bauble.q, bauble.r, 3, allow_desperate=True)
+    for vault in targets[:3]:
+        route = _plan_route(situation, moves, vault.q, vault.r, 3, allow_desperate=True)
         if route is not None:
             break
     if route:
@@ -707,7 +707,7 @@ def _plan_bauble_runner(situation: Situation) -> OrdersSubmission:
                 moves, attacks = _consume_plan(plan, moves, attacks)
                 plans.append(plan)
                 continue
-        # No route landed on the bauble: still grind toward it greedily.
+        # No route landed on the vault: still grind toward it greedily.
         if targets and moves:
             goal = targets[0]
             options = _move_stack_options(
@@ -1008,9 +1008,9 @@ def _plan_star_breach(situation: Situation, ai_type: str) -> OrdersSubmission:
     plans: list[StackPlan] = []
     pos = situation.pos
 
-    if ai_type == "bauble_runner":
-        fang = next((bauble for bauble in state.baubles if bauble.is_fang), None)
-        targets = _round_baubles(state, me)
+    if ai_type == "vault_runner":
+        fang = next((vault for vault in state.vaults if vault.is_fang), None)
+        targets = _round_vaults(state, me)
         goal = (targets[0].q, targets[0].r) if targets else ((fang.q, fang.r) if fang else None)
         if goal:
             route = _plan_route(situation, moves, goal[0], goal[1], 3, allow_desperate=True)
@@ -1048,7 +1048,7 @@ def _plan_star_breach(situation: Situation, ai_type: str) -> OrdersSubmission:
 
 
 _PLANNERS = {
-    "bauble_runner": _plan_bauble_runner,
+    "vault_runner": _plan_vault_runner,
     "hunter_killer": _plan_hunter_killer,
     "blaster": _plan_blaster,
 }

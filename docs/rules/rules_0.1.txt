@@ -12,7 +12,7 @@ StarShot Prototype
 Give Orders..................................................................................................................................................... 3
 Cooldown........................................................................................................................................................ 4
 Resolve Actions...............................................................................................................................................4
-Award Baubles................................................................................................................................................ 4
+Award Vaults................................................................................................................................................ 4
 Cleanup........................................................................................................................................................... 4
 5. Ending the Game.............................................................................................................................................4
 6. Cards................................................................................................................................................................ 5
@@ -41,7 +41,7 @@ Gaining Desperation Under Attack................................................
 Damage Location...................................................................................................................................... 9
 Ship Diagram....................................................................................................................................... 9
 Ship Destruction...................................................................................................................................... 10
-8. Baubles...........................................................................................................................................................11
+8. Vaults...........................................................................................................................................................11
 9. Victory Points................................................................................................................................................ 11
 10. Card Listing..................................................................................................................................................11
 Base Orders Decks....................................................................................................................................... 12
@@ -65,8 +65,8 @@ piloting their own ship and sharing common Victory Points with their team.
 2. Components
 Common game pieces:
 ● 1 Hex-based Space board approximately 12 hexes in radius
-● 10 Bauble round number tokens
-● 1 Round and Bauble Track
+● 10 Vault round number tokens
+● 1 Round and Vault Track
 ● 1 Desperation card deck
 ● 30 One Victory Point tokens
 ● 15 Five Victory Point tokens
@@ -80,9 +80,9 @@ Per-player game pieces:
 3. Setup
 1. Place the Space board in reach of all players, and place each player’s ship token in its matching color
 starting tile, facing the center of the board.
-2. Shuffle the Bauble Round tokens and place them randomly on the 10 red Baubles scattered around the
-Space board, number side up. Do not place a Round token on The Fang, which is the central Bauble.
-3. Set the Round and Bauble track to Round 1 and place it in view of all players.
+2. Shuffle the Vault Round tokens and place them randomly on the 10 red Vaults scattered around the
+Space board, number side up. Do not place a Round token on The Fang, which is the central Vault.
+3. Set the Round and Vault track to Round 1 and place it in view of all players.
 4. Set the Victory Point tokens in reach of all players.
 5. Shuffle the Desperation deck, and place it next to the Space board with the Desperately Reshuffle card
 on top. Desperation cards are drawn from the bottom of the deck.
@@ -106,7 +106,7 @@ StarShot is played over a series of rounds. Each round follows the same sequence
 3. Action 1
 4. Action 2
 5. Action 3
-6. Award Baubles
+6. Award Vaults
 7. Cleanup
 Once Cleanup is complete, advance the Round Tracker, rotate the Starting Player designation clockwise, and
 begin the next round.
@@ -145,9 +145,9 @@ For each Action:
 a. Normally Sealed Command cards return to the player’s Deck
 b. Overdriven Command cards go to the player’s Overheat stack
 c. Desperation cards played with their Desperate face return to the common Desperation deck
-After Action 3 has been completed, proceed to Awarding Baubles.
-Award Baubles
-If a player's ship is in a red Bauble circle on the Space board corresponding to the current round or within The
+After Action 3 has been completed, proceed to Awarding Vaults.
+Award Vaults
+If a player's ship is in a red Vault circle on the Space board corresponding to the current round or within The
 Fang’s circle in the center, award them the appropriate Victory Points and/or Desperation cards.
 Cleanup
 Complete the following steps in order:
@@ -354,19 +354,19 @@ the normal 1 for the Volley. Note that any attacks in the current Action ordered
 eliminated still take effect - all ships had a chance to fire their weapons before shots began to hit.
 
 ===== PAGE 11 =====
-8. Baubles
-Scattered across the Congregation are Baubles, small worlds veiled in a shield of glimmering energy. But very
+8. Vaults
+Scattered across the Congregation are Vaults, small worlds veiled in a shield of glimmering energy. But very
 rarely, the shield dissipates for mere hours, and a timely crew can find ancient treasures. Across the map are
-11 baubles, two each randomly numbered 1 through 5 and a final Bauble for round 6 named The Fang. At the
-end of each round, the matching numbered Baubles open, and any crew that is within 1 tile of it may reap the
+11 vaults, two each randomly numbered 1 through 5 and a final Vault for round 6 named The Fang. At the
+end of each round, the matching numbered Vaults open, and any crew that is within 1 tile of it may reap the
 rewards.
-During the Award Baubles step, if you are within 1 tile of the Bauble that matches the round number, you gain
-Victory Points points as shown on the Bauble track, and you draw a card from the Desperation deck.
-The final Bauble is The Fang. Its riches are legendary but deadly. During the Award Baubles step if you are
+During the Award Vaults step, if you are within 1 tile of the Vault that matches the round number, you gain
+Victory Points points as shown on the Vault track, and you draw a card from the Desperation deck.
+The final Vault is The Fang. Its riches are legendary but deadly. During the Award Vaults step if you are
 within 1 tile of the The Fang, gain 1 VP and take 1 damage (roll one time for all ships). This damage can be
 absorbed by a shield activation, and never triggers Overheating cards or gaining Desperation cards. Round 6
 rewards 6 VP and deals 1 damage.
-Bauble Round Point Progression
+Vault Round Point Progression
 Round 1 2 3 4 5 6
 Point Value 4 3 3 4 4 6
 9. Victory Points
@@ -374,7 +374,7 @@ Victory Points (VP) are the primary mark of success for a captain. They are gain
 1. Attacking an enemy ship and hitting their Shields with a Volley (1 VP).
 2. Destroying at least one ship component with a Volley (1 VP).
 3. Getting the kill shot on an enemy ship (3 VP instead of 1 from the Volley).
-4. Breaching a Bauble on the round it is open (Varies per Bauble).
+4. Breaching a Vault on the round it is open (Varies per Vault).
 10. Card Listing
 
 ----- TABLES DETECTED ON PAGE 11 -----
@@ -410,7 +410,7 @@ low on normal Attack cards.
 2 Thrust Ions Move Move 1 Move 5
 1 Turbo Ions Move Move 1 Move 10
 1 Homeward Bound Move Move 1 Warp Home (+5 Defense)
-1 Treasure Hound Move Move 1 Warp Bauble (+5 Defense)
+1 Treasure Hound Move Move 1 Warp Vault (+5 Defense)
 1 Evasive Action Move Move 1 +10 Defense, Can’t Move
 2 Ace Shot Attack Attack 1 / Move 1 +5 to Hit
 1 Deadeye Attack Attack 1 / Move 1 An Attack always hits
@@ -431,7 +431,7 @@ low on normal Attack cards.
 2 | Thrust Ions | Move | Move 1 | Move 5
 1 | Turbo Ions | Move | Move 1 | Move 10
 1 | Homeward Bound | Move | Move 1 | Warp Home (+5 Defense)
-1 | Treasure Hound | Move | Move 1 | Warp Bauble (+5 Defense)
+1 | Treasure Hound | Move | Move 1 | Warp Vault (+5 Defense)
 1 | Evasive Action | Move | Move 1 | +10 Defense, Can’t Move
 2 | Ace Shot | Attack | Attack 1 / Move 1 | +5 to Hit
 1 | Deadeye | Attack | Attack 1 / Move 1 | An Attack always hits
@@ -481,7 +481,7 @@ c. Riley “Turbo” Rounder: Riley has +1 Move from Move cards, but no bonus de
 d. Danny “Drifter” Davos: Danny moves 2 tiles forward at the beginning of the Cleanup step
 e. Carlos “Danger” Connor: Carlos gains 1 VP whenever he loses a ship component
 f. Knute “Rocky” Knuckle: Knute’s Bridge and Life Support components take 2 hits to destroy.
-g. Beto “Golden” Briego: Beto gains 1 additional VP and 1 additional Desperation card from Baubles
+g. Beto “Golden” Briego: Beto gains 1 additional VP and 1 additional Desperation card from Vaults
 h. Illyria “Boney” Landow: When the first Starfall event of the round is revealed, if Illyria’s Bone Room is
 intact she chooses to either gain 1 VP or place the Starfall event on the bottom of the Starfall deck so
 the next event happens instead.
@@ -493,15 +493,15 @@ When a Starfall event deals damage, no cards are discarded nor Desperation cards
 abilities). Shields may absorb the damage unless specified otherwise.
 Starfall Deck
 a. Solar Storm: Roll a single damage die. It applies to all players and penetrates shields.
-b. Gravity Burst: Move all ships 2 tiles towards The Fang (the center Bauble).
+b. Gravity Burst: Move all ships 2 tiles towards The Fang (the center Vault).
 c. Clear Skies: All ships roll 3d12 for attacks instead of 2d12 this round.
-d. Stars Align: Roll a d12 and halve the result (round down). The matching round’s Bauble(s) open this
+d. Stars Align: Roll a d12 and halve the result (round down). The matching round’s Vault(s) open this
 round.
 e. Take Cover: At the end of this round, roll 2 damage dice. This damage hits all players outside of a
-Bauble’s range. Any Bauble provides protection, even if it is not open.
+Vault’s range. Any Vault provides protection, even if it is not open.
 f. Golden Bounty: This turn, when you hit an enemy ship for the first time during an Action (including
 hitting Shields), gain 1 additional VP.
-g. Most Dangerous Game: All Baubles open at the end of this turn. Roll 2 damage dice at end of turn,
-and each player in a Bauble takes that damage.
+g. Most Dangerous Game: All Vaults open at the end of this turn. Roll 2 damage dice at end of turn,
+and each player in a Vault takes that damage.
 h. Sudden Chill: Each player returns 1 Overheated card to their deck before Orders are given. If they
 can’t, they gain 1 VP. (Cannot be chosen for Round 1’s Starfall event.)

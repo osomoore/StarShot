@@ -15,7 +15,7 @@ Status for rules 0.2:
 - Groups 1 through 6 of the 0.2 migration are complete: documentation baseline, card-effect interpretation helpers, hand/discard order submission, no-cooldown phase flow, cleanup card destinations, empty-deck draw behavior, 0.2 base deck/combat math, and overdrive-as-duplicate-orders.
 - The implemented game is still partially 0.1-shaped: base deck composition, combat math, and overdrive behavior still need later migration groups.
 - The sections below describe the historical 0.1-derived implementation unless they explicitly mention rules 0.2.
-- Do not use the old round flow, base deck, attack math, overdrive, bauble VP, or ship-destruction rules below as 0.2 requirements. Use the migration plan's grouped 0.2 deltas instead.
+- Do not use the old round flow, base deck, attack math, overdrive, vault VP, or ship-destruction rules below as 0.2 requirements. Use the migration plan's grouped 0.2 deltas instead.
 
 ## Core Game
 
@@ -28,7 +28,7 @@ The server must be authoritative for:
 - Hidden order submission.
 - Round and phase progression.
 - Movement, targeting, attack rolls, shields, damage, VP, and ship destruction.
-- Randomness, including starting player, dice rolls, bauble placement, desperation draws, and damage lanes.
+- Randomness, including starting player, dice rolls, vault placement, desperation draws, and damage lanes.
 
 The browser client may display state and collect player intent, but it must not decide legality or outcomes.
 
@@ -36,12 +36,12 @@ The browser client may display state and collect player intent, but it must not 
 
 Implement these entities first:
 
-- `GameState`: players, round number, phase, starting player, board, baubles, action index, event log, and winner/result.
+- `GameState`: players, round number, phase, starting player, board, vaults, action index, event log, and winner/result.
 - `PlayerState`: player id, color, team id if teams are enabled later, ship, deck, overheat pile, prepared action stacks, VP, eliminated flag.
 - `ShipState`: hex position, facing, shield charges, component damage, movement executed during the current action, defense bonus for the current action.
 - `Card`: id, source deck, card type, value/effects, whether it is a base card or desperation card.
 - `ActionStack`: action number 1 to 3, sealed mode, ordered cards, chosen face/orientation, derived target or movement instruction.
-- `BaubleState`: hex position, round number or Fang, VP reward.
+- `VaultState`: hex position, round number or Fang, VP reward.
 - `GameEvent`: append-only accepted event with timestamp/order, actor, event type, payload, and resulting public summary.
 
 Keep the first implementation deterministic except for explicit injected RNG. Rules tests should be able to pass a seeded RNG or fixed dice results.
@@ -55,7 +55,7 @@ Each round follows this sequence:
 3. `action_1`
 4. `action_2`
 5. `action_3`
-6. `award_baubles`
+6. `award_vaults`
 7. `cleanup`
 
 At cleanup completion:
@@ -97,19 +97,19 @@ For action 1, action 2, and action 3:
   - Desperation cards used on a desperate face return to the desperation deck.
   - Desperation cards are not boosted by overdrive and do not overheat.
 
-### Award Baubles
+### Award Vaults
 
-At the end of each round, award baubles:
+At the end of each round, award vaults:
 
-- Numbered baubles open on their matching round.
-- A ship within 1 tile of the matching bauble gains that round's VP reward and draws one desperation card.
-- The Fang is active every round during Award Baubles.
+- Numbered vaults open on their matching round.
+- A ship within 1 tile of the matching vault gains that round's VP reward and draws one desperation card.
+- The Fang is active every round during Award Vaults.
 - A ship within 1 tile of The Fang gains 1 VP, or 6 VP at the end of round 6, and takes 1 shieldable damage.
 - Fang damage does not draw desperation cards and does not overheat cards.
 
 VP by round:
 
-| Numbered bauble | 1 | 2 | 3 | 4 | 5 |
+| Numbered vault | 1 | 2 | 3 | 4 | 5 |
 | --- | --- | --- | --- | --- | --- |
 | VP | 4 | 3 | 3 | 4 | 4 |
 
@@ -215,7 +215,7 @@ Implement the first rules engine around these capabilities:
 - 2 to 4 players.
 - Base game only; no StarCommand or StarTech expansion.
 - Hex board coordinates, ship position, and facing.
-- Random bauble placement for numbered baubles and fixed Fang.
+- Random vault placement for numbered vaults and fixed Fang.
 - Base deck cards only.
 - Three hidden action stacks per round.
 - Cooldown and overheat for base cards.
@@ -223,7 +223,7 @@ Implement the first rules engine around these capabilities:
 - Targeted attack volleys.
 - 2d12 attack rolls.
 - Shields, VP for shield hits, unshielded damage, and ship destruction.
-- Bauble VP and desperation-card draw events.
+- Vault VP and desperation-card draw events.
 - Six-round ending and last-ship-standing ending.
 
 Defer these until the base loop is working:
@@ -241,7 +241,7 @@ Defer these until the base loop is working:
 
 These need confirmation or a PDF/table reference pass before coding the full rules:
 
-- Exact hex coordinates for starting tiles, baubles, and The Fang.
+- Exact hex coordinates for starting tiles, vaults, and The Fang.
 - Exact ship component layout and which d12 lane maps to which component path.
 - Exact color/target mapping on each targeted attack card face/orientation.
 - Exact movement face/orientation mapping on each controlled move card.
@@ -249,7 +249,7 @@ These need confirmation or a PDF/table reference pass before coding the full rul
 - Whether distance uses axial/cube hex distance and whether blocked/occupied hexes matter.
 - How simultaneous movement conflicts are resolved.
 - Whether all attackers hitting an already-activated shield gain VP, or only attackers whose roll hits the shielded defender.
-- Whether bauble Fang damage rolls once globally or once per affected ship when multiple ships are in range.
+- Whether vault Fang damage rolls once globally or once per affected ship when multiple ships are in range.
 - How hidden information is represented in API responses for each player versus spectators.
 
 ## Ship Board and Damage Lanes

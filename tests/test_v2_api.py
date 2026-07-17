@@ -164,7 +164,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual(exported.status_code, 200, exported.text)
         text = exported.json()["log"]
         self.assertIn("StarShot Debug Log", text)
-        self.assertIn("Baubles", text)
+        self.assertIn("Vaults", text)
         self.assertIn("Round 1", text)
         self.assertIn("Event Log JSON", text)
 
@@ -255,7 +255,7 @@ class AiMatchTests(unittest.TestCase):
         client = make_client()
         register(client, "ai_finisher")
         created = client.post(
-            "/api/v2/matches", json={"ai_types": ["blaster", "bauble_runner"], "open_seats": 0}
+            "/api/v2/matches", json={"ai_types": ["blaster", "vault_runner"], "open_seats": 0}
         )
         game_id = created.json()["game_id"]
         for _ in range(12):
@@ -412,8 +412,8 @@ class MatchmakingTests(unittest.TestCase):
         store = get_v2_store()
         host_user = store.get_user_by_name("full_open_host")
         match_id = store.create_match("Full AI table", host_user["id"], seats=2, status="open")
-        store.add_seat(match_id, 0, "ai:blaster:1", "Gunner Redbeard", ai_type="blaster")
-        store.add_seat(match_id, 1, "ai:bauble_runner:1", "Salvage Capt. Morrigan", ai_type="bauble_runner")
+        store.add_seat(match_id, 0, "ai:blaster:1", "Cannoneer Israel Hands", ai_type="blaster")
+        store.add_seat(match_id, 1, "ai:vault_runner:1", "Freebooter Ben Gunn", ai_type="vault_runner")
 
         joiner = make_client()
         register(joiner, "full_open_joiner")
@@ -535,7 +535,7 @@ class AiBattleTests(unittest.TestCase):
         admin = self.admin_client()
         result = admin.post(
             "/api/v2/admin/ai-battle",
-            json={"ai_types": ["bauble_runner", "hunter_killer", "blaster"]},
+            json={"ai_types": ["vault_runner", "hunter_killer", "blaster"]},
         ).json()
         self.assertTrue(result["complete"])
         self.assertTrue(result["winners"])
@@ -567,13 +567,13 @@ class AiBattleTests(unittest.TestCase):
 
         batch = admin.post(
             "/api/v2/admin/ai-battle-batch",
-            json={"ai_types": ["bauble_runner", "hunter_killer"], "run_count": 3, "deck_set_id": deck_set_id},
+            json={"ai_types": ["vault_runner", "hunter_killer"], "run_count": 3, "deck_set_id": deck_set_id},
         ).json()
 
         self.assertEqual(batch["run_count"], 3)
         self.assertIsNone(batch["history_entry"]["game_id"])
         self.assertGreaterEqual(batch["average_total_vp"], 0)
-        self.assertEqual({entry["ai_type"] for entry in batch["ai_rankings"]}, {"bauble_runner", "hunter_killer"})
+        self.assertEqual({entry["ai_type"] for entry in batch["ai_rankings"]}, {"vault_runner", "hunter_killer"})
 
         history = admin.get("/api/v2/admin/ai-battles").json()["entries"]
         entry = next(entry for entry in history if entry["id"] == batch["history_entry"]["id"])
@@ -588,7 +588,7 @@ class AiBattleTests(unittest.TestCase):
         admin = self.admin_client()
         created = admin.post(
             "/api/v2/admin/ai-battle-batch/jobs",
-            json={"ai_types": ["bauble_runner", "hunter_killer"], "run_count": 1},
+            json={"ai_types": ["vault_runner", "hunter_killer"], "run_count": 1},
         ).json()
 
         self.assertEqual(created["total"], 1)

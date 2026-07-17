@@ -5,7 +5,7 @@ import hashlib
 from starshot.rules.card_effects import static_card_effect_summary
 from starshot.rules.models import (
     ActionStack,
-    BaubleState,
+    VaultState,
     Card,
     CardFamily,
     DesperateFace,
@@ -40,7 +40,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
         "starting_player_id": state.starting_player_id,
         "rng_seed": state.rng_seed,
         "rng_step": state.rng_step,
-        "baubles": [bauble_to_dict(bauble) for bauble in state.baubles],
+        "vaults": [vault_to_dict(vault) for vault in state.vaults],
         "desperation_deck": desperation_deck_to_dict(state.desperation_deck),
         "players": {
             player_id: player_to_dict(player, reveal_orders=reveal_orders)
@@ -57,7 +57,7 @@ def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
             else None
         ),
         "active_starfall_round": state.active_starfall_round,
-        "starfall_bauble_number": state.starfall_bauble_number,
+        "starfall_vault_number": state.starfall_vault_number,
         "star_breach": (
             star_breach_to_dict(state.star_breach, round_number=state.round_number)
             if state.star_breach
@@ -70,7 +70,7 @@ def state_from_dict(data: dict) -> GameState:
     return GameState(
         players={player_id: player_from_dict(player) for player_id, player in data["players"].items()},
         deck_set_id=data.get("deck_set_id", ""),
-        baubles=[bauble_from_dict(bauble) for bauble in data.get("baubles", [])],
+        vaults=[vault_from_dict(vault) for vault in data.get("vaults", [])],
         desperation_deck=desperation_deck_from_dict(data.get("desperation_deck", {})),
         round_number=data["round_number"],
         phase=GamePhase(data["phase"]),
@@ -83,7 +83,7 @@ def state_from_dict(data: dict) -> GameState:
         starfall_deck=list(data.get("starfall_deck", [])),
         active_starfall_id=data.get("active_starfall_id"),
         active_starfall_round=data.get("active_starfall_round"),
-        starfall_bauble_number=data.get("starfall_bauble_number"),
+        starfall_vault_number=data.get("starfall_vault_number"),
         star_breach=star_breach_from_dict(data["star_breach"]) if data.get("star_breach") else None,
     )
 
@@ -129,7 +129,7 @@ def star_breach_to_dict(sb: StarBreachState, *, round_number: int = 1) -> dict:
 
 def star_breach_from_dict(data: dict) -> StarBreachState:
     return StarBreachState(
-        scenario_id=data.get("scenario_id", "bauble_breacher"),
+        scenario_id=data.get("scenario_id", "vault_breacher"),
         prey_player_id=data.get("prey_player_id", ""),
         anchor_q=data.get("anchor_q", 0),
         anchor_r=data.get("anchor_r", 0),
@@ -405,20 +405,20 @@ def ship_from_dict(data: dict) -> ShipState:
     )
 
 
-def bauble_to_dict(bauble: BaubleState) -> dict:
+def vault_to_dict(vault: VaultState) -> dict:
     return {
-        "id": bauble.id,
-        "number": bauble.number,
-        "q": bauble.q,
-        "r": bauble.r,
-        "victory_points": bauble.victory_points,
-        "is_fang": bauble.is_fang,
-        "claimed_by": list(bauble.claimed_by),
+        "id": vault.id,
+        "number": vault.number,
+        "q": vault.q,
+        "r": vault.r,
+        "victory_points": vault.victory_points,
+        "is_fang": vault.is_fang,
+        "claimed_by": list(vault.claimed_by),
     }
 
 
-def bauble_from_dict(data: dict) -> BaubleState:
-    return BaubleState(
+def vault_from_dict(data: dict) -> VaultState:
+    return VaultState(
         id=data["id"],
         number=data["number"],
         q=data["q"],

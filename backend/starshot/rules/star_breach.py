@@ -1,6 +1,6 @@
 """StarBreach cooperative expansion: scenario data and boss-ship geometry.
 
-Scenario 1 — Bauble Breacher.  All coordinates in this module are boss-local
+Scenario 1 — Vault Breacher.  All coordinates in this module are boss-local
 axial hexes with the Breacher Core at (0, 0); the boss is placed on the board
 at (anchor_q, anchor_r) and every hull hex is anchor + local.
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 
 EXPANSION_ID = "star_breach"
-SCENARIO_ID = "bauble_breacher"
+SCENARIO_ID = "vault_breacher"
 
 # On the big board the boss is a 3-hex curved token: nose plus two trailing
 # flank hexes. Its detailed hull below is an internal damage board, like the
@@ -70,9 +70,9 @@ class StarBreachRole:
 
 ROLES: tuple[StarBreachRole, ...] = (
     StarBreachRole(
-        "bauble_runner",
-        "Bauble Runner",
-        "Move distances are doubled on basic movement. This doubling is not increased in Overdrive, and movement gives no defense bonus. When this player collects a Bauble, every player draws one bonus card.",
+        "vault_runner",
+        "Vault Runner",
+        "Move distances are doubled on basic movement. This doubling is not increased in Overdrive, and movement gives no defense bonus. When this player collects a Vault, every player draws one bonus card.",
     ),
     StarBreachRole(
         "tank",
@@ -94,7 +94,7 @@ ROLES: tuple[StarBreachRole, ...] = (
 ROLES_BY_ID = {role.id: role for role in ROLES}
 
 # First player is The Prey; roles deal round-robin so every role is in play.
-ROLE_ASSIGN_ORDER = ("bauble_runner", "tank", "fighting_ace", "engineer")
+ROLE_ASSIGN_ORDER = ("vault_runner", "tank", "fighting_ace", "engineer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,7 +182,7 @@ BOSS_PHASES: tuple[tuple[str, str, tuple[tuple[str, object], ...]], ...] = (
 
 BOSS_PHASES_BY_PLAYER_ACTION = {1: "0.5", 2: "1.5", 3: "2.5"}
 
-# Hunter-Killer fleet for the Bauble Breacher scenario (offsets from the nose).
+# Hunter-Killer fleet for the Vault Breacher scenario (offsets from the nose).
 FLEET_SCENARIO: tuple[tuple[str, str, str, tuple[int, int]], ...] = (
     ("hk_blue", "hunter_killer", "blue", (-7, 5)),
     ("hk_green", "hunter_killer", "green", (0, 6)),

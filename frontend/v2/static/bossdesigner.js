@@ -31,10 +31,10 @@
     action_stacks: ["0.5", "1.5", "2.5", "3.5", "starbreach"],
     lane_rolls: [2, 3, 4, 5, 6, 7, 8],
     trigger_types: [
-      "bauble_pickup_boss", "bauble_pickup_fleet",
+      "vault_pickup_boss", "vault_pickup_fleet",
       "prey_hull_damage_boss", "prey_hull_damage_fleet", "player_kill",
     ],
-    spawn_locations: ["boss_front", "bauble", "fang"],
+    spawn_locations: ["boss_front", "vault", "fang"],
     spawn_max_count: 3,
     fleet_max_action_count: 9,
     player_design_limit: 10,
@@ -69,8 +69,8 @@
   const FLEET_STACKS = ["0.5", "1.5", "2.5", "3.5"];
   const FLEET_MAX_ACTION_COUNT = 9;
   const TRIGGER_LABELS = {
-    bauble_pickup_boss: "Bauble pickup — boss",
-    bauble_pickup_fleet: "Bauble pickup — boss fleet",
+    vault_pickup_boss: "Vault pickup — boss",
+    vault_pickup_fleet: "Vault pickup — boss fleet",
     prey_hull_damage_boss: "Prey hull damage — boss",
     prey_hull_damage_fleet: "Prey hull damage — boss fleet",
     player_kill: "Kill a player ship",
@@ -635,7 +635,7 @@
     if (step.kind === "ability_trigger") return `⚡ ${step.name || "Ability"}`;
     if (step.kind === "ability_link") return `⚡ ${ABILITY_LABELS[step.ability] || step.ability}`;
     if (step.kind === "spawn_fleet") {
-      const where = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" }[step.location] || step.location;
+      const where = { boss_front: "front of boss", vault: "current vault", fang: "The Fang" }[step.location] || step.location;
       return `▣ Spawn ${step.count || 1} fleet craft — ${where}`;
     }
     return "Filler";
@@ -1305,7 +1305,7 @@
         for (const { step, index } of trackNotes) {
           let note;
           if (step.kind === "spawn_fleet") {
-            const where = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" }[step.location] || step.location;
+            const where = { boss_front: "front of boss", vault: "current vault", fang: "The Fang" }[step.location] || step.location;
             note = `spawn ${step.count || 1} fleet craft at ${where}`;
           } else if (step.kind === "action_link") {
             note = `the boss gains a ${step.action === "shoot" ? "shoot" : "move"} action in stack ${step.stack}`;
@@ -1348,7 +1348,7 @@
       ${ship}
       ${stackSvg}
       ${side}
-      <text x="70" y="${pageH - 90}" class="ps-sub">Physical play checklist: boss sheet, a damage-lane die per region (lanes + 1 sides), component damage markers, progression marker, fleet HP markers, baubles/objectives, and player ships/cards.</text>
+      <text x="70" y="${pageH - 90}" class="ps-sub">Physical play checklist: boss sheet, a damage-lane die per region (lanes + 1 sides), component damage markers, progression marker, fleet HP markers, vaults/objectives, and player ships/cards.</text>
     </svg>`;
   }
 
@@ -1568,8 +1568,8 @@
       fields = `<label>grants <select data-f="ability">${abilities.map((ability) =>
         `<option value="${ability}" ${step.ability === ability ? "selected" : ""}>${ABILITY_LABELS[ability] || ability}</option>`).join("")}</select></label>`;
     } else if (step.kind === "spawn_fleet") {
-      const locations = META.spawn_locations || ["boss_front", "bauble", "fang"];
-      const locationLabels = { boss_front: "front of boss", bauble: "current bauble", fang: "The Fang" };
+      const locations = META.spawn_locations || ["boss_front", "vault", "fang"];
+      const locationLabels = { boss_front: "front of boss", vault: "current vault", fang: "The Fang" };
       const counts = Array.from({ length: META.spawn_max_count || 3 }, (_v, i) => i + 1);
       fields = `
         <label>craft <select data-f="count">${counts.map((n) =>
@@ -2188,13 +2188,17 @@
       overlay.className = "bd-player-overlay";
       overlay.innerHTML = `
         <div class="bd-player-shell">
-          <button class="btn ghost small bd-player-close" id="bd-player-close">✕ Back to Port</button>
+          <div class="bd-player-toprow">
+            <button class="btn ghost small bd-player-close" id="bd-player-close">✕ Back to Port</button>
+            <button class="btn ghost small" id="bd-player-help">❓ Help</button>
+          </div>
           <div id="player-bossdesign"></div>
         </div>`;
       document.body.appendChild(overlay);
       overlay.querySelector("#bd-player-close").addEventListener("click", () => {
         overlay.classList.add("hidden");
       });
+      overlay.querySelector("#bd-player-help").addEventListener("click", () => showBuilderHowto());
     }
     overlay.classList.remove("hidden");
     if (!playerDesigner) {
@@ -2208,10 +2212,7 @@
     maybeShowBuilderHowto();
   }
 
-  // One-time "how to" blurb the first time a player enters the builder.
-  function maybeShowBuilderHowto() {
-    if (lsGet(LS_BUILDER_HOWTO)) return;
-    lsSet(LS_BUILDER_HOWTO);
+  function showBuilderHowto() {
     const howto = document.createElement("div");
     howto.className = "overlay bd-howto-overlay";
     howto.innerHTML = `
@@ -2227,6 +2228,12 @@
       </div>`;
     document.body.appendChild(howto);
     howto.querySelector("#bd-howto-ok").addEventListener("click", () => howto.remove());
+  }
+  // One-time "how to" blurb the first time a player enters the builder.
+  function maybeShowBuilderHowto() {
+    if (lsGet(LS_BUILDER_HOWTO)) return;
+    lsSet(LS_BUILDER_HOWTO);
+    showBuilderHowto();
   }
 
   // Lobby topbar "Build New Content" button: twinkles until first clicked.

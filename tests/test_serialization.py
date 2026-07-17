@@ -38,10 +38,10 @@ class SerializationTests(unittest.TestCase):
         self.assertEqual(restored_knockout.players["red"].ship.knocked_out_phase, state.phase)
         self.assertEqual(restored.rng_seed, state.rng_seed)
         self.assertEqual(restored.rng_step, state.rng_step)
-        self.assertEqual(len(restored.baubles), 11)
-        self.assertEqual(restored.baubles[0].id, state.baubles[0].id)
-        self.assertEqual((restored.baubles[-1].q, restored.baubles[-1].r), (0, 0))
-        self.assertTrue(restored.baubles[-1].is_fang)
+        self.assertEqual(len(restored.vaults), 11)
+        self.assertEqual(restored.vaults[0].id, state.vaults[0].id)
+        self.assertEqual((restored.vaults[-1].q, restored.vaults[-1].r), (0, 0))
+        self.assertTrue(restored.vaults[-1].is_fang)
 
         serialized_ship = state_to_dict(state)["players"]["red"]["ship"]
         self.assertEqual(state_to_dict(state)["deck_set_id"], "core_0_2_sides")

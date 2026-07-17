@@ -712,8 +712,8 @@ def _analysis_for_state(state: GameState, match: dict) -> dict:
             "destroyed": state.players[seat["player_id"]].ship.destroyed,
             "damage_dealt": 0,
             "ships_killed": 0,
-            "baubles_collected": 0,
-            "bauble_vp": 0,
+            "vaults_collected": 0,
+            "vault_vp": 0,
             "volleys": 0,
             "hits": 0,
             "shielded_hits": 0,
@@ -734,13 +734,13 @@ def _analysis_for_state(state: GameState, match: dict) -> dict:
             stats["damage_dealt"] += int(event.get("damage_applied") or 0)
             if event.get("target_destroyed"):
                 stats["ships_killed"] += 1
-        elif event.get("type") == "bauble_awarded":
+        elif event.get("type") == "vault_awarded":
             for award in event.get("awards") or []:
                 stats = by_player.get(award.get("player_id"))
                 if not stats:
                     continue
-                stats["baubles_collected"] += 1
-                stats["bauble_vp"] += int(award.get("vp_awarded") or 0)
+                stats["vaults_collected"] += 1
+                stats["vault_vp"] += int(award.get("vp_awarded") or 0)
                 environmental_damage += int(award.get("damage_applied") or 0)
     players = sorted(by_player.values(), key=lambda player: (-player["victory_points"], player["display_name"]))
     total_volleys = sum(player["volleys"] for player in players)
@@ -760,7 +760,7 @@ def _analysis_for_state(state: GameState, match: dict) -> dict:
         "total_damage_dealt": sum(player["damage_dealt"] for player in players),
         "environmental_damage": environmental_damage,
         "ships_killed": sum(player["ships_killed"] for player in players),
-        "baubles_collected": sum(player["baubles_collected"] for player in players),
+        "vaults_collected": sum(player["vaults_collected"] for player in players),
         "total_vp": sum(player["victory_points"] for player in players),
         "volley_count": total_volleys,
         "hit_rate": (total_hits / total_volleys) if total_volleys else 0,
@@ -799,7 +799,7 @@ def run_ai_battle(store: V2Store, host_user: dict, ai_types: list[str], deck_set
 
 def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dict]:
     run_count = len(analyses)
-    totals = {key: 0 for key in ("rounds_played", "total_damage_dealt", "environmental_damage", "ships_killed", "baubles_collected", "total_vp", "volley_count")}
+    totals = {key: 0 for key in ("rounds_played", "total_damage_dealt", "environmental_damage", "ships_killed", "vaults_collected", "total_vp", "volley_count")}
     weighted_hits = 0.0
     reason_counts: dict[str, int] = {}
     rankings: dict[str, dict] = {}
@@ -822,7 +822,7 @@ def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dic
                     "vp_total": 0,
                     "damage_total": 0,
                     "kills_total": 0,
-                    "baubles_total": 0,
+                    "vaults_total": 0,
                 },
             )
             bucket["appearances"] += 1
@@ -831,7 +831,7 @@ def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dic
             bucket["vp_total"] += player["victory_points"]
             bucket["damage_total"] += player["damage_dealt"]
             bucket["kills_total"] += player["ships_killed"]
-            bucket["baubles_total"] += player["baubles_collected"]
+            bucket["vaults_total"] += player["vaults_collected"]
     ai_rankings = []
     for bucket in rankings.values():
         appearances = bucket["appearances"] or 1
@@ -840,7 +840,7 @@ def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dic
             "average_vp": bucket["vp_total"] / appearances,
             "average_damage": bucket["damage_total"] / appearances,
             "average_kills": bucket["kills_total"] / appearances,
-            "average_baubles": bucket["baubles_total"] / appearances,
+            "average_vaults": bucket["vaults_total"] / appearances,
             "win_rate": bucket["wins"] / appearances,
             "survival_rate": bucket["survivals"] / appearances,
         })
@@ -854,7 +854,7 @@ def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dic
         "average_damage_dealt": avg("total_damage_dealt"),
         "average_environmental_damage": avg("environmental_damage"),
         "average_ships_killed": avg("ships_killed"),
-        "average_baubles_collected": avg("baubles_collected"),
+        "average_vaults_collected": avg("vaults_collected"),
         "average_total_vp": avg("total_vp"),
         "average_volleys": avg("volley_count"),
         "hit_rate": (weighted_hits / totals["volley_count"]) if totals["volley_count"] else 0,
@@ -865,7 +865,7 @@ def _batch_summary(analyses: list[dict], ai_types: list[str]) -> tuple[dict, dic
         "summary": summary,
         "runs": analyses,
         "notes": [
-            "Damage is volley damage dealt by ships; Fang/bauble damage is tracked separately as environmental damage.",
+            "Damage is volley damage dealt by ships; Fang/vault damage is tracked separately as environmental damage.",
             "AI rankings aggregate by AI style, so duplicate copies of the same style share one bucket.",
         ],
     }
@@ -941,9 +941,42 @@ def build_match_meta(match: dict, state: GameState | None) -> dict:
 
 
 AI_NAME_POOLS = {
-    "bauble_runner": ("Salvage Capt. Morrigan", "Salvage Capt. Vex", "Salvage Capt. Flint"),
-    "hunter_killer": ("Corsair Blackvane", "Corsair Ironjaw", "Corsair Grimtide"),
-    "blaster": ("Gunner Redbeard", "Gunner Sparks", "Gunner Maddock"),
+    "vault_runner": (
+        "Freebooter Ben Gunn",
+        "Freebooter Billy Bones",
+        "Freebooter Long John Silver",
+        "Freebooter Captain Flint",
+        "Freebooter Squire Trelawney",
+        "Freebooter Job Anderson",
+        "Freebooter George Merry",
+        "Freebooter Tom Redruth",
+        "Freebooter Dick Johnson",
+        "Freebooter Black Dog",
+    ),
+    "hunter_killer": (
+        "Bloodthirsty Blackbeard",
+        "Bloodthirsty Calico Jack",
+        "Bloodthirsty Captain Kidd",
+        "Bloodthirsty Anne Bonny",
+        "Bloodthirsty Mary Read",
+        "Bloodthirsty Bartholomew Roberts",
+        "Bloodthirsty Charles Vane",
+        "Bloodthirsty Stede Bonnet",
+        "Bloodthirsty Ching Shih",
+        "Bloodthirsty Edward Low",
+    ),
+    "blaster": (
+        "Cannoneer Israel Hands",
+        "Cannoneer Smee",
+        "Cannoneer Bill Jukes",
+        "Cannoneer Cecco",
+        "Cannoneer Noodler",
+        "Cannoneer Gentleman Starkey",
+        "Cannoneer Skylights",
+        "Cannoneer Alf Mason",
+        "Cannoneer Robt. Mullins",
+        "Cannoneer Cookson",
+    ),
 }
 
 

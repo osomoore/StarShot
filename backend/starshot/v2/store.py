@@ -396,8 +396,8 @@ class V2Store:
 
     def leaderboard_bundle(self, limit: int = 10) -> dict:
         categories = [
-            ("humans", "Real Players"),
-            ("ai", "AI Games"),
+            ("humans", "Flesh and Blood Victories"),
+            ("ai", "Digital Foe Victories"),
         ]
         boards = [
             {

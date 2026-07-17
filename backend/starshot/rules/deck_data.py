@@ -33,7 +33,7 @@ _KNOWN_ORIENTATIONS = {
     "u_turn_move",
     "u_turn_attack",
 }
-_KNOWN_WARP_DESTINATIONS = {"home", "bauble", "leader"}
+_KNOWN_WARP_DESTINATIONS = {"home", "vault", "leader"}
 _COPY_SUFFIXES = "abcdefghijklmnopqrstuvwxyz"
 _SUPPORTED_CARD_TEXT_HINT = (
     "Supported examples include: Move 2; Turn Left; Turn Right; Move 2 Right; Move 2 Left; "

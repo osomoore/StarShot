@@ -9,7 +9,7 @@ from starshot.rules.engine import (
 )
 from starshot.rules.models import (
     ActionStack,
-    BaubleState,
+    VaultState,
     Card,
     CardFamily,
     DesperateFace,
@@ -28,7 +28,7 @@ from starshot.rules.models import (
 
 __all__ = [
     "ActionStack",
-    "BaubleState",
+    "VaultState",
     "Card",
     "CardFamily",
     "DesperateFace",

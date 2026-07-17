@@ -53,13 +53,13 @@ def build_debug_log(state: dict, match: dict | None = None, *, game_id: str | No
         lines.append(f"  final components: {_component_summary(ship)}")
     lines.append("")
 
-    lines.append("Baubles")
-    for bauble in state.get("baubles") or []:
-        claimed = ", ".join(name_map.get(pid, pid) for pid in bauble.get("claimed_by") or []) or "unclaimed"
-        label = "Fang" if bauble.get("is_fang") else f"#{bauble.get('number')}"
+    lines.append("Vaults")
+    for vault in state.get("vaults") or []:
+        claimed = ", ".join(name_map.get(pid, pid) for pid in vault.get("claimed_by") or []) or "unclaimed"
+        label = "Fang" if vault.get("is_fang") else f"#{vault.get('number')}"
         lines.append(
-            f"- {label} {bauble.get('id')}: q={bauble.get('q')} r={bauble.get('r')} "
-            f"VP={bauble.get('victory_points')} claimed_by={claimed}"
+            f"- {label} {vault.get('id')}: q={vault.get('q')} r={vault.get('r')} "
+            f"VP={vault.get('victory_points')} claimed_by={claimed}"
         )
     lines.append("")
 
@@ -81,7 +81,7 @@ def build_debug_log(state: dict, match: dict | None = None, *, game_id: str | No
                 lines.append(f"    - {name_map.get(player_id, player_id)}: {_destroyed_text(destroyed)}")
         round_events = [event for event in events if int(event.get("round") or 1) == round_number]
         _append_round_orders(lines, round_events, name_map, card_names)
-        _append_round_baubles(lines, round_events, name_map)
+        _append_round_vaults(lines, round_events, name_map)
         _append_round_combat(lines, round_events, name_map, card_names)
         lines.append("")
 
@@ -227,18 +227,18 @@ def _append_round_orders(lines: list[str], events: list[dict], name_map: dict[st
             lines.append(f"    - {player} action {stack.get('action_number')} {stack.get('seal_mode')}: {cards}")
 
 
-def _append_round_baubles(lines: list[str], events: list[dict], name_map: dict[str, str]) -> None:
-    awards = [event for event in events if event.get("type") == "bauble_awarded"]
+def _append_round_vaults(lines: list[str], events: list[dict], name_map: dict[str, str]) -> None:
+    awards = [event for event in events if event.get("type") == "vault_awarded"]
     if not awards:
         return
-    lines.append("  Bauble awards:")
+    lines.append("  Vault awards:")
     for event in awards:
-        bauble = event.get("bauble") or {}
+        vault = event.get("vault") or {}
         winners = ", ".join(
             f"{name_map.get(award.get('player_id'), award.get('player_id'))} +{award.get('vp_awarded')} VP"
             for award in event.get("awards") or []
         )
-        lines.append(f"    - #{bauble.get('number')} at q={bauble.get('q')} r={bauble.get('r')}: {winners or 'none'}")
+        lines.append(f"    - #{vault.get('number')} at q={vault.get('q')} r={vault.get('r')}: {winners or 'none'}")
 
 
 def _append_round_combat(lines: list[str], events: list[dict], name_map: dict[str, str], card_names: dict[str, str]) -> None:

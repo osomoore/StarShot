@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from starshot.rules import (
     ActionStack,
-    BaubleState,
+    VaultState,
     GameConfig,
     GamePhase,
     OrderCardSelection,
@@ -50,14 +50,14 @@ class DesperationIntegrationTests(unittest.TestCase):
         ))
 
     # ------------------------------------------------------------------
-    # Bauble / deck draw
+    # Vault / deck draw
     # ------------------------------------------------------------------
 
-    def test_bauble_award_draws_desperation_card_into_player_deck(self):
+    def test_vault_award_draws_desperation_card_into_player_deck(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 1
-        state.baubles = [BaubleState(id="b1", number=1, q=0, r=0, victory_points=2)]
+        state.vaults = [VaultState(id="b1", number=1, q=0, r=0, victory_points=2)]
         state.players["red"].ship.q = 1
         state.players["red"].ship.r = 0
         state.players["blue"].ship.q = 5
@@ -70,14 +70,14 @@ class DesperationIntegrationTests(unittest.TestCase):
         self.assertEqual(len(state.players["red"].deck), deck_before + 1)
         self.assertEqual(len(state.desperation_deck.cards), desp_before - 1)
         self.assertFalse(state.players["red"].deck[0].is_base)
-        award = [e for e in state.event_log if e["type"] == "bauble_awarded"][0]
+        award = [e for e in state.event_log if e["type"] == "vault_awarded"][0]
         self.assertIsNotNone(award["awards"][0]["desperation_card_id"])
 
-    def test_fang_bauble_does_not_draw_desperation_card(self):
+    def test_fang_vault_does_not_draw_desperation_card(self):
         state = create_initial_state(GameConfig(player_ids=("red", "blue"), seed=1))
-        state.phase = GamePhase.AWARD_BAUBLES
+        state.phase = GamePhase.AWARD_VAULTS
         state.round_number = 2
-        state.baubles = [BaubleState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
+        state.vaults = [VaultState(id="fang", number=6, q=0, r=0, victory_points=1, is_fang=True)]
         state.players["red"].ship.q = 0
         state.players["red"].ship.r = 1
         state.players["blue"].ship.q = 5

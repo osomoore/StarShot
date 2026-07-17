@@ -400,7 +400,7 @@
     }
     if (fresh.some(isVisualEvent)) {
       animating = true;
-      renderAll();        // draw ships/baubles first so the replay has actors
+      renderAll();        // draw ships/vaults first so the replay has actors
       playEventsSafely(fresh).then(renderAll);
     } else {
       renderAll();
@@ -444,7 +444,7 @@
   }
 
   function isVisualEvent(event) {
-    return ["movement_resolved", "volley_resolved", "bauble_awarded", "round_advanced",
+    return ["movement_resolved", "volley_resolved", "vault_awarded", "round_advanced",
       "desperation_consequence", "player_forfeited", "starfall_revealed",
       "starfall_take_cover_damage", "captain_cleanup_movement",
       "boss_phase_started", "boss_phase_resolved", "enemy_volley_resolved",
@@ -464,7 +464,7 @@
   // ── render ────────────────────────────────────────────────────────────
   const PHASE_LABELS = {
     give_orders: "Give Yer Orders", action_1: "Action I", action_2: "Action II",
-    action_3: "Action III", award_baubles: "Claim the Loot", cleanup: "Swab the Decks",
+    action_3: "Action III", award_vaults: "Claim the Loot", cleanup: "Swab the Decks",
     complete: "Battle Decided",
   };
 
@@ -518,7 +518,7 @@
     if (!view) return;
     restoreDraftIfAvailable();
     els["game-banner"].textContent = `Round ${view.round_number} of 6 · ${PHASE_LABELS[view.phase] || view.phase}`;
-    Board.renderBaubles(view.baubles, view.round_number, { activeNumbers: extraActiveBaubleNumbers() });
+    Board.renderVaults(view.vaults, view.round_number, { activeNumbers: extraActiveVaultNumbers() });
     Board.renderStarBreach(effectiveStarBreach(), { preyPos: preyPosition() });
     Board.renderShips(view.players, seatOrder(), you);
     renderStarfallStatus();
@@ -646,7 +646,7 @@
   const DEFAULT_PHASE_KIND = { "0.5": "attack", "1.5": "move", "2.5": "move", "3.5": "attack", starbreach: "breacher" };
   const COMPONENT_SYMBOL = { cannon: "☄", engine: "➤", shield_generator: "🛡", core: "◉", docking_bay: "▣", signal_jammer: "J", targeting_sensors: "T" };
   // Which boss phase has already resolved by the time the player is acting.
-  const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_baubles: "3.5" };
+  const BOSS_PHASE_DONE_BY_VIEW = { action_1: "0.5", action_2: "1.5", action_3: "2.5", award_vaults: "3.5" };
 
   function stackColor(key) { return STACK_COLORS[key] || "#d9a6ff"; }
   function kindColor(kind) { return KIND_COLORS[kind] || "#d9a6ff"; }
@@ -773,8 +773,8 @@
 
   function progressTrackHTML(sb, progressOverride = null) {
     const progress = displayedProgress(sb, progressOverride ?? sb.progress ?? 0);
-    return `<div class="bmb-track" title="Boss Progress Track — fills as the boss progresses; marked boxes grant abilities.">
-      <span class="bmb-track-label">☄ ${progress}</span>${progressBoxesHTML(sb, progress)}</div>`;
+    return `<div class="bmb-track" title="Progression Track — fills as the boss progresses; marked boxes grant abilities.">
+      <span class="bmb-track-label">Progression Track · ☄ ${progress}</span>${progressBoxesHTML(sb, progress)}</div>`;
   }
 
   /* One row of slot chips per boss action phase (+ fleet markers). Chips are
@@ -885,9 +885,9 @@
     return node;
   }
 
-  function extraActiveBaubleNumbers() {
+  function extraActiveVaultNumbers() {
     if (activeStarfall("most_dangerous_game")) return [1, 2, 3, 4, 5];
-    if (activeStarfall("stars_align") && view.starfall_bauble_number) return [view.starfall_bauble_number];
+    if (activeStarfall("stars_align") && view.starfall_vault_number) return [view.starfall_vault_number];
     return [];
   }
 
@@ -983,10 +983,10 @@
         const result = event.shielded ? "shield takes it" : event.hit ? `HIT for ${event.damage_applied || event.damage}` : "misses";
         return { cls: event.hit ? "hit" : "", text: `${name(event.attacker_id)} fires on ${name(event.target_id)} — 🎲${event.roll}+${event.aim_bonus} vs ${event.defense_threshold}: ${result}${event.target_destroyed ? " — SHIP DESTROYED ☠" : ""}` };
       }
-      case "bauble_awarded": {
+      case "vault_awarded": {
         const who = (event.awards || []).map((award) => {
           const draws = award.desperation_card_drawn
-            ? ` + desperate card added to deck from ${event.bauble?.is_fang ? "Fang" : "bauble"}${award.captain_bonus ? " (Beto bonus)" : ""}`
+            ? ` + desperate card added to deck from ${event.vault?.is_fang ? "Fang" : "vault"}${award.captain_bonus ? " (Beto bonus)" : ""}`
             : "";
           return `${name(award.player_id)} +${award.vp_awarded} VP${draws}`;
         }).join(", ");
@@ -996,7 +996,7 @@
       case "hand_drawn": {
         const bonus = event.bonus_draws || 0;
         return bonus
-          ? { cls: "loot", text: `${name(event.player_id)} draws ${event.hand_count || "a hand"} cards, including ${bonus} bonus card${bonus === 1 ? "" : "s"} from StarBreach bauble support.` }
+          ? { cls: "loot", text: `${name(event.player_id)} draws ${event.hand_count || "a hand"} cards, including ${bonus} bonus card${bonus === 1 ? "" : "s"} from StarBreach vault support.` }
           : null;
       }
       case "action_cards_moved":
@@ -1022,7 +1022,7 @@
       case "boss_tiers_activated":
         return { cls: "hit", text: `☄ Boss Tier ${event.tiers.join(", ")} comes online — more boss actions this round.` };
       case "boss_fleet_spawned": {
-        const where = { boss_front: "ahead of the boss", bauble: "at the bauble", fang: "at The Fang" }[event.location] || "";
+        const where = { boss_front: "ahead of the boss", vault: "at the vault", fang: "at The Fang" }[event.location] || "";
         return { cls: "hit", text: `☄ Reinforcements! ${(event.craft || []).length} fleet craft warp in ${where} (Tier ${event.tier}).` };
       }
       case "enemy_volley_resolved": {
@@ -1765,9 +1765,10 @@
           <circle class="boss-circuit-hotspot" data-link-id="${linkId}" data-stack-key="${esc(phase.key)}"
             cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="10" fill="transparent"/>`;
       };
-      // Phase label — just the stack name (the kind is carried by each chip now).
-      svg += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="14" font-family="Pirata One"
-        fill="${phaseColor}">${esc(PHASE_SHORT[phase.key] || phase.key)}</text>`;
+      // Phase label — the stack name (the kind is carried by each chip now).
+      const stackLabel = phase.key === "starbreach" ? "StarBreach" : `Action ${PHASE_SHORT[phase.key] || phase.key}`;
+      svg += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="11" font-family="Pirata One"
+        fill="${phaseColor}">${esc(stackLabel)}</text>`;
       // Display order mirrors resolution: active slots first with moves ahead
       // of attacks; not-yet-active slots sink to the bottom of the stack.
       const orderedSlots = (phase.slots || [])
@@ -2308,26 +2309,56 @@
       && componentDistance(component, other) === 1);
   }
 
-  async function pickComponents(title, components, count) {
-    const picked = [];
-    for (let index = 0; index < count; index++) {
-      const options = components
-        .filter((component) => !picked.includes(component.id))
-        .map((component) => ({
-          icon: picked.length + 1,
-          label: component.name,
-          sub: component.type,
-          value: component.id,
-        }));
-      if (!options.length) {
+  // Repair/reconfigure hex selection: shows the whole ship board and lets the
+  // player click the hexes to pick, rather than a stack of buttons that don't
+  // visually correlate to the ship layout.
+  function pickComponents(title, components, count) {
+    return new Promise((resolve) => {
+      if (!components.length) {
         App.toast("No valid hull tiles for that repair.");
-        return null;
+        resolve(null);
+        return;
       }
-      const choice = await showPicker(`${title} (${index + 1}/${count})`, options);
-      if (!choice) return null;
-      picked.push(choice);
-    }
-    return picked;
+      const ship = (myPlayer() || {}).ship || {};
+      const selectableIds = new Set(components.map((component) => component.id));
+      const picked = [];
+      const overlay = els["picker-overlay"];
+      overlay.innerHTML = "";
+      overlay.classList.remove("hidden");
+      const box = document.createElement("div");
+      box.className = "picker ship-modal";
+      overlay.appendChild(box);
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        overlay.removeEventListener("click", onBackdrop);
+        hidePicker();
+        resolve(value);
+      };
+      const onBackdrop = (event) => { if (event.target === overlay) finish(null); };
+      const render = () => {
+        const remaining = count - picked.length;
+        box.innerHTML = `
+          <h3>${esc(title)} (${picked.length}/${count})</h3>
+          <div class="opt-sub">Click ${remaining} more hull tile${remaining === 1 ? "" : "s"} on the ship board.</div>
+          ${ShipView.fullShipSVG(ship, { selectableIds, pickedIds: new Set(picked) })}
+          <button class="btn ghost picker-cancel" id="pick-ship-cancel">Belay that</button>`;
+        box.querySelectorAll("[data-component-id]").forEach((cell) => {
+          const id = cell.dataset.componentId;
+          if (!selectableIds.has(id)) return;
+          cell.addEventListener("click", () => {
+            picked.push(id);
+            selectableIds.delete(id);
+            if (picked.length >= count) finish(picked);
+            else render();
+          });
+        });
+        box.querySelector("#pick-ship-cancel").addEventListener("click", () => finish(null));
+      };
+      render();
+      overlay.addEventListener("click", onBackdrop);
+    });
   }
 
   function engineeringMultiplierForSlot(slot) {
@@ -2748,10 +2779,10 @@
     const desperate = selection.face === "desperate";
     const face = desperate ? card.desperate_face : card.effect;
     let value = modifiedMoveValue(face, me);
-    // Bauble Runner doubles basic movement; overdrive copies are not doubled.
+    // Vault Runner doubles basic movement; overdrive copies are not doubled.
     if (
       view.star_breach
-      && myRoles().includes("bauble_runner")
+      && myRoles().includes("vault_runner")
       && !desperate
       && !face.warp_destination
       && !face.movement_disabled
@@ -3027,7 +3058,7 @@
       items.push({ kind: "path", points: [{ q: before.q, r: before.r }, { q: pos.q, r: pos.r }], color: "#9ee7ff" });
       items.push({
         kind: "ghost", q: pos.q, r: pos.r, facing: pos.facing,
-        label: "Drift before baubles", color: "#9ee7ff",
+        label: "Drift before vaults", color: "#9ee7ff",
       });
     }
     Board.renderPreview(items);
@@ -3301,7 +3332,7 @@
         if (
           view.star_breach
           && event.type === "phase_changed"
-          && ["action_2", "action_3", "award_baubles"].includes(event.phase)
+          && ["action_2", "action_3", "award_vaults"].includes(event.phase)
           && pauseAfterActions()
           && !skipReplay
         ) {
@@ -3505,7 +3536,7 @@
         if (event.phase === "action_1") callout("⚔ Battle Stations!");
         else if (event.phase === "action_2") callout("Action II");
         else if (event.phase === "action_3") callout("Action III");
-        else if (event.phase === "award_baubles") {
+        else if (event.phase === "award_vaults") {
           callout("✦ Claim the Loot");
           if (replayOrders && replayOrders.active !== null) {
             replayOrders.active = null;
@@ -3793,9 +3824,9 @@
         await wait(420);
         return;
       }
-      case "bauble_awarded": {
-        const bauble = event.bauble || {};
-        const at = Board.hexToScreen(bauble.q || 0, bauble.r || 0);
+      case "vault_awarded": {
+        const vault = event.vault || {};
+        const at = Board.hexToScreen(vault.q || 0, vault.r || 0);
         FX.loot(at);
         for (const award of event.awards || []) {
           FX.floatText(at, `${Board.shortName(award.player_id)} +${award.vp_awarded} VP`, "#ffd76a", 15);
@@ -3826,7 +3857,7 @@
     const stats = {};
     for (const playerId of seatOrder()) {
       stats[playerId] = {
-        shots: 0, hits: 0, loot: 0, baubleVp: 0, attackVp: 0,
+        shots: 0, hits: 0, loot: 0, vaultVp: 0, attackVp: 0,
         damageDealt: 0, kills: [], killedBy: null, shieldBlocks: 0,
       };
     }
@@ -3843,11 +3874,11 @@
           if (stats[event.target_id]) stats[event.target_id].killedBy = event.attacker_id;
         }
       }
-      if (event.type === "bauble_awarded") {
+      if (event.type === "vault_awarded") {
         for (const award of event.awards || []) {
           if (!stats[award.player_id]) continue;
           stats[award.player_id].loot++;
-          stats[award.player_id].baubleVp += award.vp_awarded || 0;
+          stats[award.player_id].vaultVp += award.vp_awarded || 0;
         }
       }
     }
@@ -3906,10 +3937,10 @@
             <div class="eg-card-body">
               <div class="eg-mini">${ShipView.miniShipSVG(ship, 92)}</div>
               <div class="eg-stats">
-                <div><b>${row.player.victory_points} VP</b> <span class="eg-dim">(✦ ${s.baubleVp} loot · ☄ ${s.attackVp} combat)</span></div>
+                <div><b>${row.player.victory_points} VP</b> <span class="eg-dim">(✦ ${s.vaultVp} loot · ☄ ${s.attackVp} combat)</span></div>
                 <div>Gunnery: <b>${s.hits}/${s.shots}</b> hits (${hitPct}%) · <b>${s.damageDealt}</b> dmg dealt</div>
                 <div>Hull: <b>${ship.damage_taken || 0}</b> damage taken · ${s.shieldBlocks} shield block${s.shieldBlocks === 1 ? "" : "s"}</div>
-                <div>Baubles claimed: <b>${s.loot}</b></div>
+                <div>Vaults claimed: <b>${s.loot}</b></div>
                 ${s.kills.length ? `<div>Sank: <b>${esc(s.kills.map(displayName).join(", "))}</b></div>` : ""}
                 <div class="eg-fate">${fate}</div>
               </div>
@@ -3925,6 +3956,7 @@
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn ghost" id="btn-endgame-view">👁 View Battlefield</button>
         <button class="btn crimson" id="btn-endgame-replay">▶ Replay the Battle</button>
+        <button class="btn ghost" id="btn-endgame-help">❓ Help</button>
         <button class="btn gold big" id="btn-endgame-port">⚓ Return to Port</button>
       </div>`;
     overlay.appendChild(box);
@@ -3932,6 +3964,10 @@
       overlay.classList.add("hidden");
       leave();
       Lobby.enter();
+    });
+    document.getElementById("btn-endgame-help").addEventListener("click", () => {
+      if (view.star_breach) window.Lobby?.showStarBreachTutorial();
+      else window.Tutorial?.start();
     });
     document.getElementById("btn-endgame-view").addEventListener("click", () => {
       overlay.classList.add("hidden");

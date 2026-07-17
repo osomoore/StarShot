@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=49">
-<link rel="stylesheet" href="/v2/static/bossdesigner.css?v=8">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=51">
+<link rel="stylesheet" href="/v2/static/bossdesigner.css?v=9">
 <link rel="stylesheet" href="/v2/static/shipdesigner.css?v=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
 </head>
@@ -21,7 +21,7 @@
     <div class="poster-skull">☠</div>
     <h1 class="poster-title">StarShot</h1>
     <div class="poster-sub">VOID CORSAIRS WANTED</div>
-    <p class="poster-flavor">Plunder baubles. Overdrive yer cannons.<br>Send rival captains into the black.</p>
+    <p class="poster-flavor">Plunder vaults. Overdrive yer cannons.<br>Send rival captains into the black.</p>
     <div class="auth-tabs">
       <button id="tab-login" class="auth-tab active">Sign In</button>
       <button id="tab-register" class="auth-tab">Enlist</button>
@@ -69,25 +69,34 @@
           <span class="spinner"></span> Scanning the void for rivals… <button id="btn-queue-leave" class="btn ghost small">Belay that</button>
         </div>
       </div>
-      <h3 class="panel-sub">Raise a Crew</h3>
+      <h3 class="panel-sub">Choose your battles</h3>
       <div class="crew-builder">
         <div id="crew-slots"></div>
         <div class="crew-controls">
-          <label>Foes:</label>
-          <div id="ai-pickers"></div>
+          <div class="foes-group group-box">
+            <label>Digital Scallywags:</label>
+            <div id="ai-pickers"></div>
+          </div>
           <label class="open-seats-label">Open seats for humans:
             <select id="open-seats"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
           </label>
-          <div class="expansion-box">
-            <div class="expansion-title">Active Expansions</div>
-            <label class="expansion-toggle">
-              <input id="exp-star-command" type="checkbox">
-              <span>StarCommand</span>
-            </label>
-            <label class="expansion-toggle" title="StarBreach is in Alpha — expect rough edges and balance changes.">
-              <input id="exp-star-breach" type="checkbox">
-              <span>StarBreach (co-op) <span class="badge-alpha">ALPHA</span></span>
-            </label>
+          <div class="advanced-features group-box" id="advanced-features">
+            <button type="button" class="group-box-title advanced-features-toggle" id="advanced-features-toggle" aria-expanded="false" aria-controls="advanced-features-body">
+              <span class="advanced-features-arrow">▶</span> Advanced game features
+            </button>
+            <div class="advanced-features-body hidden" id="advanced-features-body">
+              <div class="expansion-box">
+                <div class="expansion-title">Active Expansions</div>
+                <label class="expansion-toggle">
+                  <input id="exp-star-command" type="checkbox">
+                  <span>StarCommand</span>
+                </label>
+                <label class="expansion-toggle" title="StarBreach is in Alpha — expect rough edges and balance changes.">
+                  <input id="exp-star-breach" type="checkbox">
+                  <span>StarBreach (co-op) <span class="badge-alpha">ALPHA</span></span>
+                </label>
+              </div>
+            </div>
           </div>
           <button id="btn-create-match" class="btn crimson">🏴‍☠ Launch Raid</button>
         </div>
@@ -101,7 +110,7 @@
       <h2 class="panel-title">⚓ Captains on Deck</h2>
       <div id="challenge-banners"></div>
       <div id="active-players" class="players-list"></div>
-      <h2 class="panel-title">🏆 Most Feared Captains</h2>
+      <h2 class="panel-title">🏆 Leaderboard</h2>
       <table class="leaderboard" id="leaderboard"></table>
       <h2 class="panel-title" style="margin-top:24px">📜 Your Legend</h2>
       <div id="profile-card" class="profile-card"></div>
@@ -171,15 +180,15 @@
 
 <script src="/v2/static/api.js?v=14"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/board.js?v=20"></script>
-<script src="/v2/static/shipview.js?v=8"></script>
+<script src="/v2/static/board.js?v=21"></script>
+<script src="/v2/static/shipview.js?v=9"></script>
 <script src="/v2/static/effects.js?v=6"></script>
 <script src="/v2/static/cards.js?v=9"></script>
-<script src="/v2/static/tutorial.js?v=7"></script>
-<script src="/v2/static/shipdesigner.js?v=1"></script>
-<script src="/v2/static/bossdesigner.js?v=22"></script>
-<script src="/v2/static/lobby.js?v=33"></script>
-<script src="/v2/static/game.js?v=61"></script>
+<script src="/v2/static/tutorial.js?v=8"></script>
+<script src="/v2/static/shipdesigner.js?v=2"></script>
+<script src="/v2/static/bossdesigner.js?v=23"></script>
+<script src="/v2/static/lobby.js?v=35"></script>
+<script src="/v2/static/game.js?v=62"></script>
 <script src="/v2/static/app.js?v=8"></script>
 <script src="/v2/static/buildfooter.js?v=2"></script>
 </body>

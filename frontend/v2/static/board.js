@@ -1,4 +1,4 @@
-/* SVG hex board renderer: hex field, baubles, pirate ships, facing, zoom/pan. */
+/* SVG hex board renderer: hex field, vaults, pirate ships, facing, zoom/pan. */
 (function () {
   const HEX = 16;               // hex size in svg units
   const SQRT3 = Math.sqrt(3);
@@ -11,7 +11,7 @@
   const NS = "http://www.w3.org/2000/svg";
 
   let zoom = 1, panX = 0, panY = 0;
-  let shipLayer = null, baubleLayer = null, hexLayer = null, previewLayer = null, bossLayer = null;
+  let shipLayer = null, vaultLayer = null, hexLayer = null, previewLayer = null, bossLayer = null;
   let seatColorByPlayer = {};
   let nameMap = {};
   let titleMap = {};
@@ -63,7 +63,7 @@
   function buildBoard() {
     svg.innerHTML = "";
     hexLayer = el("g", {}, svg);
-    baubleLayer = el("g", {}, svg);
+    vaultLayer = el("g", {}, svg);
     bossLayer = el("g", {}, svg);
     previewLayer = el("g", { "pointer-events": "none" }, svg);
     shipLayer = el("g", {}, svg);
@@ -79,18 +79,18 @@
     applyViewBox();
   }
 
-  function renderBaubles(baubles, roundNumber, options = {}) {
-    baubleLayer.innerHTML = "";
+  function renderVaults(vaults, roundNumber, options = {}) {
+    vaultLayer.innerHTML = "";
     const activeNumbers = new Set(options.activeNumbers || []);
-    for (const bauble of baubles || []) {
-      const [x, y] = axialToXY(bauble.q, bauble.r);
-      const active = bauble.is_fang || bauble.number === roundNumber || activeNumbers.has(bauble.number);
-      const group = el("g", { opacity: active ? 1 : 0.55 }, baubleLayer);
-      // Scoring zone: the full 7-hex cluster (within 1 hex of the bauble).
-      const zoneColor = bauble.is_fang ? "195,62,62" : "212,167,72";
+    for (const vault of vaults || []) {
+      const [x, y] = axialToXY(vault.q, vault.r);
+      const active = vault.is_fang || vault.number === roundNumber || activeNumbers.has(vault.number);
+      const group = el("g", { opacity: active ? 1 : 0.55 }, vaultLayer);
+      // Scoring zone: the full 7-hex cluster (within 1 hex of the vault).
+      const zoneColor = vault.is_fang ? "195,62,62" : "212,167,72";
       for (const [dq, dr] of [[0, 0], ...DIRECTIONS]) {
-        const [cx, cy] = axialToXY(bauble.q + dq, bauble.r + dr);
-        if (hexDistance(0, 0, bauble.q + dq, bauble.r + dr) > RADIUS) continue;
+        const [cx, cy] = axialToXY(vault.q + dq, vault.r + dr);
+        if (hexDistance(0, 0, vault.q + dq, vault.r + dr) > RADIUS) continue;
         el("polygon", {
           points: hexPoints(cx, cy, HEX - 0.8),
           fill: `rgba(${zoneColor},${active ? 0.13 : 0.06})`,
@@ -98,21 +98,21 @@
           "stroke-width": 0.7,
         }, group);
       }
-      if (bauble.is_fang) {
+      if (vault.is_fang) {
         el("circle", { cx: x, cy: y, r: HEX * 0.72, fill: "rgba(195,62,62,.18)", stroke: "#c33e3e", "stroke-width": 1.2, "stroke-dasharray": "3 2" }, group);
         el("text", { x, y: y + 5, "text-anchor": "middle", "font-size": 14, fill: "#ff7d6a" }, group).textContent = "𓆝";
         el("text", { x, y: y + 5, "text-anchor": "middle", "font-size": 13, fill: "#ff9d8a", "font-weight": "700" }, group).textContent = "⋀";
       } else {
-        el("circle", { cx: x, cy: y, r: HEX * 0.62, fill: "url(#baubleGrad)", class: "bauble-core", stroke: "#8a6620", "stroke-width": 1 }, group);
-        el("text", { x, y: y + 4.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: "#241a05" }, group).textContent = bauble.number;
+        el("circle", { cx: x, cy: y, r: HEX * 0.62, fill: "url(#vaultGrad)", class: "vault-core", stroke: "#8a6620", "stroke-width": 1 }, group);
+        el("text", { x, y: y + 4.5, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: "#241a05" }, group).textContent = vault.number;
       }
-      if (bauble.claimed_by && bauble.claimed_by.length) {
+      if (vault.claimed_by && vault.claimed_by.length) {
         el("text", { x, y: y - HEX * 0.8, "text-anchor": "middle", "font-size": 8, fill: "#d4a748" }, group).textContent = "⚑";
       }
       const title = el("title", {}, group);
-      title.textContent = bauble.is_fang
+      title.textContent = vault.is_fang
         ? `The Fang — ${roundNumber >= 6 ? 6 : 1} VP, bites for 1 damage`
-        : `Bauble ${bauble.number} — ${bauble.victory_points} VP in round ${bauble.number}`;
+        : `Vault ${vault.number} — ${vault.victory_points} VP in round ${vault.number}`;
     }
     ensureDefs();
   }
@@ -120,7 +120,7 @@
   function ensureDefs() {
     if (svg.querySelector("defs")) return;
     const defs = el("defs", {}, svg);
-    const grad = el("radialGradient", { id: "baubleGrad", cx: "35%", cy: "30%" }, defs);
+    const grad = el("radialGradient", { id: "vaultGrad", cx: "35%", cy: "30%" }, defs);
     el("stop", { offset: "0%", "stop-color": "#f6d98a" }, grad);
     el("stop", { offset: "100%", "stop-color": "#c08a2e" }, grad);
   }
@@ -535,7 +535,7 @@
 
   window.Board = {
     build: buildBoard,
-    renderBaubles,
+    renderVaults,
     renderStarBreach,
     setBossClickHandler: (fn) => { onBossClick = fn; },
     renderShips,

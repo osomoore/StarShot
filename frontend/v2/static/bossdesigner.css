@@ -235,6 +235,7 @@
 }
 .bd-player-overlay.hidden { display: none; }
 .bd-player-shell { max-width: 1180px; margin: 0 auto; padding: 18px 16px 40px; }
+.bd-player-toprow { display: flex; gap: 8px; margin-bottom: 10px; }
 .bd-player-close { margin-bottom: 10px; }
 
 /* note/status styles (duplicated from admin.css so the player-facing

@@ -11,7 +11,7 @@ c. Riley “Turbo” Rounder: Riley has +1 Move from Move cards, but no bonus de
 d. Danny “Drifter” Davos: Danny moves 2 tiles forward at the beginning of the Cleanup step
 e. Carlos “Danger” Connor: Carlos gains 1 VP whenever he loses a ship component
 f. Knute “Rocky” Knuckles: Knute’s Bridge and Life Support components take 2 hits to destroy.
-g. Beto “Golden” Briego: Beto gains 1 additional VP and 1 additional Desperation card from Baubles
+g. Beto “Golden” Briego: Beto gains 1 additional VP and 1 additional Desperation card from Vaults
 h. Davey "Jones" Locker: Whenever a Life Support or Bridge component is destroyed, including his own, Davey gets 2 VP and a Desperation card.
 Starfall Events
 Solar storms and cosmic disasters plague the vast expanses of space, causing unpredictable mayhem for all
@@ -21,14 +21,14 @@ When a Starfall event deals damage, no cards are Overheated nor Desperation card
 Captain abilities). Shields may absorb the damage unless specified otherwise.
 Starfall Deck
 1. Solar Storm: Roll a single damage die. It applies to all players and penetrates shields.
-2. Gravity Burst: Move all ships 2 tiles towards The Fang (the center Bauble).
+2. Gravity Burst: Move all ships 2 tiles towards The Fang (the center Vault).
 3. Clear Skies: All ships roll 3d6 for attacks instead of 2d6 this round.
-4. Stars Align: Roll a d6, rerolling 6’s. The matching round’s Baubles open this round.
-5. Take Cover: At the end of this round, deal 2 damage to all players outside of a Bauble’s range. Any
-Bauble provides protection, even if it is not open.
+4. Stars Align: Roll a d6, rerolling 6’s. The matching round’s Vaults open this round.
+5. Take Cover: At the end of this round, deal 2 damage to all players outside of a Vault’s range. Any
+Vault provides protection, even if it is not open.
 6. Golden Bounty: This turn, when you hit an enemy ship for the first time during an Action (including
 hitting Shields), gain 1 additional VP.
-7. Most Dangerous Game: All Baubles 1-5 open this round.
+7. Most Dangerous Game: All Vaults 1-5 open this round.
 8. Gusty Winds: All movement cards move players 1 additional tile this round.
 9. Jolly Roger: Attackers gain a Desperation Card the first time they hit an opponent this round.
 10. Safe Harbor: Each ship regains one shield charge (at most 2 total charges)

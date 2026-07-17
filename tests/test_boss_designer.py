@@ -45,7 +45,7 @@ def make_design(**overrides) -> dict:
             }
         ],
         "progression": {
-            "triggers": ["bauble_pickup_boss", "player_kill"],
+            "triggers": ["vault_pickup_boss", "player_kill"],
             "steps": [
                 {"kind": "filler"},
                 {"kind": "action_link", "stack": "0.5", "action": "shoot"},
@@ -375,9 +375,9 @@ class SpawnStepTests(unittest.TestCase):
     def test_spawn_fleet_step_normalizes(self):
         raw = make_design()
         raw["tiles"][6] = {"q": 0, "r": 1, "type": "docking_bay", "stack": "2.5"}
-        raw["progression"]["steps"].append({"kind": "spawn_fleet", "count": 2, "location": "bauble"})
+        raw["progression"]["steps"].append({"kind": "spawn_fleet", "count": 2, "location": "vault"})
         design = boss_designs.normalize_design(raw)
-        self.assertEqual(design["progression"]["steps"][-1], {"kind": "spawn_fleet", "count": 2, "location": "bauble"})
+        self.assertEqual(design["progression"]["steps"][-1], {"kind": "spawn_fleet", "count": 2, "location": "vault"})
         self.assertEqual(boss_designs.validate_design(design), [])
 
     def test_spawn_fleet_rejects_bad_count_and_location(self):

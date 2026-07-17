@@ -3,12 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from random import Random
 
-from starshot.rules.baubles import (
-    BaublePlacementError,
-    bauble_event_payload,
-    create_baubles,
+from starshot.rules.vaults import (
+    VaultPlacementError,
+    vault_event_payload,
+    create_vaults,
     fang_vp_for_round,
-    ship_inside_bauble,
+    ship_inside_vault,
 )
 from starshot.rules.card_piles import (
     available_order_cards,
@@ -93,7 +93,7 @@ ACTION_PHASES = (GamePhase.ACTION_1, GamePhase.ACTION_2, GamePhase.ACTION_3)
 NEXT_PHASE = {
     GamePhase.ACTION_1: GamePhase.ACTION_2,
     GamePhase.ACTION_2: GamePhase.ACTION_3,
-    GamePhase.ACTION_3: GamePhase.AWARD_BAUBLES,
+    GamePhase.ACTION_3: GamePhase.AWARD_VAULTS,
 }
 STAR_BREACH_ID = "star_breach"
 
@@ -145,15 +145,15 @@ def create_initial_state(config: GameConfig) -> GameState:
         draw_hand(player)
 
     try:
-        baubles = create_baubles(setup_rng, players)
-    except BaublePlacementError as exc:
+        vaults = create_vaults(setup_rng, players)
+    except VaultPlacementError as exc:
         raise RulesError(str(exc)) from exc
 
     desperation_deck = create_desperation_deck(setup_rng)
     state = GameState(
         players=players,
         deck_set_id=catalog.id,
-        baubles=baubles,
+        vaults=vaults,
         desperation_deck=desperation_deck,
         starting_player_id=starting_player_id,
         rng_seed=rng_seed,
@@ -167,7 +167,7 @@ def create_initial_state(config: GameConfig) -> GameState:
             "players": list(player_ids),
             "starting_player_id": starting_player_id,
             "deck_set_id": catalog.id,
-            "baubles": [bauble_event_payload(bauble) for bauble in baubles],
+            "vaults": [vault_event_payload(vault) for vault in vaults],
         }
     )
     for player in state.players.values():
@@ -274,8 +274,8 @@ def resolve_next_step(state: GameState) -> GameState:
     next_state = deepcopy(state)
     if next_state.phase in ACTION_PHASES:
         _resolve_action_phase(next_state)
-    elif next_state.phase == GamePhase.AWARD_BAUBLES:
-        _resolve_award_baubles(next_state)
+    elif next_state.phase == GamePhase.AWARD_VAULTS:
+        _resolve_award_vaults(next_state)
     elif next_state.phase == GamePhase.CLEANUP:
         _resolve_cleanup(next_state)
     else:
@@ -534,17 +534,17 @@ def _resolve_warp_destination(state: GameState, player: PlayerState, destination
         q, r, _facing = corner_start(player_index)
         return q, r, None
 
-    if destination == "bauble":
+    if destination == "vault":
         active_numbered = [
-            bauble
-            for bauble in state.baubles
-            if not bauble.is_fang and bauble.number == state.round_number
+            vault
+            for vault in state.vaults
+            if not vault.is_fang and vault.number == state.round_number
         ]
-        numbered = [bauble for bauble in state.baubles if not bauble.is_fang]
+        numbered = [vault for vault in state.vaults if not vault.is_fang]
         candidates = active_numbered or numbered
         if not candidates:
             return player.ship.q, player.ship.r, None
-        bauble = min(
+        vault = min(
             candidates,
             key=lambda candidate: (
                 hex_distance(player.ship.q, player.ship.r, candidate.q, candidate.r),
@@ -552,7 +552,7 @@ def _resolve_warp_destination(state: GameState, player: PlayerState, destination
                 candidate.id,
             ),
         )
-        return bauble.q, bauble.r, None
+        return vault.q, vault.r, None
 
     if destination == "leader":
         candidates = [candidate for candidate in state.players.values() if candidate.id != player.id and not candidate.eliminated]
@@ -1398,32 +1398,32 @@ def _roll_d12(state: GameState) -> int:
     return value
 
 
-def _resolve_award_baubles(state: GameState) -> None:
+def _resolve_award_vaults(state: GameState) -> None:
     star_breach = _active_expansion_module(state, STAR_BREACH_ID)
     if star_breach is not None:
-        star_breach.before_award_baubles(state)
+        star_breach.before_award_vaults(state)
         if state.phase == GamePhase.COMPLETE:
             return
     awarded_any = False
     rng = _make_rng(state)
-    for bauble in state.baubles:
-        if not _bauble_open_this_round(state, bauble):
+    for vault in state.vaults:
+        if not _vault_open_this_round(state, vault):
             continue
         awards: list[dict] = []
         for player in state.players.values():
             if player.eliminated or player.ship.destroyed:
                 continue
-            distance = hex_distance(player.ship.q, player.ship.r, bauble.q, bauble.r)
-            if not ship_inside_bauble(player.ship, bauble):
+            distance = hex_distance(player.ship.q, player.ship.r, vault.q, vault.r)
+            if not ship_inside_vault(player.ship, vault):
                 continue
 
-            vp_awarded = fang_vp_for_round(state.round_number) if bauble.is_fang else bauble.victory_points
+            vp_awarded = fang_vp_for_round(state.round_number) if vault.is_fang else vault.victory_points
             player.victory_points += vp_awarded
-            if player.id not in bauble.claimed_by:
-                bauble.claimed_by.append(player.id)
+            if player.id not in vault.claimed_by:
+                vault.claimed_by.append(player.id)
 
             drawn_card_id: str | None = None
-            if not bauble.is_fang:
+            if not vault.is_fang:
                 drawn = draw_desperation_card(state.desperation_deck, rng)
                 player.deck.insert(0, drawn)
                 drawn_card_id = drawn.id
@@ -1437,13 +1437,13 @@ def _resolve_award_baubles(state: GameState) -> None:
                 "player_id": player.id,
                 "distance": distance,
                 "vp_awarded": vp_awarded,
-                "desperation_card_drawn": not bauble.is_fang,
+                "desperation_card_drawn": not vault.is_fang,
                 "desperation_card_id": drawn_card_id,
-                "captain_bonus": player.captain_id == "beto_briego" and not bauble.is_fang,
+                "captain_bonus": player.captain_id == "beto_briego" and not vault.is_fang,
             }
-            if bauble.is_fang:
+            if vault.is_fang:
                 award.update(_apply_fang_damage(state, player))
-            elif star_breach is not None and star_breach.bauble_awarded(state, player, award):
+            elif star_breach is not None and star_breach.vault_awarded(state, player, award):
                 for crew_member in state.players.values():
                     if not crew_member.eliminated:
                         crew_member.bonus_draws_pending += 1
@@ -1453,9 +1453,9 @@ def _resolve_award_baubles(state: GameState) -> None:
             awarded_any = True
             state.event_log.append(
                 {
-                    "type": "bauble_awarded",
+                    "type": "vault_awarded",
                     "round": state.round_number,
-                    "bauble": bauble_event_payload(bauble),
+                    "vault": vault_event_payload(vault),
                     "awards": awards,
                 }
             )
@@ -1463,13 +1463,13 @@ def _resolve_award_baubles(state: GameState) -> None:
     if not awarded_any:
         state.event_log.append(
             {
-                "type": "baubles_awarded",
+                "type": "vaults_awarded",
                 "round": state.round_number,
-                "message": "No ships were in range of an active bauble.",
+                "message": "No ships were in range of an active vault.",
             }
         )
     if star_breach is not None:
-        star_breach.after_award_baubles(state)
+        star_breach.after_award_vaults(state)
         if state.phase == GamePhase.COMPLETE:
             return
     _change_phase(state, GamePhase.CLEANUP)
@@ -1799,7 +1799,7 @@ def _roll_d6_no_six(state: GameState) -> int:
 
 
 def _fang(state: GameState):
-    return next((bauble for bauble in state.baubles if bauble.is_fang), None)
+    return next((vault for vault in state.vaults if vault.is_fang), None)
 
 
 def _pull_all_ships_toward_fang(state: GameState, distance: int) -> list[dict]:
@@ -1892,10 +1892,10 @@ def _resolve_cleanup_start_star_command(state: GameState) -> None:
     expansion_module(STAR_COMMAND_ID).cleanup_start(state)
 
 
-def _bauble_open_this_round(state: GameState, bauble) -> bool:
+def _vault_open_this_round(state: GameState, vault) -> bool:
     if _star_command_enabled(state):
-        return expansion_module(STAR_COMMAND_ID).bauble_open_this_round(state, bauble)
-    return bauble.is_fang or bauble.number == state.round_number
+        return expansion_module(STAR_COMMAND_ID).vault_open_this_round(state, vault)
+    return vault.is_fang or vault.number == state.round_number
 
 
 def _starfall_hit_bonus_vp(state: GameState, attacker_id: str, action_number: int) -> int:

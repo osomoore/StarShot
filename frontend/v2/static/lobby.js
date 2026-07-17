@@ -1,9 +1,9 @@
 /* Lobby: quick match queue, crew builder, open raids, leaderboard, profile. */
 (function () {
   const AI_META = {
-    bauble_runner: { face: "BR", name: "Bauble Runner", blurb: "chases the loot" },
-    hunter_killer: { face: "BH", name: "Bounty Hunter", blurb: "marks one prey" },
-    blaster: { face: "BL", name: "Blaster", blurb: "shoots what's near" },
+    vault_runner: { face: "📦", name: "Freebooter", blurb: "Booty Hunter" },
+    hunter_killer: { face: "🎯", name: "Bloodthirsty", blurb: "Prey Hunter" },
+    blaster: { face: "☄", name: "Cannoneer", blurb: "Chaotic Blaster" },
   };
 
   let pollTimer = null;
@@ -19,7 +19,7 @@
   let starBreachRoleSelection = "";
   let starBreachBossSelection = "";
   const STAR_BREACH_ROLES = [
-    ["bauble_runner", "Bauble Runner"],
+    ["vault_runner", "Vault Runner"],
     ["tank", "Tank"],
     ["engineer", "Engineer"],
     ["fighting_ace", "Fighting Ace"],
@@ -53,11 +53,25 @@
     }).join("")}</span>`;
   }
 
+  function ensureAdvancedFeaturesToggle() {
+    const toggle = document.getElementById("advanced-features-toggle");
+    const body = document.getElementById("advanced-features-body");
+    if (!toggle || !body || toggle.dataset.wired === "1") return;
+    toggle.dataset.wired = "1";
+    toggle.addEventListener("click", () => {
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      toggle.setAttribute("aria-expanded", String(!expanded));
+      body.classList.toggle("hidden", expanded);
+      toggle.querySelector(".advanced-features-arrow").textContent = expanded ? "▶" : "▼";
+    });
+  }
+
   async function enter() {
     App.showScreen("lobby");
     leaderboardRendered = false;
     renderAiPickers();
     renderExpansionToggle();
+    ensureAdvancedFeaturesToggle();
     await refresh();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, 3000);
@@ -155,13 +169,13 @@
     const pickers = document.getElementById("ai-pickers");
     const label = document.createElement("label");
     label.className = "open-seats-label ai-level-label";
-    label.innerHTML = `AI smartness:
+    label.innerHTML = `Experience level:
       <select id="ai-level">
         <option value="deck_hand">Deck Hand</option>
         <option value="buccaneer">Buccaneer</option>
         <option value="pirate_king">Pirate King</option>
       </select>
-      <div class="choice-buttons" data-choice-for="ai-level" aria-label="AI smartness"></div>`;
+      <div class="choice-buttons" data-choice-for="ai-level" aria-label="Experience level"></div>`;
     pickers.after(label);
     label.querySelector("select").value = aiLevel;
     label.querySelector("select").addEventListener("change", (event) => {
@@ -256,15 +270,15 @@
      standard base ship. The choice persists in localStorage. */
   function ensureShipPicker() {
     if (document.getElementById("ship-pick")) return;
-    const controls = document.querySelector(".crew-controls");
+    const controls = document.querySelector(".advanced-features-body") || document.querySelector(".crew-controls");
     if (!controls) return;
     const label = document.createElement("label");
     label.className = "open-seats-label ship-pick-label";
     label.innerHTML = `Your Ship:
       <select id="ship-pick"><option value="">Standard ship</option></select>
-      <button type="button" class="btn ghost small" id="btn-my-ships" title="Design yer own ships (19 points, up to 10 designs) and fly them">🛠 My Ships</button>`;
+      <button type="button" class="btn ghost small" id="btn-my-ships" title="StarDock: design yer own ships (19 points, up to 10 designs) and fly them">🛠 StarDock</button>`;
     const expansionBox = controls.querySelector(".expansion-box");
-    controls.insertBefore(label, expansionBox || controls.querySelector("#btn-create-match"));
+    controls.insertBefore(label, expansionBox || null);
     label.querySelector("select").addEventListener("change", (event) => {
       shipDesignSelection = event.target.value || "";
       try { localStorage.setItem("ss_preferred_ship", shipDesignSelection); } catch (err) { /* private mode */ }
@@ -406,17 +420,21 @@
       if (localStorage.getItem("ss_star_breach_tutorial_seen") === "1") return;
       localStorage.setItem("ss_star_breach_tutorial_seen", "1");
     } catch (err) {}
+    showStarBreachTutorial();
+  }
+
+  function showStarBreachTutorial() {
     const overlay = document.createElement("div");
     overlay.className = "overlay";
     overlay.innerHTML = `
       <div class="picker">
-        <h3>StarBreach — Bauble Breacher <span class="badge-alpha">ALPHA</span></h3>
+        <h3>StarBreach — Vault Breacher <span class="badge-alpha">ALPHA</span></h3>
         <p class="tutorial-alpha-note">StarBreach is still in Alpha — rules and balance may shift as it's tested. Bug reports and feedback are very welcome.</p>
         <div class="tutorial-steps">
           <div><b>1.</b> Everyone is on the same side against the StarBreacher and its Hunter-Killer fleet.</div>
           <div><b>2.</b> One captain is <b>The Prey</b>. Win by ending Round 6 inside The Fang. If The Prey is destroyed, everyone loses.</div>
           <div><b>3.</b> Each captain has a role, with its own ability:</div>
-          <div class="tutorial-role"><b>Bauble Runner</b> — Move distances are doubled on basic movement (not boosted further by Overdrive, and movement gives no defense bonus). When they collect a Bauble, every player draws one bonus card.</div>
+          <div class="tutorial-role"><b>Vault Runner</b> — Move distances are doubled on basic movement (not boosted further by Overdrive, and movement gives no defense bonus). When they collect a Vault, every player draws one bonus card.</div>
           <div class="tutorial-role"><b>Tank</b> — Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 3 hexes of the Tank, the Tank steps in and takes the hit instead; attacks against the Tank roll one fewer die.</div>
           <div class="tutorial-role"><b>Engineer</b> — Draws two extra cards. Attack orders can target allies as repairs instead: 1d6, a hit restores one HP; each ship can only be repaired once per action.</div>
           <div class="tutorial-role"><b>Fighting Ace</b> — Each attack gets one extra die against fleet craft, or shifts the Boss Damage Lane roll by ±1. No Overdrive penalty on Attack-only orders.</div>
@@ -433,6 +451,10 @@
       if (localStorage.getItem("ss_star_command_tutorial_seen") === "1") return;
       localStorage.setItem("ss_star_command_tutorial_seen", "1");
     } catch (err) {}
+    showStarCommandTutorial();
+  }
+
+  function showStarCommandTutorial() {
     const overlay = document.createElement("div");
     overlay.className = "overlay";
     overlay.innerHTML = `
@@ -750,7 +772,7 @@
     renderInfamy(payload && payload.infamy);
     if (!leaderboardCycle || !leaderboardCycle.length) {
       renderLeaderboard({ key: "legacy", entries: payload && payload.leaderboard });
-      paintLeaderboardExtras("Most Feared Captains");
+      paintLeaderboardExtras("Leaderboard");
       return;
     }
     if (leaderboardIndex >= leaderboardCycle.length) leaderboardIndex = 0;
@@ -767,7 +789,7 @@
   function renderLeaderboardPage(resetTimer) {
     const board = leaderboardCycle[leaderboardIndex];
     renderLeaderboard(board);
-    paintLeaderboardExtras(`${board.label} Leaderboard`, resetTimer);
+    paintLeaderboardExtras(board.label, resetTimer);
   }
 
   function paintLeaderboardExtras(title, resetTimer = false) {
@@ -1222,5 +1244,5 @@
   });
 
   window.Feedback = { open: openFeedback };
-  window.Lobby = { enter, leave };
+  window.Lobby = { enter, leave, showStarBreachTutorial, showStarCommandTutorial };
 })();

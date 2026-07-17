@@ -450,7 +450,7 @@
   });
 
   // ── AI battle arena ─────────────────────────────────────────────────────
-  const AI_LABELS = { bauble_runner: "💰 Salvage (bauble runner)", hunter_killer: "🗡 Corsair (hunter-killer)", blaster: "💥 Gunner (blaster)" };
+  const AI_LABELS = { vault_runner: "📦 Freebooter (vault runner)", hunter_killer: "🎯 Bloodthirsty (hunter-killer)", blaster: "☄ Cannoneer (blaster)" };
   let battleEntries = [];
   let battleSort = { key: "created_at", dir: "desc" };
 
@@ -487,7 +487,7 @@
     if (key === "ai") return battleAiText(entry);
     if (key === "damage") return battleSummaryValue(entry, "total_damage_dealt", "average_damage_dealt") || 0;
     if (key === "kills") return battleSummaryValue(entry, "ships_killed", "average_ships_killed") || 0;
-    if (key === "baubles") return battleSummaryValue(entry, "baubles_collected", "average_baubles_collected") || 0;
+    if (key === "vaults") return battleSummaryValue(entry, "vaults_collected", "average_vaults_collected") || 0;
     if (key === "winner") return battleWinnerText(entry);
     if (key === "vp") return battleSummaryValue(entry, "total_vp", "average_total_vp") || 0;
     if (key === "rounds") return battleSummaryValue(entry, "rounds_played", "average_rounds") || 0;
@@ -529,7 +529,7 @@
         <td>${esc(battleAiText(entry))}</td>
         <td>${isBatch ? n1(entry.summary.average_damage_dealt) : n0(entry.summary.total_damage_dealt)}</td>
         <td>${isBatch ? n1(entry.summary.average_ships_killed) : n0(entry.summary.ships_killed)}</td>
-        <td>${isBatch ? n1(entry.summary.average_baubles_collected) : n0(entry.summary.baubles_collected)}</td>
+        <td>${isBatch ? n1(entry.summary.average_vaults_collected) : n0(entry.summary.vaults_collected)}</td>
         <td class="winner-cell">${esc(battleWinnerText(entry))}</td>
         <td>${isBatch ? n1(entry.summary.average_total_vp) : n0(entry.summary.total_vp)}</td>
         <td>${isBatch ? n1(entry.summary.average_rounds) : n0(entry.summary.rounds_played)}</td>
@@ -560,11 +560,11 @@
       const s = entry.summary;
       const stat = (label, value) => `<div class="battle-stat"><b>${value}</b><span>${label}</span></div>`;
       const rankingRows = (isBatch ? s.ai_rankings || [] : s.players || []).map((row) => isBatch
-        ? `<tr><td>${esc(row.ai_label)}</td><td>${row.wins}</td><td>${n1(row.average_vp)}</td><td>${n1(row.average_damage)}</td><td>${n1(row.average_kills)}</td><td>${n1(row.average_baubles)}</td><td>${pct(row.survival_rate)}</td></tr>`
-        : `<tr><td>${esc(row.display_name)}</td><td>${esc(row.ai_label)}</td><td>${row.victory_points}</td><td>${row.damage_dealt}</td><td>${row.ships_killed}</td><td>${row.baubles_collected}</td><td>${row.destroyed ? "sunk" : "afloat"}</td></tr>`
+        ? `<tr><td>${esc(row.ai_label)}</td><td>${row.wins}</td><td>${n1(row.average_vp)}</td><td>${n1(row.average_damage)}</td><td>${n1(row.average_kills)}</td><td>${n1(row.average_vaults)}</td><td>${pct(row.survival_rate)}</td></tr>`
+        : `<tr><td>${esc(row.display_name)}</td><td>${esc(row.ai_label)}</td><td>${row.victory_points}</td><td>${row.damage_dealt}</td><td>${row.ships_killed}</td><td>${row.vaults_collected}</td><td>${row.destroyed ? "sunk" : "afloat"}</td></tr>`
       ).join("");
       const runRows = ((entry.detail && entry.detail.runs) || []).slice(0, 50).map((run, index) =>
-        `<tr><td>${index + 1}</td><td>${esc((run.winner_names || []).join(", ") || "Tie")}</td><td>${run.total_damage_dealt}</td><td>${run.ships_killed}</td><td>${run.baubles_collected}</td><td>${run.total_vp}</td><td>${run.rounds_played}</td></tr>`
+        `<tr><td>${index + 1}</td><td>${esc((run.winner_names || []).join(", ") || "Tie")}</td><td>${run.total_damage_dealt}</td><td>${run.ships_killed}</td><td>${run.vaults_collected}</td><td>${run.total_vp}</td><td>${run.rounds_played}</td></tr>`
       ).join("");
       overlay.innerHTML = `
         <div class="battle-detail">
@@ -578,7 +578,7 @@
           <div class="battle-detail-grid">
             ${stat(isBatch ? "avg damage" : "damage", isBatch ? n1(s.average_damage_dealt) : n0(s.total_damage_dealt))}
             ${stat(isBatch ? "avg kills" : "kills", isBatch ? n1(s.average_ships_killed) : n0(s.ships_killed))}
-            ${stat(isBatch ? "avg baubles" : "baubles", isBatch ? n1(s.average_baubles_collected) : n0(s.baubles_collected))}
+            ${stat(isBatch ? "avg vaults" : "vaults", isBatch ? n1(s.average_vaults_collected) : n0(s.vaults_collected))}
             ${stat(isBatch ? "avg total VP" : "total VP", isBatch ? n1(s.average_total_vp) : n0(s.total_vp))}
             ${stat(isBatch ? "avg rounds" : "rounds", isBatch ? n1(s.average_rounds) : n0(s.rounds_played))}
             ${stat("hit rate", pct(s.hit_rate))}
@@ -587,10 +587,10 @@
           </div>
           <h3 class="panel-sub">${isBatch ? "AI Style Ranking" : "Combatants"}</h3>
           <table class="leaderboard">
-            <tr>${isBatch ? "<th>AI</th><th>Wins</th><th>Avg VP</th><th>Avg Dmg</th><th>Avg Kills</th><th>Avg Baubles</th><th>Survival</th>" : "<th>Name</th><th>AI</th><th>VP</th><th>Dmg</th><th>Kills</th><th>Baubles</th><th>Status</th>"}</tr>
+            <tr>${isBatch ? "<th>AI</th><th>Wins</th><th>Avg VP</th><th>Avg Dmg</th><th>Avg Kills</th><th>Avg Vaults</th><th>Survival</th>" : "<th>Name</th><th>AI</th><th>VP</th><th>Dmg</th><th>Kills</th><th>Vaults</th><th>Status</th>"}</tr>
             ${rankingRows}
           </table>
-          ${isBatch ? `<h3 class="panel-sub">Run Samples</h3><table class="leaderboard"><tr><th>#</th><th>Winner</th><th>Dmg</th><th>Kills</th><th>Baubles</th><th>VP</th><th>Rounds</th></tr>${runRows}</table>` : ""}
+          ${isBatch ? `<h3 class="panel-sub">Run Samples</h3><table class="leaderboard"><tr><th>#</th><th>Winner</th><th>Dmg</th><th>Kills</th><th>Vaults</th><th>VP</th><th>Rounds</th></tr>${runRows}</table>` : ""}
           ${isBatch ? `<h3 class="panel-sub">Win Reasons</h3><pre>${esc(JSON.stringify(s.reason_counts || {}, null, 2))}</pre>` : ""}
         </div>`;
       overlay.classList.remove("hidden");

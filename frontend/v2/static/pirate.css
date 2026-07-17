@@ -428,6 +428,11 @@ h1, h2, .brand, .poster-title, .banner-text {
 .fleet-card .fc-mini svg { display: block; }
 .fleet-card .fc-sub { color: var(--ink-dim); font-size: 11px; display: flex; flex-direction: column; gap: 2px; }
 .ship-modal { max-width: 760px; width: min(760px, 94vw); }
+.ship-cell.selectable { cursor: pointer; }
+.ship-cell.selectable polygon { filter: drop-shadow(0 0 6px rgba(212,167,72,.75)); }
+.ship-cell.selectable:hover polygon { stroke: var(--gold-bright) !important; stroke-width: 3; }
+.ship-cell.picked polygon { stroke: var(--gold-bright) !important; stroke-width: 3; }
+.ship-cell.picked { opacity: .85; }
 .fleet-card .vp { color: var(--gold-bright); }
 .fleet-card.dead { opacity: .5; filter: grayscale(.7); }
 .fleet-card .status-dot { font-size: 10px; }
@@ -439,6 +444,31 @@ h1, h2, .brand, .poster-title, .banner-text {
 .badge-alpha { background: rgba(224,86,60,.25); color: #ff9b7f; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; vertical-align: middle; }
 .badge-wait { color: var(--ink-dim); font-size: 10px; }
 .badge-ready { color: var(--move); font-size: 10px; }
+
+.group-box {
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(10,16,32,.55);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.group-box-title { color: var(--gold); font-size: 11px; text-transform: uppercase; margin-bottom: -2px; }
+.advanced-features-toggle {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.advanced-features-toggle:hover { color: var(--gold-bright); }
+.advanced-features-arrow { font-size: 9px; }
+.advanced-features-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.foes-group { align-items: flex-start; }
 
 .expansion-box {
   border: 1px solid var(--panel-edge);
@@ -808,7 +838,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 /* hex + ships (SVG) */
 .hex-cell { fill: rgba(30,42,74,.25); stroke: rgba(78,98,150,.35); stroke-width: .6; }
 .hex-cell.rim { fill: rgba(30,42,74,.12); }
-.bauble-core { filter: drop-shadow(0 0 6px rgba(212,167,72,.8)); }
+.vault-core { filter: drop-shadow(0 0 6px rgba(212,167,72,.8)); }
 .ship-token { cursor: pointer; }
 .ship-token.dead { opacity: .35; filter: grayscale(1); }
 .ship-token.targetable:hover .ship-hull { stroke: var(--gold-bright); stroke-width: 2.5; }

@@ -3,7 +3,7 @@
   const SLIDES = [
     {
       icon: "🏴‍☠", title: "Welcome aboard, Captain!",
-      body: `StarShot is a battle of <b>void corsairs</b>. Plunder baubles, outfly rivals, and blast
+      body: `StarShot is a battle of <b>void corsairs</b>. Plunder vaults, outfly rivals, and blast
         their ships to scrap. <b>Most Victory Points after 6 rounds wins</b> — or be the last ship
         flying and take it all early.`,
     },
@@ -49,8 +49,8 @@
         <br><br><i>Click any ship in the Fleet Registry to study its board and lanes.</i>`,
     },
     {
-      icon: "✦", title: "Baubles — the loot",
-      body: `Numbered baubles pay out in their matching round: end the round <b>anywhere in the glowing
+      icon: "✦", title: "Vaults — the loot",
+      body: `Numbered vaults pay out in their matching round: end the round <b>anywhere in the glowing
         7-hex cluster</b> and claim the 2 VP <b>plus a Desperation card</b>. The central <b>Fang</b> is
         active every round — it bites for 1 damage, pays 1 VP… but in round 6 it's worth <b>6 VP</b>.
         Round 6 near the Fang is a knife fight.`,
@@ -64,9 +64,9 @@
     },
     {
       icon: "⚔", title: "Ready to fly, Captain?",
-      body: `<b>Quick Duel</b> finds you a live opponent. <b>Raise a Crew</b> lets you battle up to three
-        AI captains — Morrigan chases loot, Blackvane hunts one prey, Redbeard shoots whatever's close.
-        Win battles to climb the <b>Most Feared Captains</b> board. Fair winds and full broadsides!`,
+      body: `<b>Quick Duel</b> finds you a live opponent. <b>Choose your battles</b> lets you battle up to three
+        Digital Scallywags — the Freebooter chases loot, the Bloodthirsty hunts one prey, the Cannoneer shoots whatever's close.
+        Win battles to climb the leaderboard. Fair winds and full broadsides!`,
     },
   ];
 

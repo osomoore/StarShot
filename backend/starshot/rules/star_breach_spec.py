@@ -4,7 +4,7 @@ The engine reads all boss data (hull, shield areas, damage lanes, action
 phases, fleet, progression) through the accessors in this module instead of
 the ``star_breach`` constants directly. Two sources exist:
 
-- ``default_spec()`` mirrors the stock Bauble Breacher scenario from
+- ``default_spec()`` mirrors the stock Vault Breacher scenario from
   ``star_breach.py`` exactly; ``StarBreachState.boss_spec is None`` means
   "use the default".
 - ``spec_from_design(design)`` compiles a boss-designer document (the JSON
@@ -38,7 +38,7 @@ def _hex_key(q: int, r: int) -> str:
 
 
 def default_spec() -> dict:
-    """The Bauble Breacher scenario expressed as a spec. Behavior-identical
+    """The Vault Breacher scenario expressed as a spec. Behavior-identical
     to the module constants; built fresh so callers may not mutate it."""
     footprint = [list(hex_) for hex_ in sb_data.BOSS_FOOTPRINT]
     hex_area = {_hex_key(q, r): sb_data.region_of_hex(q, r) for q, r in sb_data.BOSS_FOOTPRINT}
