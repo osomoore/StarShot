@@ -431,6 +431,45 @@ def _load_playable_boss_design(design_id: str | None) -> dict | None:
     return design
 
 
+def parse_ship_design_ref(design_id: str) -> tuple[int | None, str]:
+    """Split a ship design reference into (owner_id, design_id). Global
+    library ids have no prefix; player-owned ones look like `user:<uid>:<id>`."""
+    if design_id.startswith("user:"):
+        parts = design_id.split(":", 2)
+        if len(parts) != 3 or not parts[1].isdigit():
+            raise ValueError(f"Malformed ship design reference: {design_id}")
+        return int(parts[1]), parts[2]
+    return None, design_id
+
+
+def _load_playable_ship_design(design_id: str | None) -> dict | None:
+    """Resolve a ship design id chosen at a match seat. Only battle-ready
+    (problem-free) designs may enter a game; empty = the standard base ship."""
+    if not design_id:
+        return None
+    from starshot.v2 import ship_designs
+
+    owner_id, bare_id = parse_ship_design_ref(design_id)
+    design = ship_designs.load_design(bare_id, owner_id)
+    if design is None:
+        raise ValueError(f"Ship design '{design_id}' no longer exists.")
+    problems = ship_designs.validate_design(design)
+    if problems:
+        raise ValueError(
+            f"Ship design '{design['name']}' is not battle-ready: {problems[0]}"
+        )
+    return design
+
+
+def _player_ship_designs_for_match(match: dict) -> dict | None:
+    designs = {}
+    for seat in match["seat_list"]:
+        design = _load_playable_ship_design(seat.get("ship_design_id"))
+        if design is not None:
+            designs[seat["player_id"]] = design
+    return designs or None
+
+
 def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None, seed: int | None = None) -> str:
     player_ids = tuple(seat["player_id"] for seat in match["seat_list"])
     deck_path = deck_path or core_deck_path()
@@ -453,6 +492,7 @@ def start_match_game(store: V2Store, match: dict, deck_path: Path | None = None,
                     if seat.get("star_breach_role")
                 } or None,
                 star_breach_boss_design=boss_design,
+                player_ship_designs=_player_ship_designs_for_match(match),
             )
         )
     state = advance_game(state, match, deck_path)

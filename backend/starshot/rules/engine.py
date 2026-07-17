@@ -69,12 +69,13 @@ from starshot.rules.models import (
     SealMode,
     ShipState,
 )
-from starshot.rules.ship_layout import (
-    BASE_SHIP_COMPONENTS,
-    BASE_SHIP_COMPONENT_BY_ID,
-    detached_component_ids,
-    first_intact_component_for_lane,
-    is_ship_destroyed,
+from starshot.rules.ship_layout import ShipLayout, layout_for_ship
+from starshot.rules.player_ships import (
+    SIGNAL_JAMMER_DEFENSE_BONUS,
+    SIGNAL_JAMMER_TYPE,
+    TARGETING_SENSORS_AIM_BONUS,
+    TARGETING_SENSORS_TYPE,
+    compile_layout_spec,
 )
 from starshot.rules.star_command import EXPANSION_ID as STAR_COMMAND_ID
 
@@ -123,6 +124,13 @@ def create_initial_state(config: GameConfig) -> GameState:
         )
         for index, player_id in enumerate(player_ids)
     }
+    for player_id, design in (config.player_ship_designs or {}).items():
+        player = players.get(player_id)
+        if player is None or not design:
+            continue
+        spec = compile_layout_spec(design)
+        player.ship.layout = spec
+        player.ship.shields = int(spec.get("max_shields", player.ship.shields))
     if config.seed is None:
         for player in players.values():
             setup_rng.shuffle(player.deck)
@@ -762,7 +770,8 @@ def _resolve_stack_engineering(
 def _repair_components(player: PlayerState, component_ids: tuple[str, ...], count: int) -> list[str]:
     if not component_ids:
         return []
-    _ensure_unique_component_ids(component_ids)
+    layout = layout_for_ship(player.ship)
+    _ensure_unique_component_ids(component_ids, layout)
     if len(component_ids) > count:
         raise RulesError(f"Hull Repair can restore at most {count} component(s).")
     current = set(player.ship.destroyed_components)
@@ -770,12 +779,12 @@ def _repair_components(player: PlayerState, component_ids: tuple[str, ...], coun
         if component_id not in current:
             continue
         current.remove(component_id)
-    _ensure_intact_components_connected(current)
+    _ensure_intact_components_connected(current, layout)
     for component_id in component_ids:
         player.ship.destroyed_components.discard(component_id)
         player.ship.component_hit_counts.pop(component_id, None)
     player.ship.damage_taken = max(0, player.ship.damage_taken - len(component_ids))
-    player.ship.destroyed = is_ship_destroyed(player.ship.destroyed_components)
+    player.ship.destroyed = layout.is_ship_destroyed(player.ship.destroyed_components)
     return list(component_ids)
 
 
@@ -789,8 +798,9 @@ def _reconfigure_components(
         return None
     if len(from_component_ids) != count or len(to_component_ids) != count:
         raise RulesError(f"Reconfigure must move exactly {count} damage marker(s).")
-    _ensure_unique_component_ids(from_component_ids)
-    _ensure_unique_component_ids(to_component_ids)
+    layout = layout_for_ship(player.ship)
+    _ensure_unique_component_ids(from_component_ids, layout)
+    _ensure_unique_component_ids(to_component_ids, layout)
     if set(from_component_ids).intersection(to_component_ids):
         raise RulesError("Reconfigure cannot move damage from and to the same component.")
     current = set(player.ship.destroyed_components)
@@ -801,30 +811,30 @@ def _reconfigure_components(
     for component_id in to_component_ids:
         if component_id in interim:
             raise RulesError(f"Reconfigure destination is already damaged: {component_id}")
-        if not _component_adjacent_to_intact(component_id, interim):
+        if not _component_adjacent_to_intact(component_id, interim, layout):
             raise RulesError(f"Reconfigure destination is not adjacent to an undamaged component: {component_id}")
     final_destroyed = set(interim).union(to_component_ids)
-    _ensure_intact_components_connected(final_destroyed)
+    _ensure_intact_components_connected(final_destroyed, layout)
     player.ship.destroyed_components = final_destroyed
     for component_id in from_component_ids:
         player.ship.component_hit_counts.pop(component_id, None)
     for component_id in to_component_ids:
         player.ship.component_hit_counts[component_id] = max(1, player.ship.component_hit_counts.get(component_id, 0))
-    player.ship.destroyed = is_ship_destroyed(player.ship.destroyed_components)
+    player.ship.destroyed = layout.is_ship_destroyed(player.ship.destroyed_components)
     return {"from": list(from_component_ids), "to": list(to_component_ids)}
 
 
-def _ensure_unique_component_ids(component_ids: tuple[str, ...]) -> None:
+def _ensure_unique_component_ids(component_ids: tuple[str, ...], layout: ShipLayout) -> None:
     if len(set(component_ids)) != len(component_ids):
         raise RulesError("Component selections must not contain duplicates.")
-    unknown = [component_id for component_id in component_ids if component_id not in BASE_SHIP_COMPONENT_BY_ID]
+    unknown = [component_id for component_id in component_ids if component_id not in layout.component_by_id]
     if unknown:
         raise RulesError(f"Unknown ship component: {unknown[0]}")
 
 
-def _component_adjacent_to_intact(component_id: str, destroyed_components: set[str]) -> bool:
-    component = BASE_SHIP_COMPONENT_BY_ID[component_id]
-    for other in BASE_SHIP_COMPONENTS:
+def _component_adjacent_to_intact(component_id: str, destroyed_components: set[str], layout: ShipLayout) -> bool:
+    component = layout.component_by_id[component_id]
+    for other in layout.components:
         if other.id in destroyed_components:
             continue
         if hex_distance(component.q, component.r, other.q, other.r) == 1:
@@ -832,8 +842,8 @@ def _component_adjacent_to_intact(component_id: str, destroyed_components: set[s
     return False
 
 
-def _ensure_intact_components_connected(destroyed_components: set[str]) -> None:
-    if detached_component_ids(destroyed_components):
+def _ensure_intact_components_connected(destroyed_components: set[str], layout: ShipLayout) -> None:
+    if layout.detached_component_ids(destroyed_components):
         raise RulesError("Undamaged ship components must remain connected to the Command Bridge.")
 
 
@@ -1037,6 +1047,15 @@ def _resolve_attack_volley(
     aim_bonus = sum(effect.aim_bonus for effect in attack_effects)
     if attacker.captain_id == "malcolm_manderly":
         aim_bonus += 2
+    # Designed-ship passives: intact Targeting Sensors sharpen the attacker's
+    # aim; intact Signal Jammers on the target raise its defense threshold.
+    sensor_aim_bonus = TARGETING_SENSORS_AIM_BONUS * layout_for_ship(attacker.ship).intact_count_of_type(
+        TARGETING_SENSORS_TYPE, attacker.ship.destroyed_components
+    )
+    aim_bonus += sensor_aim_bonus
+    jammer_defense_bonus = SIGNAL_JAMMER_DEFENSE_BONUS * layout_for_ship(target.ship).intact_count_of_type(
+        SIGNAL_JAMMER_TYPE, target.ship.destroyed_components
+    )
     always_hits = any(effect.always_hits for effect in attack_effects)
     lead_the_target = any(effect.lead_the_target for effect in attack_effects)
     u_turn_atk = any(effect.u_turn_attack for effect in attack_effects)
@@ -1053,7 +1072,7 @@ def _resolve_attack_volley(
     defense_threshold = (
         fixed_defense_threshold
         if fixed_defense_threshold is not None
-        else distance + target_movement + target.ship.defense_bonus_this_action
+        else distance + target_movement + target.ship.defense_bonus_this_action + jammer_defense_bonus
     )
     roll = _roll_attack(state)
     roll_total = roll + aim_bonus
@@ -1072,6 +1091,8 @@ def _resolve_attack_volley(
         "card_ids": [card.id for card, selection in attack_cards],
         "damage": damage,
         "aim_bonus": aim_bonus,
+        "sensor_aim_bonus": sensor_aim_bonus,
+        "jammer_defense_bonus": jammer_defense_bonus,
         "distance": distance,
         "target_movement": target_movement,
         "target_defense_bonus": target.ship.defense_bonus_this_action,
@@ -1226,10 +1247,11 @@ def _apply_unshielded_damage(
     was_destroyed = target.ship.destroyed
     desperation_consequence_applied = False
     knockoff_vp_awarded = 0
+    layout = layout_for_ship(target.ship)
 
     for shot_number in range(1, damage + 1):
         lane_roll = fixed_lane_roll if fixed_lane_roll is not None else _roll_d12(state)
-        component = first_intact_component_for_lane(lane_roll, target.ship.destroyed_components)
+        component = layout.first_intact_component_for_lane(lane_roll, target.ship.destroyed_components)
         shot = {
             "shot_number": shot_number,
             "roll": lane_roll,
@@ -1259,7 +1281,7 @@ def _apply_unshielded_damage(
             target.ship.destroyed_components.add(component.id)
             target.ship.component_hit_counts[component.id] = target.ship.component_hit_counts.get(component.id, 0) + 1
             target.ship.damage_taken += 1
-            detached_ids = sorted(detached_component_ids(target.ship.destroyed_components))
+            detached_ids = sorted(layout.detached_component_ids(target.ship.destroyed_components))
             if detached_ids:
                 target.ship.destroyed_components.update(detached_ids)
                 target.ship.damage_taken += len(detached_ids)
@@ -1272,7 +1294,7 @@ def _apply_unshielded_damage(
                     "detached_component_ids": detached_ids,
                 }
             )
-            target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
+            target.ship.destroyed = layout.is_ship_destroyed(target.ship.destroyed_components)
             if target.ship.destroyed and not was_destroyed and target.ship.knocked_out_round is None:
                 target.ship.knocked_out_round = state.round_number
                 target.ship.knocked_out_action_number = action_number
@@ -1685,17 +1707,18 @@ def _validate_stack(
 
 
 def _validate_engineering_selection(player: PlayerState, selection: OrderCardSelection, effect) -> None:
+    layout = layout_for_ship(player.ship)
     if effect.repair_components:
         ids = selection.repair_component_ids
         if len(ids) != effect.repair_components:
             raise RulesError(f"Hull Repair must select {effect.repair_components} damaged component(s).")
-        _ensure_unique_component_ids(ids)
+        _ensure_unique_component_ids(ids, layout)
         destroyed = set(player.ship.destroyed_components)
         for component_id in ids:
             if component_id not in destroyed:
                 raise RulesError(f"Hull Repair component is not damaged: {component_id}")
         final_destroyed = destroyed - set(ids)
-        _ensure_intact_components_connected(final_destroyed)
+        _ensure_intact_components_connected(final_destroyed, layout)
     if effect.reconfigure_components:
         _reconfigure_components_preview(
             player,
@@ -1713,8 +1736,9 @@ def _reconfigure_components_preview(
 ) -> None:
     if len(from_component_ids) != count or len(to_component_ids) != count:
         raise RulesError(f"Reconfigure must move exactly {count} damage marker(s).")
-    _ensure_unique_component_ids(from_component_ids)
-    _ensure_unique_component_ids(to_component_ids)
+    layout = layout_for_ship(player.ship)
+    _ensure_unique_component_ids(from_component_ids, layout)
+    _ensure_unique_component_ids(to_component_ids, layout)
     if set(from_component_ids).intersection(to_component_ids):
         raise RulesError("Reconfigure cannot move damage from and to the same component.")
     current = set(player.ship.destroyed_components)
@@ -1725,9 +1749,9 @@ def _reconfigure_components_preview(
     for component_id in to_component_ids:
         if component_id in interim:
             raise RulesError(f"Reconfigure destination is already damaged: {component_id}")
-        if not _component_adjacent_to_intact(component_id, interim):
+        if not _component_adjacent_to_intact(component_id, interim, layout):
             raise RulesError(f"Reconfigure destination is not adjacent to an undamaged component: {component_id}")
-    _ensure_intact_components_connected(set(interim).union(to_component_ids))
+    _ensure_intact_components_connected(set(interim).union(to_component_ids), layout)
 
 
 def _star_command_enabled(state: GameState) -> bool:

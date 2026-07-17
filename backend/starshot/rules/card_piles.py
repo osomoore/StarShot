@@ -21,7 +21,12 @@ ENGINEER_BONUS_HAND_SIZE = 2
 
 
 def hand_size_for_player(player: PlayerState) -> int:
-    size = SHIELDS_EXHAUSTED_HAND_SIZE if player.ship.shields <= 0 else DEFAULT_HAND_SIZE
+    # Designed ships bring their own base draw (3-6); the base ship draws 5.
+    # Exhausted shields grant +1 either way (base: 5 -> 6).
+    base = DEFAULT_HAND_SIZE
+    if player.ship.layout:
+        base = int(player.ship.layout.get("base_draw", DEFAULT_HAND_SIZE))
+    size = base + (SHIELDS_EXHAUSTED_HAND_SIZE - DEFAULT_HAND_SIZE) if player.ship.shields <= 0 else base
     if "engineer" in player.roles:
         size += ENGINEER_BONUS_HAND_SIZE
     return size

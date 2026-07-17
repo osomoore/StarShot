@@ -140,6 +140,7 @@ _MIGRATIONS = (
     "ALTER TABLE feedback ADD COLUMN game_log TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE matches ADD COLUMN star_breach_boss_design_id TEXT",
     "ALTER TABLE match_seats ADD COLUMN star_breach_role TEXT",
+    "ALTER TABLE match_seats ADD COLUMN ship_design_id TEXT",
 )
 
 
@@ -694,12 +695,13 @@ class V2Store:
         user_id: int | None = None,
         ai_type: str | None = None,
         star_breach_role: str | None = None,
+        ship_design_id: str | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role),
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role, ship_design_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role, ship_design_id),
             )
 
     def try_join_match(
@@ -709,6 +711,7 @@ class V2Store:
         player_id: str,
         display_name: str,
         star_breach_role: str | None = None,
+        ship_design_id: str | None = None,
     ) -> dict:
         """Claim the next free human seat. Raises ValueError when impossible."""
         with self._connect(immediate=True) as conn:
@@ -730,9 +733,9 @@ class V2Store:
                 raise ValueError("That StarBreach role is already claimed.")
             seat_index = len(seats)
             conn.execute(
-                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role)
-                   VALUES (?, ?, ?, ?, NULL, ?, ?)""",
-                (match_id, seat_index, player_id, user_id, display_name, star_breach_role),
+                """INSERT INTO match_seats (match_id, seat_index, player_id, user_id, ai_type, display_name, star_breach_role, ship_design_id)
+                   VALUES (?, ?, ?, ?, NULL, ?, ?, ?)""",
+                (match_id, seat_index, player_id, user_id, display_name, star_breach_role, ship_design_id),
             )
             conn.execute("UPDATE matches SET updated_at = ? WHERE id = ?", (_now(), match_id))
             return {"seat_index": seat_index, "full": seat_index + 1 >= match["seats"]}

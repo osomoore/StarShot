@@ -420,6 +420,7 @@ class CreateMatchRequest(BaseModel):
     star_breach_prey_player_id: str | None = Field(default=None, max_length=80)
     star_breach_boss_design_id: str | None = Field(default=None, max_length=80)
     star_breach_role: str | None = Field(default=None, max_length=40)
+    ship_design_id: str | None = Field(default=None, max_length=140)
 
 
 def _validated_star_breach_role(role: str | None) -> str | None:
@@ -430,6 +431,23 @@ def _validated_star_breach_role(role: str | None) -> str | None:
     if role not in ROLES_BY_ID:
         raise HTTPException(status_code=400, detail=f"Unknown StarBreach role: {role}")
     return role
+
+
+def _validated_ship_design_id(ship_design_id: str | None, user: dict) -> str | None:
+    """A seat's ship pick: empty = base ship; otherwise a battle-ready global
+    design or one of the picker's own designs (`user:<uid>:<id>`)."""
+    if not ship_design_id:
+        return None
+    from starshot.v2.service import _load_playable_ship_design, parse_ship_design_ref
+
+    try:
+        owner_id, _bare = parse_ship_design_ref(ship_design_id)
+        if owner_id is not None and owner_id != user["id"]:
+            raise ValueError("You can only fly your own ship designs.")
+        _load_playable_ship_design(ship_design_id)  # fail fast at pick time
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ship_design_id
 
 
 def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> str | None:
@@ -509,7 +527,15 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
         star_breach_prey_player_id=prey_player_id,
         star_breach_boss_design_id=boss_design_id,
     )
-    store.add_seat(match_id, 0, user["username"], user["username"], user_id=user["id"], star_breach_role=host_role)
+    store.add_seat(
+        match_id,
+        0,
+        user["username"],
+        user["username"],
+        user_id=user["id"],
+        star_breach_role=host_role,
+        ship_design_id=_validated_ship_design_id(body.ship_design_id, user),
+    )
     counts: dict[str, int] = {}
     for index, ai_type in enumerate(body.ai_types):
         counts[ai_type] = counts.get(ai_type, 0) + 1
@@ -530,6 +556,7 @@ def create_match(body: CreateMatchRequest, request: Request) -> dict:
 
 class JoinMatchRequest(BaseModel):
     star_breach_role: str | None = Field(default=None, max_length=40)
+    ship_design_id: str | None = Field(default=None, max_length=140)
 
 
 @router.post("/matches/{match_id}/join")
@@ -545,9 +572,17 @@ def join_match(match_id: str, request: Request, body: JoinMatchRequest | None = 
         if "star_breach" in (existing.get("active_expansions") or [])
         else None
     )
+    ship_design_id = _validated_ship_design_id(body.ship_design_id if body else None, user)
     store.leave_queue(user["id"])
     try:
-        result = store.try_join_match(match_id, user["id"], user["username"], user["username"], star_breach_role=role)
+        result = store.try_join_match(
+            match_id,
+            user["id"],
+            user["username"],
+            user["username"],
+            star_breach_role=role,
+            ship_design_id=ship_design_id,
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="Match not found.")
     except ValueError as exc:

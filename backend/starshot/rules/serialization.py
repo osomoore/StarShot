@@ -26,7 +26,7 @@ from starshot.rules.star_command import CAPTAINS_BY_ID, STARFALLS_BY_ID, captain
 from starshot.rules import star_breach as sb_data
 from starshot.rules import star_breach_spec as sb_spec
 from starshot.rules.deck_data import active_catalog
-from starshot.rules.ship_layout import BASE_SHIP_LAYOUT_ID, components_to_dict, damage_lanes_to_dict
+from starshot.rules.ship_layout import layout_for_ship
 
 
 def state_to_dict(state: GameState, *, reveal_orders: bool = True) -> dict:
@@ -356,17 +356,21 @@ def desperate_face_from_dict(data: dict) -> DesperateFace:
 
 
 def ship_to_dict(ship: ShipState) -> dict:
+    layout = layout_for_ship(ship)
     return {
         "q": ship.q,
         "r": ship.r,
         "facing": ship.facing,
         "shields": ship.shields,
+        "max_shields": layout.max_shields,
         "damage_taken": ship.damage_taken,
         "destroyed_components": sorted(ship.destroyed_components),
         "component_hit_counts": dict(ship.component_hit_counts),
-        "layout_id": BASE_SHIP_LAYOUT_ID,
-        "component_layout": components_to_dict(),
-        "damage_lanes": damage_lanes_to_dict(),
+        "layout_id": layout.layout_id,
+        "layout_name": ship.layout.get("name") if ship.layout else None,
+        "layout": ship.layout,
+        "component_layout": layout.components_to_dict(),
+        "damage_lanes": layout.damage_lanes_to_dict(),
         "destroyed": ship.destroyed,
         "knocked_out_round": ship.knocked_out_round,
         "knocked_out_action_number": ship.knocked_out_action_number,
@@ -382,6 +386,7 @@ def ship_from_dict(data: dict) -> ShipState:
         r=data.get("r", 0),
         facing=data.get("facing", 0),
         shields=data.get("shields", 2),
+        layout=data.get("layout"),
         damage_taken=data.get("damage_taken", 0),
         destroyed_components=set(data.get("destroyed_components", [])),
         component_hit_counts=dict(data.get("component_hit_counts", {})),

@@ -24,7 +24,27 @@ from starshot.rules import star_breach_spec as sb_spec
 from starshot.rules.star_breach import EXPANSION_ID
 from starshot.rules.desperation import draw_desperation_card
 from starshot.rules.hex import BOARD_RADIUS, DIRECTIONS, START_INSET_FROM_CORNER, hex_distance, is_within_board, move_forward
-from starshot.rules.ship_layout import BASE_SHIP_COMPONENTS, is_ship_destroyed
+from starshot.rules.ship_layout import layout_for_ship
+from starshot.rules.player_ships import (
+    SIGNAL_JAMMER_DEFENSE_BONUS,
+    SIGNAL_JAMMER_TYPE,
+    TARGETING_SENSORS_AIM_BONUS,
+    TARGETING_SENSORS_TYPE,
+)
+
+
+def _sensor_aim_bonus(attacker: PlayerState) -> int:
+    """+2 Aim per intact Targeting Sensors on a designed player ship."""
+    return TARGETING_SENSORS_AIM_BONUS * layout_for_ship(attacker.ship).intact_count_of_type(
+        TARGETING_SENSORS_TYPE, attacker.ship.destroyed_components
+    )
+
+
+def _jammer_defense_bonus(target: PlayerState) -> int:
+    """+2 defense per intact Signal Jammer on a designed player ship."""
+    return SIGNAL_JAMMER_DEFENSE_BONUS * layout_for_ship(target.ship).intact_count_of_type(
+        SIGNAL_JAMMER_TYPE, target.ship.destroyed_components
+    )
 
 # This module owns StarBreach behavior that plugs into the base StarShot engine.
 
@@ -680,7 +700,12 @@ def _resolve_enemy_shot(
     dice = 1 if "tank" in target.roles else 2
     roll = _roll_d6_sum(state, dice)
     roll_total = roll + aim_bonus
-    defense_threshold = distance + target.ship.movement_this_action + target.ship.defense_bonus_this_action
+    defense_threshold = (
+        distance
+        + target.ship.movement_this_action
+        + target.ship.defense_bonus_this_action
+        + _jammer_defense_bonus(target)
+    )
     hit = roll_total >= defense_threshold or (dice >= 2 and roll >= 12)
     event = {
         "type": "enemy_volley_resolved",
@@ -1032,7 +1057,7 @@ def _resolve_volley_vs_boss(
         else distance + sb.boss_movement_this_action + boss_defense_bonus
     )
     roll = _roll_attack(state)
-    roll_total = roll + profile["aim_bonus"]
+    roll_total = roll + profile["aim_bonus"] + _sensor_aim_bonus(attacker)
     if attacker.captain_id == "malcolm_manderly":
         roll_total += 2
     in_range = profile["max_range"] is None or distance <= profile["max_range"]
@@ -1228,7 +1253,7 @@ def _resolve_volley_vs_craft(
     extra_dice = 1 if "fighting_ace" in attacker.roles else 0
     base_dice = 3 if _active_starfall(state, "clear_skies") else 2
     roll = _roll_d6_sum(state, base_dice + extra_dice)
-    roll_total = roll + profile["aim_bonus"]
+    roll_total = roll + profile["aim_bonus"] + _sensor_aim_bonus(attacker)
     if attacker.captain_id == "malcolm_manderly":
         roll_total += 2
     in_range = profile["max_range"] is None or distance <= profile["max_range"]
@@ -1345,14 +1370,15 @@ def _resolve_repair_volley(
 def _repair_one_component(target: PlayerState) -> str | None:
     """Restore the first destroyed component still adjacent to intact hull."""
     destroyed = target.ship.destroyed_components
-    for component in BASE_SHIP_COMPONENTS:
+    layout = layout_for_ship(target.ship)
+    for component in layout.components:
         if component.id not in destroyed:
             continue
-        if not _component_adjacent_to_intact(component.id, destroyed):
+        if not _component_adjacent_to_intact(component.id, destroyed, layout):
             continue
         destroyed.discard(component.id)
         target.ship.component_hit_counts.pop(component.id, None)
         target.ship.damage_taken = max(0, target.ship.damage_taken - 1)
-        target.ship.destroyed = is_ship_destroyed(target.ship.destroyed_components)
+        target.ship.destroyed = layout.is_ship_destroyed(target.ship.destroyed_components)
         return component.id
     return None

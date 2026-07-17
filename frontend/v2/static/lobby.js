@@ -25,6 +25,10 @@
     ["fighting_ace", "Fighting Ace"],
   ];
   let bossDesignsLoaded = false;
+  let shipDesignsLoaded = false;
+  let shipDesignSelection = (() => {
+    try { return localStorage.getItem("ss_preferred_ship") || ""; } catch (err) { return ""; }
+  })();
   let starCommandActive = false;
   let starBreachActive = false;
   const activeExpansions = () => [
@@ -212,6 +216,8 @@
     syncChoiceButtons("ai-level");
     const total = 1 + crew.length + openSeats;
     const minShips = starBreachActive ? 1 : 2;
+    ensureShipPicker();
+    updateShipPicker();
     updateStarBreachPreyPicker();
     updateStarBreachBossPicker();
     const button = document.getElementById("btn-create-match");
@@ -230,6 +236,57 @@
       breachToggle.checked = starBreachActive;
       breachToggle.closest(".expansion-toggle")?.classList.toggle("active", starBreachActive);
     }
+  }
+
+  /* "Your Ship" picker: the ship this captain flies in every raid they
+     create or join. Battle-ready designs from /api/v2/ship-designs, plus the
+     standard base ship. The choice persists in localStorage. */
+  function ensureShipPicker() {
+    if (document.getElementById("ship-pick")) return;
+    const controls = document.querySelector(".crew-controls");
+    if (!controls) return;
+    const label = document.createElement("label");
+    label.className = "open-seats-label ship-pick-label";
+    label.innerHTML = `Your Ship:
+      <select id="ship-pick"><option value="">Standard ship</option></select>
+      <button type="button" class="btn ghost small" id="btn-my-ships" title="Design yer own ships (19 points, up to 10 designs) and fly them">🛠 My Ships</button>`;
+    const expansionBox = controls.querySelector(".expansion-box");
+    controls.insertBefore(label, expansionBox || controls.querySelector("#btn-create-match"));
+    label.querySelector("select").addEventListener("change", (event) => {
+      shipDesignSelection = event.target.value || "";
+      try { localStorage.setItem("ss_preferred_ship", shipDesignSelection); } catch (err) { /* private mode */ }
+    });
+    label.querySelector("#btn-my-ships").addEventListener("click", (event) => {
+      event.preventDefault();
+      window.ShipDesigner?.openPlayerDesigner();
+    });
+    document.addEventListener("shipdesigner-closed", () => {
+      shipDesignsLoaded = false; // refresh the picker after designing
+      updateShipPicker();
+    });
+  }
+
+  async function updateShipPicker() {
+    const select = document.getElementById("ship-pick");
+    if (!select || shipDesignsLoaded) return;
+    shipDesignsLoaded = true;
+    try {
+      const data = await API.shipDesigns();
+      const current = shipDesignSelection;
+      select.innerHTML = '<option value="">Standard ship</option>';
+      for (const entry of data.designs || []) {
+        const option = document.createElement("option");
+        option.value = entry.id;
+        option.textContent = `${entry.name} (${entry.points} pts)`;
+        select.appendChild(option);
+      }
+      if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      } else {
+        select.value = "";
+        shipDesignSelection = "";
+      }
+    } catch (err) { shipDesignsLoaded = false; /* transient; retry next refresh */ }
   }
 
   function ensureStarBreachPreyPicker() {
@@ -461,7 +518,10 @@
             if (role === undefined) return; // cancelled
           }
           try {
-            const result = await API.joinMatch(match.id, role ? { star_breach_role: role } : undefined);
+            const joinBody = {};
+            if (role) joinBody.star_breach_role = role;
+            if (shipDesignSelection) joinBody.ship_design_id = shipDesignSelection;
+            const result = await API.joinMatch(match.id, Object.keys(joinBody).length ? joinBody : undefined);
             if (result.game_id) { leave(); Game.enter(result.game_id); }
             else refresh();
           } catch (error) { App.toast(error.message); }
@@ -946,6 +1006,7 @@
           star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
           star_breach_role: starBreachActive ? (starBreachRoleSelection || null) : null,
           star_breach_boss_design_id: starBreachActive ? (starBreachBossSelection || null) : null,
+          ship_design_id: shipDesignSelection || null,
         });
         crew = [];
         updateCrewUI();

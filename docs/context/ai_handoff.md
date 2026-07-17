@@ -171,6 +171,43 @@ Admin tools:
   lobby "StarBreach Boss" dropdown via public `GET /api/v2/boss-designs`);
   only problem-free designs are offered/accepted — incomplete designs can be
   saved but not played. Tests in `tests/test_boss_spec.py`.
+- Player Ship Designer: players design the ship they fly in place of the
+  base ship. Designs live on a radius-2 hex grid (19 spaces) against a
+  19-point budget — 1/shield charge (0-3), 1/base card draw (3-6), 1 per
+  non-core tile on the three hex axes through the Core ("core armor" — the
+  tiles in the damage lanes that contain the Core), 1 per Signal Jammer
+  (+2 defense while intact, max 2), 1 per Targeting Sensors (+2 Aim while
+  intact, max 2). Battle-ready = exactly 15 tiles (4 empty), exactly 1 Core
+  + 2 Life Supports, connected, within budget. The stock base ship prices
+  at exactly 19 (2 shields + 5 draw + 12 armor). The 12 damage lanes are
+  auto-generated from the Core position (`generate_damage_lanes` in
+  `backend/starshot/rules/player_ships.py`; reproduces the printed base
+  ship's lane table exactly — see tests). Compiled layout specs are stored
+  per player on `ShipState.layout` at game creation
+  (`GameConfig.player_ship_designs`), so design edits never affect games in
+  flight; `rules/ship_layout.py` now exposes a `ShipLayout` class +
+  `layout_for_ship(ship)` and the engine, StarBreach engine, card draw
+  (`base_draw`, exhausted-shields +1), and serialization
+  (`max_shields`/`layout` on ship dicts) all read through it. Jammer/sensor
+  bonuses apply in PvP volleys (`sensor_aim_bonus`/`jammer_defense_bonus`
+  event fields) and in StarBreach (player shots at boss/craft, enemy shots
+  at players). Schema/validation/storage: `backend/starshot/v2/ship_designs.py`
+  (mirrors boss_designs.py: bundled `resources/ship_designs/`, runtime
+  `.starshot/content/ship_designs/`, per-player subdirs, 10-design cap,
+  merge/conflict aliases); routes in `ship_designer_api.py`
+  (`/api/v2/ship-designs` playable list, `/api/v2/my/ship-designs` CRUD +
+  export/import JSON, `/api/v2/admin/ship-designs` global library,
+  `/api/v2/admin/player-ship-designs` mod browse/clone-to-global/delete).
+  Seats store `ship_design_id` (`user:<uid>:<id>` refs for player-owned);
+  picks validate at create/join and re-validate at launch. UI:
+  `frontend/v2/static/shipdesigner.js` + `shipdesigner.css` (player overlay
+  via the lobby 🛠 Build New Content hub — now a chooser between My Ships /
+  My Bosses — and an admin "Ship Designs" tab with the player-design
+  browse/clone/delete bar); the lobby "Your Ship" dropdown (crew builder)
+  persists in localStorage and applies to created and joined matches.
+  `shipview.js` renders jammer/sensor tiles and `max_shields` rings.
+  Bundled example: `resources/ship_designs/vanguard.json`. Tests:
+  `tests/test_player_ships.py`.
 - The admin Account & Project settings include local server defaults for new
   StarBreach games: the active/default deck file is controlled by the Deck
   Editor's active deck set, and StarBreach can set a default global boss ship

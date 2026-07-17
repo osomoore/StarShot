@@ -2215,6 +2215,31 @@
   }
 
   // Lobby topbar "Build New Content" button: twinkles until first clicked.
+  // Opens a small hub so players can pick between the two designers.
+  function openBuildContentHub() {
+    const hub = document.createElement("div");
+    hub.className = "overlay";
+    hub.innerHTML = `
+      <div class="picker">
+        <h3>🛠 Build New Content</h3>
+        <div class="bd-hub-actions">
+          <button class="btn gold" id="bd-hub-ships">🚀 My Ships<span class="btn-sub">design the ship you fly</span></button>
+          <button class="btn gold" id="bd-hub-bosses">👹 My Bosses<span class="btn-sub">design StarBreach foes</span></button>
+        </div>
+        <button class="btn ghost picker-cancel" id="bd-hub-cancel">Never mind</button>
+      </div>`;
+    document.body.appendChild(hub);
+    hub.querySelector("#bd-hub-cancel").addEventListener("click", () => hub.remove());
+    hub.querySelector("#bd-hub-bosses").addEventListener("click", () => {
+      hub.remove();
+      openPlayerDesigner();
+    });
+    hub.querySelector("#bd-hub-ships").addEventListener("click", () => {
+      hub.remove();
+      window.ShipDesigner?.openPlayerDesigner?.();
+    });
+  }
+
   let twinkleTimer = null;
   function wireBuildContentButton() {
     const button = document.getElementById("btn-build-content");
@@ -2229,7 +2254,7 @@
       lsSet(LS_BUILD_CLICKED);
       if (twinkleTimer) { clearInterval(twinkleTimer); twinkleTimer = null; }
       button.classList.remove("bd-twinkle");
-      openPlayerDesigner();
+      openBuildContentHub();
     });
   }
   wireBuildContentButton();
@@ -2248,7 +2273,8 @@
       <div class="picker">
         <h3>🛠 New: Build Your Own Content</h3>
         <div class="tutorial-steps">
-          <div>You can design your own <b>StarBreach boss ships</b> — hull, shields, damage lanes, progression track, and fleet — then battle them with your crew.</div>
+          <div>You can design your own <b>player ships</b> — spend 19 points on shields, card draw, and armor, then fly them in place of the standard ship.</div>
+          <div>You can also design <b>StarBreach boss ships</b> — hull, shields, damage lanes, progression track, and fleet — then battle them with your crew.</div>
           <div>Find the <b>🛠 Build New Content</b> button at the top of the page, next to your captain's name. It'll sparkle until you've paid it a visit.</div>
         </div>
         <div class="bd-intro-actions">
@@ -2263,7 +2289,7 @@
       lsSet(LS_BUILD_CLICKED);
       if (twinkleTimer) { clearInterval(twinkleTimer); twinkleTimer = null; }
       document.getElementById("btn-build-content")?.classList.remove("bd-twinkle");
-      openPlayerDesigner();
+      openBuildContentHub();
     });
   }
 

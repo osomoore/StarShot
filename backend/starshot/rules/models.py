@@ -84,6 +84,9 @@ class GameConfig:
     # A normalized boss-designer document (see starshot.v2.boss_designs); when
     # set, StarBreach games fight this design instead of the stock scenario.
     star_breach_boss_design: dict | None = None
+    # player_id -> normalized player ship design (see starshot.v2.ship_designs).
+    # Players without an entry fly the standard base ship.
+    player_ship_designs: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +145,9 @@ class ShipState:
     r: int = 0
     facing: int = 0
     shields: int = 2
+    # Compiled layout spec for designed player ships (see
+    # starshot.rules.player_ships.compile_layout_spec); None = base ship.
+    layout: dict | None = None
     damage_taken: int = 0
     destroyed_components: set[str] = field(default_factory=set)
     component_hit_counts: dict[str, int] = field(default_factory=dict)

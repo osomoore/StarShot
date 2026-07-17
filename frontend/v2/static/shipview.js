@@ -12,10 +12,12 @@
     engine: "#7fbf7f",
     life_support: "#d9c46a",
     bay: "#c9a37a",
+    signal_jammer: "#6bffd8",
+    targeting_sensors: "#ff7ad0",
   };
   const TYPE_ICONS = {
     weapon: "☄", shield_generator: "🛡", crew: "☠", bridge: "⚙", engine: "🔥",
-    life_support: "❀", bay: "⚓",
+    life_support: "❀", bay: "⚓", signal_jammer: "📡", targeting_sensors: "🎯",
   };
 
   function hexXY(q, r, size) {
@@ -68,7 +70,8 @@
       }
     }
     let rings = "";
-    for (let i = 0; i < 2; i++) {
+    const maxShields = ship.max_shields != null ? ship.max_shields : 2;
+    for (let i = 0; i < maxShields; i++) {
       const spent = (ship.shields || 0) <= i;
       rings += `<circle cx="${centerX}" cy="${centerY}" r="${ringBase - i * 4.5}" fill="none"
         stroke="${spent ? "#3a4a66" : "#5ec8ff"}" stroke-width="1" stroke-dasharray="4 3"
@@ -138,7 +141,8 @@
 
     let rings = "";
     const ringBase = Math.max(viewW, viewH) / 2 - size * 0.9;
-    for (let i = 0; i < 2; i++) {
+    const maxShields = ship.max_shields != null ? ship.max_shields : 2;
+    for (let i = 0; i < maxShields; i++) {
       const spent = (ship.shields || 0) <= i;
       rings += `<circle cx="${centerX}" cy="${centerY}" r="${ringBase - i * 12}" fill="none"
         stroke="${spent ? "#3a4a66" : "#5ec8ff"}" stroke-width="1.6" stroke-dasharray="8 6"
