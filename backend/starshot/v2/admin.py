@@ -779,6 +779,7 @@ def get_settings(request: Request) -> dict:
         default_starbreach_boss_design_id,
         maintenance_message,
         site_auth_enabled,
+        stardock_config,
     )
 
     _admin_user(request)
@@ -796,6 +797,7 @@ def get_settings(request: Request) -> dict:
             "default_boss_design_id": default_starbreach_boss_design_id(),
             "allowed_boss_design_ids": sorted(allowed_starbreach_boss_design_ids()),
         },
+        "stardock": stardock_config(),
     }
 
 
@@ -807,6 +809,12 @@ class SettingsUpdate(BaseModel):
     allow_overdrive_desperation: bool | None = None
     default_starbreach_boss_design_id: str | None = Field(default=None, max_length=80)
     allowed_starbreach_boss_design_ids: list[str] | None = Field(default=None, max_length=200)
+    # StarDock (player ship designer) rule numbers
+    stardock_max_tiles: int | None = Field(default=None, ge=15, le=60)
+    stardock_primary_lane_limit: int | None = Field(default=None, ge=0, le=40)
+    stardock_secondary_lane_min_severed: int | None = Field(default=None, ge=0, le=12)
+    stardock_upgrade_defense_bonus: int | None = Field(default=None, ge=0, le=10)
+    stardock_upgrade_aim_bonus: int | None = Field(default=None, ge=0, le=10)
 
 
 @admin_router.post("/settings")
@@ -817,6 +825,7 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
         DEFAULT_STARBREACH_BOSS_KEY,
         MAINTENANCE_KEY,
         SITE_AUTH_KEY,
+        STARDOCK_CONFIG_KEYS,
         invalidate_cache,
         maintenance_message,
         site_auth_enabled,
@@ -826,6 +835,10 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
     store = get_v2_store()
     if body.site_auth is not None:
         store.set_setting(SITE_AUTH_KEY, "on" if body.site_auth else "off")
+    for stardock_key in STARDOCK_CONFIG_KEYS:
+        value = getattr(body, f"stardock_{stardock_key}", None)
+        if value is not None:
+            store.set_setting(f"stardock_{stardock_key}", str(int(value)))
     if body.maintenance is not None:
         store.set_setting(MAINTENANCE_KEY, body.maintenance.strip())
     valid_boss_ids = {entry["id"] for entry in boss_designs.list_designs() if entry["valid"]}
@@ -870,11 +883,13 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
         _touch_deck_set(deck_path)
         clear_catalog_cache()
     invalidate_cache()
+    settings_now = get_settings(request)
     return {
         "site_auth": site_auth_enabled(),
         "maintenance": maintenance_message(),
         "rules_config": _read_rules_config_file(),
-        "star_breach": get_settings(request)["star_breach"],
+        "star_breach": settings_now["star_breach"],
+        "stardock": settings_now["stardock"],
     }
 
 

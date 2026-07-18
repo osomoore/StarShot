@@ -473,11 +473,14 @@ def _load_playable_ship_design(design_id: str | None) -> dict | None:
 
 
 def _player_ship_designs_for_match(match: dict) -> dict | None:
+    from starshot.v2 import ship_designs
+
     designs = {}
     for seat in match["seat_list"]:
         design = _load_playable_ship_design(seat.get("ship_design_id"))
         if design is not None:
-            designs[seat["player_id"]] = design
+            # bake the current admin StarDock config into the compiled spec
+            designs[seat["player_id"]] = ship_designs.with_active_config(design)
     return designs or None
 
 

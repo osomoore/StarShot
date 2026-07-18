@@ -74,6 +74,9 @@ class ShipLayout:
     damage_lanes: dict[int, tuple[str, ...]]
     max_shields: int = BASE_MAX_SHIELDS
     base_draw: int = BASE_HAND_SIZE
+    # Flat StarDock upgrade bonuses applied to every action (0 for the base ship).
+    aim_bonus: int = 0
+    defense_bonus: int = 0
     component_by_id: dict[str, ShipComponent] = field(default_factory=dict, compare=False)
     _id_by_coord: dict[tuple[int, int], str] = field(default_factory=dict, compare=False)
 
@@ -179,6 +182,8 @@ def layout_from_spec(spec: dict) -> ShipLayout:
         damage_lanes=damage_lanes,
         max_shields=int(spec.get("max_shields", BASE_MAX_SHIELDS)),
         base_draw=int(spec.get("base_draw", BASE_HAND_SIZE)),
+        aim_bonus=int(spec.get("aim_bonus", 0)),
+        defense_bonus=int(spec.get("defense_bonus", 0)),
     )
 
 

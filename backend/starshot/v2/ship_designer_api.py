@@ -19,14 +19,14 @@ import json
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from starshot.rules.player_ships import (
-    MAX_DRAW,
-    MAX_SHIELDS,
-    MAX_SIGNAL_JAMMERS,
-    MAX_TARGETING_SENSORS,
-    MIN_DRAW,
-    MIN_SHIELDS,
-    PLAYER_SHIP_MAX_TILES,
-    PLAYER_SHIP_POINT_BUDGET,
+    BASE_DRAW,
+    BASE_SHIELDS,
+    BASE_TILE_TOTAL,
+    DECK_SIZE,
+    PRIMARY_LANE_ROLLS,
+    SECONDARY_LANE_ROLLS,
+    SHIP_UPGRADES,
+    UPGRADE_EXTRA_POINTS,
     compile_layout_spec,
     points_breakdown,
 )
@@ -40,18 +40,26 @@ my_ship_designs_router = APIRouter(prefix="/api/v2/my/ship-designs", tags=["v2"]
 
 
 def _designer_meta() -> dict:
+    config = ship_designs.active_stardock_config()
     return {
         "grid_radius": ship_designs.GRID_RADIUS,
         "tile_types": list(ship_designs.TILE_TYPES),
-        "point_budget": PLAYER_SHIP_POINT_BUDGET,
-        "max_tiles": PLAYER_SHIP_MAX_TILES,
-        "min_shields": MIN_SHIELDS,
-        "max_shields": MAX_SHIELDS,
-        "min_draw": MIN_DRAW,
-        "max_draw": MAX_DRAW,
-        "max_signal_jammers": MAX_SIGNAL_JAMMERS,
-        "max_targeting_sensors": MAX_TARGETING_SENSORS,
+        "base_tile_total": BASE_TILE_TOTAL,
+        "deck_size": DECK_SIZE,
+        "base_shields": BASE_SHIELDS,
+        "base_draw": BASE_DRAW,
+        "upgrades": list(SHIP_UPGRADES),
+        "upgrade_extra_points": UPGRADE_EXTRA_POINTS,
+        "primary_lane_rolls": list(PRIMARY_LANE_ROLLS),
+        "secondary_lane_rolls": list(SECONDARY_LANE_ROLLS),
         "player_design_limit": ship_designs.PLAYER_DESIGN_LIMIT,
+        # admin-configurable rule numbers
+        "max_tiles": config["max_tiles"],
+        "primary_lane_limit": config["primary_lane_limit"],
+        "secondary_lane_min_severed": config["secondary_lane_min_severed"],
+        "core_points": config["core_points"],
+        "upgrade_defense_bonus": config["upgrade_defense_bonus"],
+        "upgrade_aim_bonus": config["upgrade_aim_bonus"],
     }
 
 
@@ -72,11 +80,12 @@ def _design_or_404(design_id: str, owner_id: int | None) -> dict:
 
 
 def _design_payload(design: dict) -> dict:
+    configured = ship_designs.with_active_config(design)
     return {
         "design": design,
-        "problems": ship_designs.validate_design(design),
-        "points": points_breakdown(design),
-        "preview": compile_layout_spec(design),
+        "problems": ship_designs.validate_design(configured),
+        "points": points_breakdown(configured),
+        "preview": compile_layout_spec(configured),
     }
 
 
@@ -130,7 +139,12 @@ async def put_my_ship_design(request: Request) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
-    return {"ok": True, "design": design, "problems": problems, "points": points_breakdown(design)}
+    return {
+        "ok": True,
+        "design": design,
+        "problems": problems,
+        "points": points_breakdown(ship_designs.with_active_config(design)),
+    }
 
 
 @my_ship_designs_router.delete("/{design_id}")
@@ -204,7 +218,12 @@ async def put_ship_design(request: Request) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}") from exc
-    return {"ok": True, "design": design, "problems": problems, "points": points_breakdown(design)}
+    return {
+        "ok": True,
+        "design": design,
+        "problems": problems,
+        "points": points_breakdown(ship_designs.with_active_config(design)),
+    }
 
 
 @ship_designer_admin_router.delete("/{design_id}")

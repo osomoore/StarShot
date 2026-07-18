@@ -1,24 +1,31 @@
 {
   "id": "vanguard",
   "name": "Vanguard",
-  "description": "A forward-command cruiser: the bridge rides the nose behind thin armor, traded for full shields, a big hand, and a complete jammer/sensor suite.",
-  "shields": 3,
-  "draw": 6,
+  "description": "The shipwright's reference hull: the classic 10-card deck (3 Move 1, 4 Move 2, 2 Aim +1, 1 Aim +2) with an extra shield charge.",
   "tiles": [
-    {"q": 0, "r": -2, "type": "core"},
-    {"q": 0, "r": -1, "type": "weapon"},
-    {"q": 1, "r": -2, "type": "weapon"},
-    {"q": 0, "r": 0, "type": "life_support"},
-    {"q": -1, "r": 0, "type": "life_support"},
-    {"q": -1, "r": -1, "type": "shield_generator"},
-    {"q": -2, "r": 0, "type": "shield_generator"},
-    {"q": 1, "r": -1, "type": "targeting_sensors"},
-    {"q": 1, "r": 0, "type": "targeting_sensors"},
-    {"q": 2, "r": -1, "type": "signal_jammer"},
-    {"q": 2, "r": 0, "type": "signal_jammer"},
-    {"q": 0, "r": 1, "type": "engine"},
-    {"q": -1, "r": 1, "type": "engine"},
-    {"q": -2, "r": 1, "type": "engine"},
-    {"q": 1, "r": 1, "type": "engine"}
-  ]
+    { "q": 0, "r": 0, "type": "core" },
+    { "q": 0, "r": -1, "type": "bone_room" },
+    { "q": 0, "r": 1, "type": "docking_bay" },
+    { "q": 1, "r": -1, "type": "life_support" },
+    { "q": -1, "r": 1, "type": "life_support" },
+    { "q": 0, "r": -2, "type": "double_cannon" },
+    { "q": 0, "r": 2, "type": "engine" },
+    { "q": -1, "r": 0, "type": "engine" },
+    { "q": 1, "r": 0, "type": "engine" },
+    { "q": 1, "r": -2, "type": "cannon" },
+    { "q": 2, "r": -1, "type": "cannon" },
+    { "q": -1, "r": -1, "type": "double_engine" },
+    { "q": -2, "r": 1, "type": "double_engine" },
+    { "q": -1, "r": 2, "type": "double_engine" },
+    { "q": 1, "r": 1, "type": "double_engine" }
+  ],
+  "lanes": {
+    "3": { "q": -4, "r": 5, "dir": 1 },
+    "5": { "q": -4, "r": -1, "dir": 0 },
+    "6": { "q": -5, "r": 1, "dir": 0 },
+    "8": { "q": 4, "r": 1, "dir": 3 },
+    "9": { "q": 5, "r": -4, "dir": 4 },
+    "11": { "q": 5, "r": -1, "dir": 3 }
+  },
+  "upgrade": "shield"
 }

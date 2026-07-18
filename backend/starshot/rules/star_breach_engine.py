@@ -34,15 +34,19 @@ from starshot.rules.player_ships import (
 
 
 def _sensor_aim_bonus(attacker: PlayerState) -> int:
-    """+2 Aim per intact Targeting Sensors on a designed player ship."""
-    return TARGETING_SENSORS_AIM_BONUS * layout_for_ship(attacker.ship).intact_count_of_type(
+    """Designed-ship Aim passives: +2 per intact legacy Targeting Sensors
+    plus the flat StarDock "aim" upgrade bonus."""
+    layout = layout_for_ship(attacker.ship)
+    return layout.aim_bonus + TARGETING_SENSORS_AIM_BONUS * layout.intact_count_of_type(
         TARGETING_SENSORS_TYPE, attacker.ship.destroyed_components
     )
 
 
 def _jammer_defense_bonus(target: PlayerState) -> int:
-    """+2 defense per intact Signal Jammer on a designed player ship."""
-    return SIGNAL_JAMMER_DEFENSE_BONUS * layout_for_ship(target.ship).intact_count_of_type(
+    """Designed-ship defense passives: +2 per intact legacy Signal Jammer
+    plus the flat StarDock "defense" upgrade bonus."""
+    layout = layout_for_ship(target.ship)
+    return layout.defense_bonus + SIGNAL_JAMMER_DEFENSE_BONUS * layout.intact_count_of_type(
         SIGNAL_JAMMER_TYPE, target.ship.destroyed_components
     )
 

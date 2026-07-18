@@ -18,6 +18,17 @@ ACTIVE_DECK_KEY = "active_deck_set_path"
 DEFAULT_STARBREACH_BOSS_KEY = "default_starbreach_boss_design_id"
 ALLOWED_STARBREACH_BOSSES_KEY = "allowed_starbreach_boss_design_ids"
 
+# StarDock (player ship designer) admin-configurable rule numbers. Stored as
+# individual settings named f"stardock_{key}"; missing/invalid values fall
+# back to the rules defaults (see rules.player_ships.DEFAULT_STARDOCK_CONFIG).
+STARDOCK_CONFIG_KEYS = (
+    "max_tiles",
+    "primary_lane_limit",
+    "secondary_lane_min_severed",
+    "upgrade_defense_bonus",
+    "upgrade_aim_bonus",
+)
+
 
 def _get(key: str) -> str | None:
     now = time.monotonic()
@@ -60,3 +71,16 @@ def default_starbreach_boss_design_id() -> str:
 def allowed_starbreach_boss_design_ids() -> set[str]:
     raw = _get(ALLOWED_STARBREACH_BOSSES_KEY) or ""
     return {entry.strip() for entry in raw.split(",") if entry.strip()}
+
+
+def stardock_config() -> dict:
+    """The active StarDock rule numbers: admin-stored overrides on top of the
+    rules defaults, clamped to sane ranges by the rules layer."""
+    from starshot.rules.player_ships import stardock_config as merge_config
+
+    overrides = {}
+    for key in STARDOCK_CONFIG_KEYS:
+        value = _get(f"stardock_{key}")
+        if value is not None and str(value).strip().lstrip("-").isdigit():
+            overrides[key] = int(value)
+    return merge_config({"config": overrides})

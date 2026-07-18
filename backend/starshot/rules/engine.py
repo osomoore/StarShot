@@ -38,6 +38,7 @@ from starshot.rules.card_effects import (
 from starshot.rules.decks import (
     card_by_id,
     create_base_deck,
+    create_designed_deck,
 )
 from starshot.rules.desperation import (
     create_desperation_deck,
@@ -131,6 +132,8 @@ def create_initial_state(config: GameConfig) -> GameState:
         spec = compile_layout_spec(design)
         player.ship.layout = spec
         player.ship.shields = int(spec.get("max_shields", player.ship.shields))
+        if spec.get("deck"):
+            player.deck = create_designed_deck(spec["deck"])
     if config.seed is None:
         for player in players.values():
             setup_rng.shuffle(player.deck)
@@ -1117,13 +1120,18 @@ def _resolve_attack_volley(
         aim_bonus += 2
     # Designed-ship passives: intact Targeting Sensors sharpen the attacker's
     # aim; intact Signal Jammers on the target raise its defense threshold.
-    sensor_aim_bonus = TARGETING_SENSORS_AIM_BONUS * layout_for_ship(attacker.ship).intact_count_of_type(
+    attacker_layout = layout_for_ship(attacker.ship)
+    target_layout = layout_for_ship(target.ship)
+    sensor_aim_bonus = TARGETING_SENSORS_AIM_BONUS * attacker_layout.intact_count_of_type(
         TARGETING_SENSORS_TYPE, attacker.ship.destroyed_components
     )
-    aim_bonus += sensor_aim_bonus
-    jammer_defense_bonus = SIGNAL_JAMMER_DEFENSE_BONUS * layout_for_ship(target.ship).intact_count_of_type(
+    # StarDock upgrade: a flat Aim / Defense bonus on every action.
+    ship_aim_bonus = attacker_layout.aim_bonus
+    aim_bonus += sensor_aim_bonus + ship_aim_bonus
+    jammer_defense_bonus = SIGNAL_JAMMER_DEFENSE_BONUS * target_layout.intact_count_of_type(
         SIGNAL_JAMMER_TYPE, target.ship.destroyed_components
     )
+    ship_defense_bonus = target_layout.defense_bonus
     always_hits = any(effect.always_hits for effect in attack_effects)
     lead_the_target = any(effect.lead_the_target for effect in attack_effects)
     u_turn_atk = any(effect.u_turn_attack for effect in attack_effects)
@@ -1140,7 +1148,7 @@ def _resolve_attack_volley(
     defense_threshold = (
         fixed_defense_threshold
         if fixed_defense_threshold is not None
-        else distance + target_movement + target.ship.defense_bonus_this_action + jammer_defense_bonus
+        else distance + target_movement + target.ship.defense_bonus_this_action + jammer_defense_bonus + ship_defense_bonus
     )
     roll = _roll_attack(state)
     roll_total = roll + aim_bonus
@@ -1161,6 +1169,8 @@ def _resolve_attack_volley(
         "aim_bonus": aim_bonus,
         "sensor_aim_bonus": sensor_aim_bonus,
         "jammer_defense_bonus": jammer_defense_bonus,
+        "ship_aim_bonus": ship_aim_bonus,
+        "ship_defense_bonus": ship_defense_bonus,
         "distance": distance,
         "target_movement": target_movement,
         "target_defense_bonus": target.ship.defense_bonus_this_action,
