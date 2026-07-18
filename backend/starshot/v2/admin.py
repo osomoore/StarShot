@@ -261,6 +261,28 @@ def _deck_set_by_id(deck_set_id: str) -> dict | None:
     return next((deck_set for deck_set in scan_deck_sets() if deck_set["id"] == deck_set_id), None)
 
 
+def _deletable_deck_set_path(deck_set: dict) -> Path:
+    from starshot.v2.service import LEGACY_CUSTOM_DECKS_ROOT, custom_decks_root
+
+    if not deck_set.get("custom"):
+        raise HTTPException(status_code=400, detail="Stock deck sets cannot be deleted.")
+    deck_path = Path(deck_set["path"]).resolve()
+    allowed_roots = [custom_decks_root().resolve(), LEGACY_CUSTOM_DECKS_ROOT.resolve()]
+    if not any(_path_is_under(deck_path, root) and deck_path != root for root in allowed_roots):
+        raise HTTPException(status_code=400, detail="That deck set is outside the custom deck folders.")
+    if not deck_path.is_dir():
+        raise HTTPException(status_code=404, detail="Deck set folder is already gone.")
+    return deck_path
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 @contextmanager
 def _temporary_keywords_file(path: Path | None):
     if path is None:
@@ -443,6 +465,34 @@ def deck_rename(body: DeckRename, request: Request) -> dict:
     return {"ok": True, "id": body.id, "name": manifest["name"], "sets": _deck_sets_payload()}
 
 
+class DeckDeprecation(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    deprecated: bool
+
+
+@admin_router.post("/deck/deprecation")
+def deck_deprecation(body: DeckDeprecation, request: Request) -> dict:
+    """Mark a deck set deprecated/restored without changing its stable id."""
+    from starshot.v2.service import core_deck_path
+
+    _admin_user(request)
+    deck_set = _deck_set_by_id(body.id)
+    if deck_set is None:
+        raise HTTPException(status_code=404, detail="No deck set with that id.")
+    deck_path = Path(deck_set["path"])
+    if body.deprecated and deck_path.resolve() == core_deck_path().resolve():
+        raise HTTPException(status_code=400, detail="Make another deck set active before deprecating this one.")
+    try:
+        manifest = _read_manifest(deck_path)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot read that deck set manifest: {exc}") from exc
+    manifest["deprecated"] = body.deprecated
+    manifest["modified_at"] = _now_iso()
+    _write_manifest(deck_path, manifest)
+    clear_catalog_cache()
+    return {"ok": True, "id": body.id, "deprecated": body.deprecated, "sets": _deck_sets_payload()}
+
+
 class DeckActivate(BaseModel):
     id: str = Field(min_length=1, max_length=80)
 
@@ -457,6 +507,8 @@ def deck_activate(body: DeckActivate, request: Request) -> dict:
     match = next((s for s in scan_deck_sets() if s["id"] == body.id), None)
     if match is None:
         raise HTTPException(status_code=404, detail="No deck set with that id.")
+    if match.get("deprecated"):
+        raise HTTPException(status_code=400, detail="Deprecated deck sets cannot be made active.")
     match = materialize_runtime_deck_set(match)
     try:
         load_deck_catalog(Path(match["path"]))
@@ -466,6 +518,26 @@ def deck_activate(body: DeckActivate, request: Request) -> dict:
     invalidate_cache()
     clear_catalog_cache()
     return {"ok": True, "sets": _deck_sets_payload()}
+
+
+@admin_router.delete("/deck/{deck_set_id}")
+def deck_delete(deck_set_id: str, request: Request) -> dict:
+    """Delete a custom deck set from server storage."""
+    from starshot.v2.service import core_deck_path
+
+    _admin_user(request)
+    deck_set = _deck_set_by_id(deck_set_id)
+    if deck_set is None:
+        raise HTTPException(status_code=404, detail="No deck set with that id.")
+    deck_path = _deletable_deck_set_path(deck_set)
+    if deck_path == core_deck_path().resolve():
+        raise HTTPException(status_code=400, detail="Make another deck set active before deleting this one.")
+    try:
+        shutil.rmtree(deck_path)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not delete deck set: {exc}") from exc
+    clear_catalog_cache()
+    return {"ok": True, "deleted": deck_set_id, "sets": _deck_sets_payload()}
 
 
 @admin_router.get("/deck/export/{deck_set_id}")

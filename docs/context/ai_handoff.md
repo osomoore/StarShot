@@ -16,7 +16,7 @@ The user is comfortable with Python and C++, only lightly with web/frontend tech
 - `frontend/v2/`: active browser interface served by FastAPI at `/v2`; `/` redirects there.
 - `tests/`: unittest suite for rules, persistence, serialization, and API.
 - `docs/rules/`: canonical rules PDF, extracted text, and implementation checklist.
-- `resources/decks/core_0_2/`: default human-editable TOML deck data.
+- Deck data is TOML under `resources/decks/` plus runtime custom decks under `.starshot/content/decks/custom/`; current v2 gameplay should use the admin-selected active deck set.
 
 ## AI Change Log
 
@@ -80,7 +80,7 @@ Implemented so far:
 
 Current rules target: `docs/rules/rules_0.2.pdf` / `rules_0.2.txt`. All 8 groups of the 0.2 migration are complete.
 
-Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_id`; order submission and resolution reject games whose deck set does not match the active server catalog. Bundled developer deck sets remain under `resources/decks/`; server-created/imported/edited deck sets default to `.starshot/content/decks/custom/`. The v2 deck scanner merges bundled + runtime deck roots and preserves same-id conflicts by exposing older versions with `_developer` / `_server` aliases; activating an alias materializes a runtime copy whose manifest id matches the alias so games bind safely.
+Deck data notes live in `docs/context/deck_data.md`. New games store `deck_set_id`; order submission and resolution reject games whose deck set does not match the active server catalog. Current v2 tests and AI battle analysis should use the admin-selected active deck set, not whichever bundled deck appears first. Bundled developer deck sets remain under `resources/decks/`; `resources/decks/core_0_2/` is deprecated legacy data. Server-created/imported/edited deck sets default to `.starshot/content/decks/custom/`. The v2 deck scanner merges bundled + runtime deck roots and preserves same-id conflicts by exposing older versions with `_developer` / `_server` aliases; activating an alias materializes a runtime copy whose manifest id matches the alias so games bind safely.
 
 **Always read `docs/rules/rules_0.2.txt` directly when verifying rules details.** The `rules_implementation.md` file is partially outdated (written against 0.1) and should not be used as the source of truth for card counts, move behavior, or combat math.
 

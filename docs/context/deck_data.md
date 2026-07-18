@@ -1,12 +1,8 @@
 # StarShot Deck Data
 
-The starting deck and shared Desperation deck are loaded from TOML files. The default deck set is:
+The starting deck and shared Desperation deck are loaded from TOML files. In v2, current gameplay should use the admin-selected active deck set. The server reports it from `/api/v2/admin/deck`; if no admin setting exists, v2 falls back to its configured default in `backend/starshot/v2/service.py`.
 
-```text
-resources/decks/core_0_2/
-```
-
-It contains:
+Every deck set contains:
 
 - `manifest.toml`: deck set id, display name, and rules version.
 - `base_deck.toml`: cards copied into each player's starting deck.
@@ -14,7 +10,7 @@ It contains:
 
 ## Selecting A Deck Set
 
-By default the server uses `resources/decks/core_0_2`.
+For current v2 work, prefer the admin-selected active deck set. Do not choose a deck by directory order or by the word "core"; `resources/decks/core_0_2` is deprecated legacy data.
 
 To start the dev server with a different deck set:
 

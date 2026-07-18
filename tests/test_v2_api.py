@@ -563,7 +563,9 @@ class AiBattleTests(unittest.TestCase):
     def test_admin_batch_ai_battle_history_summary(self) -> None:
         admin = self.admin_client()
         deck_sets = admin.get("/api/v2/admin/deck").json()["sets"]
-        deck_set_id = deck_sets[0]["id"]
+        active_deck = next(deck_set for deck_set in deck_sets if deck_set.get("active"))
+        self.assertFalse(active_deck.get("deprecated", False))
+        deck_set_id = active_deck["id"]
 
         batch = admin.post(
             "/api/v2/admin/ai-battle-batch",
@@ -951,9 +953,43 @@ class AdminTests(unittest.TestCase):
             renamed_set = next(deck_set for deck_set in renamed.json()["sets"] if deck_set["id"] == "custom_api_bundle")
             self.assertEqual(renamed_set["name"], "Renamed API Bundle")
             self.assertTrue(renamed_set["modified_at"])
+
+            active_delete = client.delete("/api/v2/admin/deck/custom_api_bundle")
+            self.assertEqual(active_delete.status_code, 400)
+            self.assertIn("active", active_delete.json()["detail"])
+
+            active_deprecate = client.post(
+                "/api/v2/admin/deck/deprecation",
+                json={"id": "custom_api_bundle", "deprecated": True},
+            )
+            self.assertEqual(active_deprecate.status_code, 400)
+            self.assertIn("active", active_deprecate.json()["detail"])
         finally:
             restored = client.post("/api/v2/admin/deck/activate", json={"id": "core_0_3_sides"})
             self.assertEqual(restored.status_code, 200, restored.text)
+
+        stock_delete = client.delete("/api/v2/admin/deck/core_0_2_sides")
+        self.assertEqual(stock_delete.status_code, 400)
+        self.assertIn("Stock deck sets", stock_delete.json()["detail"])
+
+        deprecated = client.post(
+            "/api/v2/admin/deck/deprecation",
+            json={"id": "custom_api_bundle", "deprecated": True},
+        )
+        self.assertEqual(deprecated.status_code, 200, deprecated.text)
+        deprecated_set = next(deck_set for deck_set in deprecated.json()["sets"] if deck_set["id"] == "custom_api_bundle")
+        self.assertTrue(deprecated_set["deprecated"])
+        rejected_battle = client.post(
+            "/api/v2/admin/ai-battle-batch",
+            json={"ai_types": ["vault_runner", "hunter_killer"], "run_count": 1, "deck_set_id": "custom_api_bundle"},
+        )
+        self.assertEqual(rejected_battle.status_code, 400)
+        self.assertIn("deprecated", rejected_battle.json()["detail"])
+
+        deleted = client.delete("/api/v2/admin/deck/custom_api_bundle")
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertNotIn("custom_api_bundle", [deck_set["id"] for deck_set in deleted.json()["sets"]])
+        self.assertFalse((Path(os.environ["STARSHOT_CUSTOM_DECKS"]) / "api_bundle").exists())
 
         bad_buffer = io.BytesIO()
         with zipfile.ZipFile(bad_buffer, "w", zipfile.ZIP_DEFLATED) as bad:

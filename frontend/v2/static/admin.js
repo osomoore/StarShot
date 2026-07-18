@@ -155,6 +155,7 @@
       option.value = deckSet.id;
       const changed = shortDateTime(deckSet.last_changed_at || deckSet.modified_at);
       option.textContent = (deckSet.active ? "⚓ " : "") + deckSet.name + (deckSet.custom ? " (custom)" : "") +
+        (deckSet.deprecated ? " (deprecated)" : "") +
         (changed ? " - " + changed : "") + (deckSet.active ? " — active" : "");
       if (deckSet.active) option.selected = true;
       select.appendChild(option);
@@ -172,17 +173,34 @@
     const deckSet = selectedDeckSet();
     const meta = document.getElementById("deck-set-meta");
     const rename = document.getElementById("deck-rename-name");
+    const deleteButton = document.getElementById("deck-delete");
+    const deprecateButton = document.getElementById("deck-deprecate");
     if (!deckSet) {
       meta.textContent = "";
       rename.value = "";
+      deleteButton.disabled = true;
+      deleteButton.title = "Pick a custom deck set first";
+      deprecateButton.disabled = true;
+      deprecateButton.textContent = "Deprecate";
+      deprecateButton.title = "Pick a deck set first";
       return;
     }
     rename.value = deckSet.name || "";
+    deleteButton.disabled = !deckSet.custom || deckSet.active;
+    deleteButton.title = deckSet.active
+      ? "Make another deck set active before deleting this one"
+      : (deckSet.custom ? "Delete this custom deck set" : "Stock deck sets cannot be deleted");
+    deprecateButton.disabled = deckSet.active && !deckSet.deprecated;
+    deprecateButton.textContent = deckSet.deprecated ? "Restore" : "Deprecate";
+    deprecateButton.title = deckSet.active && !deckSet.deprecated
+      ? "Make another deck set active before deprecating this one"
+      : (deckSet.deprecated ? "Restore this deck set to normal selectors" : "Mark this deck set deprecated");
     const uploaded = shortDateTime(deckSet.uploaded_at);
     const modified = shortDateTime(deckSet.last_changed_at || deckSet.modified_at);
     meta.textContent = [
       `ID: ${deckSet.id}`,
       deckSet.custom ? "custom" : "stock",
+      deckSet.deprecated ? "deprecated" : "",
       uploaded ? `uploaded ${uploaded}` : "",
       modified ? `last changed ${modified}` : "",
     ].filter(Boolean).join(" | ");
@@ -281,6 +299,39 @@
       await loadDeck();
     } catch (error) {
       status("deck-status", "Rename failed: " + error.message, false);
+    }
+  });
+  document.getElementById("deck-delete").addEventListener("click", async () => {
+    const deckSet = selectedDeckSet();
+    if (!deckSet) { toast("Pick a deck set first"); return; }
+    if (!deckSet.custom) { toast("Stock deck sets cannot be deleted"); return; }
+    if (deckSet.active) { toast("Make another deck set active before deleting this one"); return; }
+    if (!confirm(`Delete deck set "${deckSet.name}" (${deckSet.id})? This cannot be undone.`)) return;
+    status("deck-status", "Deleting deck set...", true);
+    try {
+      await del("/admin/deck/" + encodeURIComponent(deckSet.id));
+      status("deck-status", `Deleted ${deckSet.name}.`, true);
+      toast("Deck set deleted", true);
+      await loadDeck();
+    } catch (error) {
+      status("deck-status", "Delete failed: " + error.message, false);
+    }
+  });
+  document.getElementById("deck-deprecate").addEventListener("click", async () => {
+    const deckSet = selectedDeckSet();
+    if (!deckSet) { toast("Pick a deck set first"); return; }
+    const deprecated = !deckSet.deprecated;
+    if (deprecated && deckSet.active) { toast("Make another deck set active before deprecating this one"); return; }
+    const verb = deprecated ? "Deprecate" : "Restore";
+    if (!confirm(`${verb} deck set "${deckSet.name}" (${deckSet.id})?`)) return;
+    status("deck-status", `${verb} deck set...`, true);
+    try {
+      await post("/admin/deck/deprecation", { id: deckSet.id, deprecated });
+      status("deck-status", deprecated ? `${deckSet.name} is deprecated.` : `${deckSet.name} is restored.`, true);
+      toast(deprecated ? "Deck set deprecated" : "Deck set restored", true);
+      await loadDeck();
+    } catch (error) {
+      status("deck-status", `${verb} failed: ` + error.message, false);
     }
   });
   document.getElementById("deck-saveas").addEventListener("click", async () => {
@@ -460,9 +511,12 @@
     const current = select.value;
     select.innerHTML = "";
     for (const deckSet of deckSets) {
+      if (deckSet.deprecated && deckSet.id !== current) continue;
       const option = document.createElement("option");
       option.value = deckSet.id;
-      option.textContent = deckSet.name + (deckSet.active ? " (active)" : "") + (deckSet.custom ? " (custom)" : "");
+      option.textContent = deckSet.name + (deckSet.active ? " (active)" : "") +
+        (deckSet.custom ? " (custom)" : "") + (deckSet.deprecated ? " (deprecated)" : "");
+      option.disabled = !!deckSet.deprecated;
       if ((current && current === deckSet.id) || (!current && deckSet.active)) option.selected = true;
       select.appendChild(option);
     }

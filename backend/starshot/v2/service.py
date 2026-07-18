@@ -206,6 +206,7 @@ def scan_deck_sets() -> list[dict]:
                     "source_id": data["id"],
                     "name": data.get("name", data["id"]),
                     "rules_version": data.get("rules_version", ""),
+                    "deprecated": bool(data.get("deprecated", False)),
                     "uploaded_at": data.get("uploaded_at"),
                     "modified_at": modified_at,
                     "last_changed_at": modified_at,
@@ -242,7 +243,7 @@ def scan_deck_sets() -> list[dict]:
     for deck_set in sets:
         deck_set.pop("_hash", None)
         deck_set.pop("_mtime", None)
-    return sorted(sets, key=lambda item: item["id"])
+    return sorted(sets, key=lambda item: (bool(item.get("deprecated")), item["id"]))
 
 
 def deck_path_for_game(raw_state: dict) -> Path:
@@ -676,6 +677,8 @@ def _deck_set_for_id(deck_set_id: str | None) -> dict:
         if deck_set_id is None and Path(deck_set["path"]) == active:
             return deck_set
         if deck_set["id"] == deck_set_id:
+            if deck_set.get("deprecated"):
+                raise ValueError(f"Deck set {deck_set_id!r} is deprecated.")
             return materialize_runtime_deck_set(deck_set)
     if deck_set_id is None:
         fallback_id = _manifest_id(active) or "active"

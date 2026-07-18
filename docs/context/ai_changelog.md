@@ -2,6 +2,36 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 08:30:00 -05:00
+
+- Title: Active deck guidance
+- Build ID: `96f90363e8d1`
+- AI agent: Codex
+- Summary:
+  - Updated repo and deck-folder agent guidance so future code assistants use the admin-selected active deck set for current gameplay, AI battle analysis, and new tests.
+  - Added a local warning README inside deprecated `core_0_2` and corrected stale docs that still described it as the default deck.
+  - Adjusted the AI battle API test to use the active deck from `/api/v2/admin/deck` instead of choosing by scan order.
+
+## 2026-07-18 08:20:00 -05:00
+
+- Title: Deprecated deck set handling
+- Build ID: `96f90363e8d1`
+- AI agent: Codex
+- Summary:
+  - Added deck-set deprecation metadata to v2 scanning, sorted deprecated decks after live decks, and marked the old bundled `core_0_2` deck deprecated.
+  - Added an admin Deprecate/Restore action; active decks cannot be deprecated, deprecated decks cannot be activated, and AI battle runs reject explicit deprecated deck ids.
+  - Updated the admin AI battle deck selector to omit deprecated decks and added API coverage so tests choose non-deprecated decks.
+
+## 2026-07-18 08:05:00 -05:00
+
+- Title: Admin deck set deletion
+- Build ID: `96f90363e8d1`
+- AI agent: Codex
+- Summary:
+  - Added an admin-only delete route for custom deck sets with server-side guards against deleting stock decks, the active deck, or paths outside the custom deck roots.
+  - Added a Deck Editor delete button that is disabled for stock/active sets and refreshes the deck list after deletion.
+  - Added API coverage for active/stock rejection and inactive custom deck deletion.
+
 ## 2026-07-18 07:05:00 -05:00
 
 - Title: Fake-player AI movement/overdrive overhaul for modern duels
