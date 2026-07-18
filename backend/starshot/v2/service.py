@@ -316,12 +316,18 @@ def _submit_ai_orders(state: GameState, seat: dict, ai_level: str = "pirate_king
         return submit_orders(state, seat["player_id"], fallback_orders())
 
 
+# Captains whose powers alter ship movement (Drifter's cleanup drift, Turbo's
+# +1 move). The AI planners mirror the engine's plain movement rules and have
+# no model of these powers, so AI seats never pick them.
+AI_EXCLUDED_CAPTAIN_IDS = frozenset({"danny_davos", "riley_rounder"})
+
+
 def _choose_ai_captain(state: GameState, seat: dict) -> GameState:
     player = state.players.get(seat["player_id"])
     if player is None or player.captain_id or not player.captain_options:
         return state
     rng = state.rng_seed or 0
-    captain_ids = tuple(captain.id for captain in CAPTAINS)
+    captain_ids = tuple(captain.id for captain in CAPTAINS if captain.id not in AI_EXCLUDED_CAPTAIN_IDS)
     index = (state.rng_step + len(seat["player_id"]) + rng) % len(captain_ids)
     player.captain_options = captain_ids
     return choose_captain(state, player.id, captain_ids[index])

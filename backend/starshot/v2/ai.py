@@ -12,16 +12,30 @@ Three personalities ported from the v1 client-side JS and improved:
 
 Improvements over the v1 JS AI:
 - Hit odds use the same math as the engine (2d6 vs distance + movement +
-  defense) with a *prediction* of the target's movement from its actual
-  movement history, instead of reading the stale previous-action value.
+  defense, max range, fixed thresholds, the natural-12 auto hit) with a
+  *prediction* of the target's movement from its actual movement history,
+  instead of reading the stale previous-action value.
 - Own movement is counted as defense when weighing exposure to enemy fire.
 - Desperate faces (Afterburners, Thrust/Turbo Ions, Crack Shot, Steady Shot,
   StarShot) are played when they swing the action.
-- Overdrive pricing accounts for the 0.3 rules (no overheat pile — the cost is
-  drawing the seal card next round).
+- Overdrive is priced by the modern (0.3) economy: every overdriven stack is
+  one fewer card drawn next round, so the AIs ration themselves to one
+  overdrive per round — except the final round, when there is no next draw
+  and overdrive is free tempo.
+- Hands are discarded every cleanup, so the AIs never pass an action while
+  holding a usable card: a low-odds shot or a positioning move always beats
+  letting cards rot. The one exception is holding still inside a vault the
+  ship wants to score at cleanup.
 
 Candidate orders are interpreted with the engine's own ``interpret_card`` so
-the AI can never disagree with the rules about what a card does.
+the AI can never disagree with the rules about what a card does. Movement
+planning mirrors the engine exactly, including overdrive replaying a stack's
+turns (an overdriven turning move curves) and Crazy Ivan's u-turn attack
+flipping the ship's facing during combat.
+
+The AIs intentionally have no model of movement-altering StarCommand captain
+powers (Drifter's cleanup drift, Turbo's +1 move). AI seats simply never pick
+those captains — see ``_choose_ai_captain`` in ``starshot.v2.service``.
 """
 
 from __future__ import annotations
@@ -40,6 +54,7 @@ from starshot.rules.hex import (
     turn_right,
     u_turn,
 )
+from starshot.rules.vaults import FINAL_ROUND_NUMBER, VAULT_RADIUS
 from starshot.rules.models import (
     ActionStack,
     Card,
@@ -213,7 +228,10 @@ def _apply_move(pos: Pos, use: MoveUse) -> tuple[Pos, int]:
     distance = move.distance
     if move.movement_disabled or move.warp_destination:
         return pos, 0
-    if move.double_turn_after_move:
+    if move.double_turn_right:
+        facing = turn_right(turn_right(facing))
+        q, r = move_forward(q, r, facing, distance)
+    elif move.double_turn_after_move:
         q, r = move_forward(q, r, facing, distance)
         facing = (
             turn_left(turn_left(facing)) if choice == "turn_left" else turn_right(turn_right(facing))
@@ -329,6 +347,9 @@ class Situation:
         self.hand_moves = moves
         self.hand_attacks = attacks
         self.pos = Pos(me.ship.q, me.ship.r, me.ship.facing)
+        # Each overdriven stack costs one card off next round's draw, so ration
+        # overdrive — except the final round, when there is no next draw.
+        self.overdrive_budget = 3 if state.round_number >= FINAL_ROUND_NUMBER else 1
         self._movement_history: dict[str, list[int]] = {}
         for event in state.event_log[-200:]:
             if event.get("type") == "movement_resolved" and not event.get("overdrive_copy"):
@@ -336,18 +357,41 @@ class Situation:
                 history.append(int(event.get("movement_this_action", 0)))
 
     def expected_movement(self, player_id: str) -> float:
-        history = self._movement_history.get(player_id, [])[-6:]
+        """Predicted per-action movement of a ship (its defense against us).
+        Early-round overdrive sprints rack up 6-8 movement in one action but
+        say little about how much a ship moves once it settles near its goal,
+        so the estimate is capped rather than taken at face value."""
+        history = self._movement_history.get(player_id, [])[-4:]
         if not history:
             return 2.0
-        return sum(history) / len(history)
+        return min(3.0, sum(history) / len(history))
 
-    def hit_chance(self, from_pos: Pos, enemy: PlayerState, aim: int, lead_target: bool, always_hits: bool) -> float:
-        if always_hits:
-            return 1.0
+    def volley_hit_chance(self, from_pos: Pos, enemy: PlayerState, attack_uses: list[AttackUse]) -> float:
+        """Hit odds for a volley, using the engine's combat math: 2d6 + aim vs
+        distance + target movement, honoring max range, fixed defense
+        thresholds, always-hits, and the natural-12 auto hit."""
+        attacks = [use.effect.attack for use in attack_uses if use.effect.attack]
+        if not attacks:
+            return 0.0
         distance = hex_distance(from_pos.q, from_pos.r, enemy.ship.q, enemy.ship.r)
-        predicted = 0.0 if lead_target else self.expected_movement(enemy.id)
-        needed = distance + round(predicted) - aim
-        return p_2d6_at_least(needed)
+        max_range = next((attack.max_range for attack in attacks if attack.max_range is not None), None)
+        if max_range is not None and distance > max_range:
+            return 0.0
+        if any(attack.always_hits for attack in attacks):
+            return 1.0
+        aim = sum(attack.aim_bonus for attack in attacks)
+        fixed = next(
+            (attack.fixed_defense_threshold for attack in attacks if attack.fixed_defense_threshold is not None),
+            None,
+        )
+        if fixed is not None:
+            needed = fixed - aim
+        else:
+            lead = any(attack.lead_the_target for attack in attacks)
+            predicted = 0.0 if lead else self.expected_movement(enemy.id)
+            needed = distance + round(predicted) - aim
+        # A natural 12 always hits, so no in-range shot is ever hopeless.
+        return max(p_2d6_at_least(needed), 1.0 / 36.0)
 
     def kill_pressure(self, enemy: PlayerState) -> float:
         """How close the enemy is to death: 0 (fresh) .. ~1 (one hit away)."""
@@ -356,12 +400,9 @@ class Situation:
         return min(1.0, len(enemy.ship.destroyed_components) / 6 + enemy.ship.damage_taken / 10)
 
     def attack_value(self, from_pos: Pos, enemy: PlayerState, attack_uses: list[AttackUse]) -> float:
-        aim = sum(use.effect.attack.aim_bonus for use in attack_uses if use.effect.attack)
-        always = any(use.effect.attack.always_hits for use in attack_uses if use.effect.attack)
-        lead = any(use.effect.attack.lead_the_target for use in attack_uses if use.effect.attack)
         damage = max((use.effect.attack.base_damage for use in attack_uses if use.effect.attack), default=1)
         damage += sum(use.effect.attack.damage_bonus for use in attack_uses if use.effect.attack)
-        p_hit = self.hit_chance(from_pos, enemy, aim, lead, always)
+        p_hit = self.volley_hit_chance(from_pos, enemy, attack_uses)
         if enemy.ship.shields > 0:
             return p_hit * 1.0  # shield steal: guaranteed 1 VP on a hit
         return p_hit * (1.0 + 2.0 * self.kill_pressure(enemy) + 0.25 * (damage - 1))
@@ -423,6 +464,14 @@ def _targeted(selection: OrderCardSelection, effect: CardEffect, target_id: str)
     )
 
 
+def _pos_after_attack_stack(pos: Pos, uses: list[AttackUse]) -> Pos:
+    """Crazy Ivan u-turn attacks flip the attacker's facing during combat."""
+    flips = sum(1 for use in uses if use.effect.attack and use.effect.attack.u_turn_attack)
+    if flips % 2:
+        return Pos(pos.q, pos.r, u_turn(pos.facing))
+    return pos
+
+
 def _attack_stack(
     situation: Situation,
     available: list[AttackUse],
@@ -430,22 +479,21 @@ def _attack_stack(
     enemy: PlayerState,
     allow_desperate: bool,
     overdrive_threshold: float,
+    allow_overdrive: bool = True,
 ) -> tuple[StackPlan | None, list[AttackUse]]:
     """Build an attack stack against the enemy; returns (plan, uses consumed)."""
     combo = _best_attack_uses(situation, available, from_pos, enemy, allow_desperate)
     if not combo:
         return None, []
-    aim = sum(use.effect.attack.aim_bonus for use in combo if use.effect.attack)
-    always = any(use.effect.attack.always_hits for use in combo if use.effect.attack)
-    lead = any(use.effect.attack.lead_the_target for use in combo if use.effect.attack)
-    p_hit = situation.hit_chance(from_pos, enemy, aim, lead, always)
+    p_hit = situation.volley_hit_chance(from_pos, enemy, combo)
     # Overdrive repeats the volley (desperate faces excluded from the copy).
     copies_help = any(not use.is_desperate for use in combo)
     overdrive_legal = situation.rules.allow_overdrive_desperation or not any(use.is_desperate for use in combo)
     seal = (
         SealMode.OVERDRIVE
         if (
-            (situation.rules.overdrive_copies_action or situation.rules.overdrive_copies_cards)
+            allow_overdrive
+            and (situation.rules.overdrive_copies_action or situation.rules.overdrive_copies_cards)
             and overdrive_legal
             and copies_help
             and p_hit >= overdrive_threshold
@@ -463,7 +511,6 @@ def _mixed_move_attack_stack(
     from_pos: Pos,
     enemy: PlayerState,
     allow_desperate: bool,
-    overdrive_threshold: float,
 ) -> tuple[StackPlan | None, MoveUse | None, AttackUse | None, Pos, float]:
     """Try a legal move+attack stack. Movement resolves before combat, so this
     is valuable when a single move creates a better shot in the same action."""
@@ -490,34 +537,15 @@ def _mixed_move_attack_stack(
             value -= 0.16 * int(move_use.is_desperate or attack_use.is_desperate)
             if value <= baseline + 0.08:
                 continue
-            p_hit = situation.hit_chance(
-                moved_pos,
-                enemy,
-                attack_use.effect.attack.aim_bonus if attack_use.effect.attack else 0,
-                attack_use.effect.attack.lead_the_target if attack_use.effect.attack else False,
-                attack_use.effect.attack.always_hits if attack_use.effect.attack else False,
-            )
-            overdrive_legal = (
-                situation.rules.allow_overdrive_desperation
-                or not (move_use.is_desperate or attack_use.is_desperate)
-            )
-            seal = (
-                SealMode.OVERDRIVE
-                if (
-                    (situation.rules.overdrive_copies_action or situation.rules.overdrive_copies_cards)
-                    and overdrive_legal
-                    and not move_use.is_desperate
-                    and not attack_use.is_desperate
-                    and p_hit >= overdrive_threshold
-                )
-                else SealMode.SEALED
-            )
+            # Never overdrive a mixed stack: the overdrive copy replays the
+            # move as well, which drags the ship past the firing position the
+            # shot was priced at.
             plan = StackPlan(
                 cards=[
                     move_use.selection,
                     _targeted(attack_use.selection, attack_use.effect, enemy.id),
                 ],
-                seal_mode=seal,
+                seal_mode=SealMode.SEALED,
             )
             if value > best[4]:
                 best = (plan, move_use, attack_use, moved_pos, value)
@@ -573,18 +601,27 @@ def fallback_orders() -> OrdersSubmission:
 # --------------------------------------------------------------------------
 
 
-def _round_vaults(state: GameState, me: PlayerState) -> list:
-    """Vaults worth chasing this round, best value first."""
+def _round_vaults(state: GameState, me: PlayerState, include_upcoming: bool = False) -> list:
+    """Vaults worth chasing this round, best value first. With
+    ``include_upcoming``, next round's vaults are worth camping early at a
+    discount (they only score at next round's cleanup)."""
     ship = me.ship
     scored = []
     for vault in state.vaults:
         active = vault.is_fang or vault.number == state.round_number
-        if not active or me.id in vault.claimed_by:
+        upcoming = include_upcoming and not active and vault.number == state.round_number + 1
+        if not active and not upcoming:
             continue
-        distance = max(0, hex_distance(ship.q, ship.r, vault.q, vault.r) - 1)
-        value = vault.victory_points + (0 if vault.is_fang else 1)  # numbered: + desperation card
-        if vault.is_fang and state.round_number < 6:
-            value = max(1, value - 1)  # Fang bites back before the payoff round
+        # The Fang re-awards every round the ship holds it; numbered vaults
+        # pay once, so skip ones this ship already claimed.
+        if not vault.is_fang and me.id in vault.claimed_by:
+            continue
+        distance = max(0, hex_distance(ship.q, ship.r, vault.q, vault.r) - VAULT_RADIUS)
+        value = float(vault.victory_points + (0 if vault.is_fang else 1))  # numbered: + desperation card
+        if vault.is_fang and state.round_number < FINAL_ROUND_NUMBER:
+            value = max(1.0, value - 1.0)  # Fang bites back before the payoff round
+        if upcoming:
+            value *= 0.5
         scored.append((value / (1.0 + distance), distance, vault))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [item[2] for item in scored]
@@ -597,30 +634,39 @@ def _plan_route(
     goal_r: int,
     stacks_available: int,
     allow_desperate: bool,
+    overdrive_budget: int = 0,
 ) -> list[MoveStackOption] | None:
-    """Beam search across up to `stacks_available` stacks to land within 1 hex
-    of the goal. Returns the stack options per action, or None."""
+    """Beam search across up to `stacks_available` stacks to land within the
+    vault's claim radius. Returns the stack options per action; if no card
+    combination gets all the way there, returns the cheapest route that makes
+    real progress (without spending overdrive on a non-arrival), or None when
+    no move helps at all."""
 
     def goal_distance(pos: Pos) -> int:
-        return max(0, hex_distance(pos.q, pos.r, goal_q, goal_r) - 1)
+        return max(0, hex_distance(pos.q, pos.r, goal_q, goal_r) - VAULT_RADIUS)
 
-    Beam = tuple[Pos, list[MoveStackOption], frozenset[str], int]  # pos, plans, used card ids, cost
-    beams: list[Beam] = [(situation.pos, [], frozenset(), 0)]
-    if goal_distance(situation.pos) == 0:
+    start_distance = goal_distance(situation.pos)
+    if start_distance == 0:
         return []
+    # pos, plans, used card ids, cost, overdriven stacks
+    Beam = tuple[Pos, list[MoveStackOption], frozenset[str], int, int]
+    beams: list[Beam] = [(situation.pos, [], frozenset(), 0, 0)]
     best_finish: list[MoveStackOption] | None = None
     best_cost = 10**9
+    best_partial: tuple[int, int, list[MoveStackOption]] | None = None  # (distance, cost, plans)
     for _ in range(stacks_available):
         next_beams: list[Beam] = []
-        for pos, plans, used, cost in beams:
+        for pos, plans, used, cost, overdriven in beams:
             pool = [
                 use
                 for use in moves
                 if use.selection.card_id not in used and (allow_desperate or not use.is_desperate)
             ]
-            options = _move_stack_options(pool, pos, allow_overdrive=True, rules=situation.rules)
+            options = _move_stack_options(pool, pos, allow_overdrive=overdrive_budget > 0, rules=situation.rules)
             options.sort(key=lambda option: goal_distance(option.end))
             for option in options[:12]:
+                if option.overdrive and overdriven >= overdrive_budget:
+                    continue
                 option_cost = (
                     cost
                     + (2 if option.overdrive else 0)
@@ -628,17 +674,29 @@ def _plan_route(
                     + len(option.plan.cards)
                 )
                 new_plans = plans + [option]
-                if goal_distance(option.end) == 0 and option_cost < best_cost:
+                end_distance = goal_distance(option.end)
+                if end_distance == 0 and option_cost < best_cost:
                     best_cost = option_cost
                     best_finish = new_plans
                     continue
+                # Overdrive that does not finish the route just burns next
+                # round's card; only sealed/desperate stacks count as progress.
+                if not option.overdrive and end_distance < start_distance:
+                    if best_partial is None or (end_distance, option_cost) < best_partial[:2]:
+                        best_partial = (end_distance, option_cost, new_plans)
                 new_used = used | {c.card_id for c in option.plan.cards}
-                next_beams.append((option.end, new_plans, new_used, option_cost))
+                next_beams.append(
+                    (option.end, new_plans, new_used, option_cost, overdriven + (1 if option.overdrive else 0))
+                )
         next_beams.sort(key=lambda beam: (goal_distance(beam[0]), beam[3]))
         beams = next_beams[:10]
         if not beams:
             break
-    return best_finish
+    if best_finish is not None:
+        return best_finish
+    if best_partial is not None:
+        return best_partial[2]
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -652,55 +710,78 @@ def _plan_vault_runner(situation: Situation) -> OrdersSubmission:
     attacks = list(situation.hand_attacks)
     plans: list[StackPlan] = []
     pos = situation.pos
+    overdrive_budget = situation.overdrive_budget
 
-    targets = _round_vaults(state, me)
-    route: list[MoveStackOption] | None = None
+    targets = _round_vaults(state, me, include_upcoming=True)
+    goal = None
     for vault in targets[:3]:
-        route = _plan_route(situation, moves, vault.q, vault.r, 3, allow_desperate=True)
+        route = _plan_route(
+            situation, moves, vault.q, vault.r, 3, allow_desperate=True, overdrive_budget=overdrive_budget
+        )
         if route is not None:
+            goal = vault
+            for option in route[:3]:
+                plans.append(option.plan)
+                moves, attacks = _consume_plan(option.plan, moves, attacks)
+                pos = option.end
+                if option.overdrive:
+                    overdrive_budget -= 1
             break
-    if route:
-        for option in route[:3]:
-            plans.append(option.plan)
-            moves, attacks = _consume_plan(option.plan, moves, attacks)
-            pos = option.end
 
-    # Fill remaining stacks: shoot on solid odds, else keep closing on loot.
+    def holding_vault() -> bool:
+        """Standing inside a vault we mean to score: cleanup checks the final
+        position, so later stacks must not wander off it."""
+        return any(
+            hex_distance(pos.q, pos.r, vault.q, vault.r) <= VAULT_RADIUS
+            for vault in ([goal] if goal is not None else targets[:3])
+        )
+
+    # Fill remaining stacks. Hands are discarded at cleanup, so an unplayed
+    # attack card is a wasted card: take the best shot available even on poor
+    # odds. Only sitting inside a vault justifies standing still.
     while len(plans) < 3:
-        best_enemy = None
-        best_value = 0.55
-        played_mixed_stack = False
+        best_enemy, best_value = None, 0.0
         for enemy in situation.enemies:
             combo = _best_attack_uses(situation, attacks, pos, enemy, allow_desperate=False)
             if combo:
                 value = situation.attack_value(pos, enemy, combo)
                 if value > best_value:
                     best_value, best_enemy = value, enemy
-            mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
-                situation,
-                moves,
-                attacks,
-                pos,
-                enemy,
-                allow_desperate=False,
-                overdrive_threshold=0.6,
-            )
-            if mixed_plan and mixed_value > best_value:
-                plans.append(mixed_plan)
-                moves, attacks = _consume_plan(mixed_plan, moves, attacks)
-                pos = mixed_pos
-                played_mixed_stack = True
-                break
-        if played_mixed_stack:
-            continue
+        if not holding_vault():
+            for enemy in situation.enemies:
+                mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
+                    situation, moves, attacks, pos, enemy, allow_desperate=False
+                )
+                if mixed_plan and mixed_value > max(best_value, 0.55):
+                    plans.append(mixed_plan)
+                    moves, attacks = _consume_plan(mixed_plan, moves, attacks)
+                    pos = _pos_after_attack_stack(mixed_pos, [mixed_attack] if mixed_attack else [])
+                    break
+            else:
+                mixed_plan = None
+            if mixed_plan:
+                continue
         if best_enemy is not None:
             plan, consumed = _attack_stack(
-                situation, attacks, pos, best_enemy, allow_desperate=False, overdrive_threshold=0.6
+                situation,
+                attacks,
+                pos,
+                best_enemy,
+                allow_desperate=False,
+                overdrive_threshold=0.6,
+                allow_overdrive=overdrive_budget > 0,
             )
             if plan:
+                if plan.seal_mode == SealMode.OVERDRIVE:
+                    overdrive_budget -= 1
                 plans.append(plan)
                 moves, attacks = _consume_plan(plan, moves, attacks)
+                pos = _pos_after_attack_stack(pos, consumed)
                 continue
+        if holding_vault():
+            # Park on the loot; never move off before cleanup scores it.
+            plans.append(StackPlan())
+            continue
         if situation.fragile() and moves:
             plan, moves, pos = _defensive_move(situation, moves, pos)
             if plan:
@@ -709,22 +790,21 @@ def _plan_vault_runner(situation: Situation) -> OrdersSubmission:
                 continue
         # No route landed on the vault: still grind toward it greedily.
         if targets and moves:
-            goal = targets[0]
+            goal_vault = goal or targets[0]
             options = _move_stack_options(
                 [use for use in moves if not use.is_desperate],
                 pos,
-                allow_overdrive=True,
+                allow_overdrive=False,
                 rules=situation.rules,
             )
             if options:
                 best = min(
                     options,
-                    key=lambda option: (
-                        hex_distance(option.end.q, option.end.r, goal.q, goal.r),
-                        1 if option.overdrive else 0,
-                    ),
+                    key=lambda option: hex_distance(option.end.q, option.end.r, goal_vault.q, goal_vault.r),
                 )
-                if hex_distance(best.end.q, best.end.r, goal.q, goal.r) < hex_distance(pos.q, pos.r, goal.q, goal.r):
+                if hex_distance(best.end.q, best.end.r, goal_vault.q, goal_vault.r) < hex_distance(
+                    pos.q, pos.r, goal_vault.q, goal_vault.r
+                ):
                     plans.append(best.plan)
                     moves, attacks = _consume_plan(best.plan, moves, attacks)
                     pos = best.end
@@ -756,9 +836,16 @@ def _pick_prey(situation: Situation) -> PlayerState | None:
     )
 
 
-def _chase_move(situation: Situation, moves: list[MoveUse], pos: Pos, enemy: PlayerState, allow_desperate: bool) -> MoveStackOption | None:
+def _chase_move(
+    situation: Situation,
+    moves: list[MoveUse],
+    pos: Pos,
+    enemy: PlayerState,
+    allow_desperate: bool,
+    allow_overdrive: bool = False,
+) -> MoveStackOption | None:
     pool = [use for use in moves if allow_desperate or not use.is_desperate]
-    options = _move_stack_options(pool, pos, allow_overdrive=True, rules=situation.rules)
+    options = _move_stack_options(pool, pos, allow_overdrive=allow_overdrive, rules=situation.rules)
     if not options:
         return None
 
@@ -766,7 +853,9 @@ def _chase_move(situation: Situation, moves: list[MoveUse], pos: Pos, enemy: Pla
         distance = hex_distance(option.end.q, option.end.r, enemy.ship.q, enemy.ship.r)
         # Ideal firing range is close but not point-blank next action.
         range_penalty = abs(distance - 2)
-        return (range_penalty, 3 * option.desperate_count + (1 if option.overdrive else 0), -option.moved)
+        # Overdrive doubles the stack's movement but costs a card next round;
+        # spend it only when it genuinely closes range, not as a tiebreaker.
+        return (range_penalty, 3 * option.desperate_count + (2 if option.overdrive else 0), -option.moved)
 
     return min(options, key=score)
 
@@ -780,52 +869,70 @@ def _plan_hunter_killer(situation: Situation) -> OrdersSubmission:
     plans: list[StackPlan] = []
     pos = situation.pos
 
+    overdrive_budget = situation.overdrive_budget
     attack_stacks_wanted = min(2, max(1, len({use.selection.card_id for use in attacks})))
     for action in range(3):
         remaining = 3 - action
         combo = _best_attack_uses(situation, attacks, pos, prey, allow_desperate=True)
-        p_hit = 0.0
-        if combo:
-            aim = sum(use.effect.attack.aim_bonus for use in combo if use.effect.attack)
-            always = any(use.effect.attack.always_hits for use in combo if use.effect.attack)
-            lead = any(use.effect.attack.lead_the_target for use in combo if use.effect.attack)
-            p_hit = situation.hit_chance(pos, prey, aim, lead, always)
+        p_hit = situation.volley_hit_chance(pos, prey, combo) if combo else 0.0
         must_attack = remaining <= attack_stacks_wanted and combo
         good_shot = combo and p_hit >= 0.5
         allow_mixed_desperate = situation.kill_pressure(prey) > 0.4 or p_hit < 0.25
         mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
-            situation,
-            moves,
-            attacks,
-            pos,
-            prey,
-            allow_desperate=allow_mixed_desperate,
-            overdrive_threshold=0.45,
+            situation, moves, attacks, pos, prey, allow_desperate=allow_mixed_desperate
         )
         pure_value = situation.attack_value(pos, prey, combo) if combo else 0.0
         if mixed_plan and (mixed_value >= 0.55 or mixed_value > pure_value + 0.15):
             plans.append(mixed_plan)
             moves, attacks = _consume_plan(mixed_plan, moves, attacks)
-            pos = mixed_pos
+            pos = _pos_after_attack_stack(mixed_pos, [mixed_attack] if mixed_attack else [])
             attack_stacks_wanted -= 1
             continue
         if good_shot or must_attack:
             # Spend desperate firepower only when it makes the kill likely.
             allow_desperate = situation.kill_pressure(prey) > 0.4 or p_hit < 0.35
             plan, consumed = _attack_stack(
-                situation, attacks, pos, prey, allow_desperate=allow_desperate, overdrive_threshold=0.45
+                situation,
+                attacks,
+                pos,
+                prey,
+                allow_desperate=allow_desperate,
+                overdrive_threshold=0.45,
+                allow_overdrive=overdrive_budget > 0,
             )
             if plan:
+                if plan.seal_mode == SealMode.OVERDRIVE:
+                    overdrive_budget -= 1
                 plans.append(plan)
                 moves, attacks = _consume_plan(plan, moves, attacks)
+                pos = _pos_after_attack_stack(pos, consumed)
                 if consumed:
                     attack_stacks_wanted -= 1
                 continue
-        option = _chase_move(situation, moves, pos, prey, allow_desperate=p_hit < 0.2)
+        far_from_prey = hex_distance(pos.q, pos.r, prey.ship.q, prey.ship.r) > 4
+        option = _chase_move(
+            situation,
+            moves,
+            pos,
+            prey,
+            allow_desperate=p_hit < 0.2,
+            allow_overdrive=overdrive_budget > 0 and far_from_prey,
+        )
         if option:
+            if option.overdrive:
+                overdrive_budget -= 1
             plans.append(option.plan)
             moves, attacks = _consume_plan(option.plan, moves, attacks)
             pos = option.end
+            continue
+        # Out of moves: a poor shot still beats discarding the cards unplayed.
+        plan, consumed = _attack_stack(
+            situation, attacks, pos, prey, allow_desperate=False, overdrive_threshold=2.0
+        )
+        if plan:
+            plans.append(plan)
+            moves, attacks = _consume_plan(plan, moves, attacks)
+            pos = _pos_after_attack_stack(pos, consumed)
         else:
             plans.append(StackPlan())
     return _finalize(plans)
@@ -837,43 +944,49 @@ def _plan_blaster(situation: Situation) -> OrdersSubmission:
     plans: list[StackPlan] = []
     pos = situation.pos
 
+    overdrive_budget = situation.overdrive_budget
     for _ in range(3):
-        best_enemy, best_combo, best_value = None, None, 0.35
-        best_mixed: tuple[StackPlan | None, Pos, float] = (None, pos, 0.35)
+        # A shot is "worth taking" from where we stand at 0.25+ value; below
+        # that, repositioning for next action is better — unless there is no
+        # move left, in which case any shot beats discarding the cards.
+        best_enemy, best_combo, best_value = None, None, 0.25
+        best_mixed: tuple[StackPlan | None, AttackUse | None, Pos, float] = (None, None, pos, 0.25)
         for enemy in situation.enemies:
             combo = _best_attack_uses(situation, attacks, pos, enemy, allow_desperate=True)
-            if not combo:
-                continue
-            value = situation.attack_value(pos, enemy, combo)
-            # Prefer finishing wounded prey and stealing the last shields.
-            value += 0.5 * situation.kill_pressure(enemy) - 0.05 * enemy.ship.shields
-            if value > best_value:
-                best_enemy, best_combo, best_value = enemy, combo, value
+            if combo:
+                value = situation.attack_value(pos, enemy, combo)
+                # Prefer finishing wounded prey and stealing the last shields.
+                value += 0.5 * situation.kill_pressure(enemy) - 0.05 * enemy.ship.shields
+                if value > best_value:
+                    best_enemy, best_combo, best_value = enemy, combo, value
             mixed_plan, mixed_move, mixed_attack, mixed_pos, mixed_value = _mixed_move_attack_stack(
-                situation,
-                moves,
-                attacks,
-                pos,
-                enemy,
-                allow_desperate=True,
-                overdrive_threshold=0.5,
+                situation, moves, attacks, pos, enemy, allow_desperate=True
             )
             mixed_value += 0.5 * situation.kill_pressure(enemy) - 0.05 * enemy.ship.shields
-            if mixed_plan and mixed_value > best_mixed[2]:
-                best_mixed = (mixed_plan, mixed_pos, mixed_value)
-        if best_mixed[0] and best_mixed[2] > best_value + 0.08:
+            if mixed_plan and mixed_value > best_mixed[3]:
+                best_mixed = (mixed_plan, mixed_attack, mixed_pos, mixed_value)
+        if best_mixed[0] and best_mixed[3] > best_value + 0.08:
             plans.append(best_mixed[0])
             moves, attacks = _consume_plan(best_mixed[0], moves, attacks)
-            pos = best_mixed[1]
+            pos = _pos_after_attack_stack(best_mixed[2], [best_mixed[1]] if best_mixed[1] else [])
             continue
         if best_enemy is not None and best_combo:
             allow_desperate = best_value > 1.0 or situation.kill_pressure(best_enemy) > 0.5
             plan, consumed = _attack_stack(
-                situation, attacks, pos, best_enemy, allow_desperate=allow_desperate, overdrive_threshold=0.5
+                situation,
+                attacks,
+                pos,
+                best_enemy,
+                allow_desperate=allow_desperate,
+                overdrive_threshold=0.5,
+                allow_overdrive=overdrive_budget > 0,
             )
             if plan:
+                if plan.seal_mode == SealMode.OVERDRIVE:
+                    overdrive_budget -= 1
                 plans.append(plan)
                 moves, attacks = _consume_plan(plan, moves, attacks)
+                pos = _pos_after_attack_stack(pos, consumed)
                 continue
         # No worthwhile shot: reposition toward the juiciest target, kiting if hurt.
         target = min(
@@ -889,11 +1002,36 @@ def _plan_blaster(situation: Situation) -> OrdersSubmission:
                     moves, attacks = _consume_plan(plan, moves, attacks)
                     plans.append(plan)
                     continue
-            option = _chase_move(situation, moves, pos, target, allow_desperate=False)
+            far_from_target = hex_distance(pos.q, pos.r, target.ship.q, target.ship.r) > 4
+            option = _chase_move(
+                situation,
+                moves,
+                pos,
+                target,
+                allow_desperate=False,
+                allow_overdrive=overdrive_budget > 0 and far_from_target,
+            )
             if option:
+                if option.overdrive:
+                    overdrive_budget -= 1
                 plans.append(option.plan)
                 moves, attacks = _consume_plan(option.plan, moves, attacks)
                 pos = option.end
+                continue
+        # Out of moves: take the least-bad shot rather than passing.
+        fallback_enemy = min(
+            situation.enemies,
+            key=lambda enemy: hex_distance(pos.q, pos.r, enemy.ship.q, enemy.ship.r),
+            default=None,
+        )
+        if fallback_enemy is not None:
+            plan, consumed = _attack_stack(
+                situation, attacks, pos, fallback_enemy, allow_desperate=False, overdrive_threshold=2.0
+            )
+            if plan:
+                plans.append(plan)
+                moves, attacks = _consume_plan(plan, moves, attacks)
+                pos = _pos_after_attack_stack(pos, consumed)
                 continue
         plans.append(StackPlan())
     return _finalize(plans)

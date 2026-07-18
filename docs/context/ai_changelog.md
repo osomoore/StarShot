@@ -2,6 +2,21 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 07:05:00 -05:00
+
+- Title: Fake-player AI movement/overdrive overhaul for modern duels
+- Build ID: `6a15b6b2e7d8`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Measured the three duel AIs (Freebooter/vault_runner, Bloodthirsty/hunter_killer, Cannoneer/blaster) headlessly on the core_0_3 deck: they passed 12-46% of their action stacks and the blaster starved itself by overdriving all three stacks in round 1 (each overdriven stack is one fewer card next round).
+  - Overdrive economy: new `Situation.overdrive_budget` — one overdriven stack per round, unlimited in round 6 (no next draw, so seals are free). Threaded through route search, chase moves, and attack stacks; mixed move+attack stacks never overdrive (the copy replays the move past the priced firing position).
+  - Movement mirror fixes: added the missing `double_turn_right` (Drift King) branch to `_apply_move`, and planners now track Crazy Ivan's u-turn-attack facing flip. Verified planner-predicted end-of-round positions match the engine exactly across 24 full AI duels.
+  - Vault chasing: `_plan_route` returns a best-progress route instead of giving up when no card combination lands in claim radius; the runner camps next round's vaults at a value discount, re-milks the Fang every round (it re-awards), and never moves off a vault it is holding before cleanup scores it.
+  - Combat model: `volley_hit_chance` now honors max range, fixed defense thresholds, and the natural-12 auto hit; enemy movement prediction is capped at 3 so early overdrive sprints don't scare the AI off shooting forever. Hands discard at cleanup, so the AIs now always take a shot or a positioning move instead of passing with usable cards.
+  - Captain exemption: AI seats never pick movement-altering captains (Drifter's cleanup drift, Turbo's +1 move) — `AI_EXCLUDED_CAPTAIN_IDS` in `starshot.v2.service` — so the planners need no model of those powers.
+  - Results on the same 24-duel probe: empty stacks 132→30 / 112→2 / 35→0; total VP 148→180 (vault_runner), 60→141 (blaster), 110→151 (hunter_killer).
+  - Verified with `python -m unittest discover -s tests` (325 tests passing, incl. 8 new in `tests/test_v2_ai.py` covering vault chasing/parking, prey chasing, low-odds shots over passing, overdrive rationing, round-6 free overdrive, and the captain exclusion).
+
 ## 2026-07-17 21:35:00 -05:00
 
 - Title: Boss Supers reworked as core-synced recurring stack slots
