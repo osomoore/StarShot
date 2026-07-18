@@ -2,6 +2,21 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 13:00:00 -05:00
+
+- Title: StarDock overhaul — lanes, core points, upgrades
+- Build ID: `738b04afdada`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Rewrote the StarDock player-ship rules: radius-5 hex grid; 15 contiguous tiles (1 Core, 2 Life Supports, 1 Bone Room, 1 Docking Bay, 10 Engine/Cannon components); the 10 components buy the ship's 10-card starting deck with 15 Core Component points (Engine=Move 1/1pt, Double Engine=Move 2/2pt, Cannon=Aim +1/1pt, Double Cannon=Aim +2/2pt).
+  - Damage lanes split into 6 auto primary lanes through the Core (max 10 armoring components, admin configurable) and 6 player-placed secondary lanes (rolls 3/5/6/8/9/11) that each must sever ≥2 surviving components from the Core when shot fully through (admin configurable), may not pass through the Core, and may not duplicate a line+direction.
+  - One special upgrade per ship: +1 shield (3), +1 draw (6), flat Defense, flat Aim (both admin configurable, default 1), or +2 Core points. Flat bonuses apply in PvP volleys and StarBreach both ways.
+  - Admin settings (Account & Project) for tile total (extras become Structure tiles), primary-lane limit, min severed, and upgrade bonus sizes; config is baked into the compiled layout spec at match start so games in flight never change.
+  - Designed decks are built from the placed components at game creation; extra card copies get `__sN` ids that still resolve through `card_by_id`.
+  - Designer UI: radius-5 board, new tile tools, live deck preview, upgrade picker, and secondary-lane placement — default flow is a "🎲 Auto-place lanes" button cycling deterministic valid arrangements (mirrored pairs on symmetric hulls), with an Advanced toggle for manual chip + direction placement. Legacy pre-overhaul designs still open but are flagged not battle-ready.
+  - Replaced `resources/ship_designs/vanguard.json` with a battle-ready new-format ship (classic base deck + shield upgrade).
+  - Verified: rewrote `tests/test_player_ships.py` (42 tests) and ran the full suite — only the 4 pre-existing deck-set failures remain (also fail on a clean tree); JS files pass `node --check`; smoke script exercised design→validate→compile→game→serialize round trip.
+
 ## 2026-07-18 08:30:00 -05:00
 
 - Title: Active deck guidance

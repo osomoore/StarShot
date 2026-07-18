@@ -14,10 +14,12 @@
     bay: "#c9a37a",
     signal_jammer: "#6bffd8",
     targeting_sensors: "#ff7ad0",
+    structure: "#8a93a5",
   };
   const TYPE_ICONS = {
     weapon: "☄", shield_generator: "🛡", crew: "☠", bridge: "⚙", engine: "🔥",
     life_support: "❀", bay: "⚓", signal_jammer: "📡", targeting_sensors: "🎯",
+    structure: "🧱",
   };
 
   function hexXY(q, r, size) {

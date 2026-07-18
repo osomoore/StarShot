@@ -79,6 +79,39 @@
 
 .sd-lane-toggle { font-size: 13px; display: flex; gap: 6px; align-items: center; }
 
+/* StarDock: deck preview, secondary-lane placement, upgrade picker */
+.sd-deck, .sd-lanes-panel, .sd-upgrade {
+  background: rgba(20, 26, 48, 0.75); border: 1px solid #2c3654;
+  border-radius: 8px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.sd-lanes-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; }
+.sd-deck-row { font-size: 13px; }
+.sd-empty-deck { opacity: 0.7; font-style: italic; }
+
+.sd-lane-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.sd-lane-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 999px; font-size: 13px;
+  background: rgba(10, 15, 30, 0.7); border: 1px solid #39435f; color: #e8e0cc;
+}
+.sd-lane-chip.clickable { cursor: pointer; }
+.sd-lane-chip.clickable:hover { border-color: #5ec8ff; }
+.sd-lane-chip.ok { border-color: #3f9e5f; color: #8aff9d; }
+.sd-lane-chip.bad { border-color: #b0503f; color: #ffb08a; }
+.sd-lane-chip.picking { border-color: #8fd7ff; box-shadow: 0 0 0 1px #8fd7ff inset; color: #8fd7ff; }
+.sd-lane-clear {
+  background: none; border: none; color: inherit; cursor: pointer;
+  font-size: 11px; padding: 0 0 0 2px; opacity: 0.7;
+}
+.sd-lane-clear:hover { opacity: 1; }
+.sd-lane-actions { display: flex; gap: 6px; }
+.sd-lane-hint { font-size: 12px; opacity: 0.75; line-height: 1.4; }
+
+.sd-upgrade-row {
+  display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer;
+}
+
 .sd-side textarea {
   width: 100%; resize: vertical; padding: 7px 10px;
   background: rgba(10, 15, 30, 0.7); color: #e8e0cc;

@@ -101,9 +101,13 @@
     let design = null;
     let dirty = false;
     let tool = "core";
-    let laneRoll = null;      // secondary lane being placed (chip selected)
+    let laneRoll = null;      // secondary lane being placed (chip selected, advanced mode)
     let lanePick = null;      // {q, r} awaiting a direction choice
     let showLanes = true;
+    let laneCycle = 0;        // which auto-generated lane arrangement is shown
+    let advancedLanes = (() => {
+      try { return localStorage.getItem("ss_stardock_adv_lanes") === "1"; } catch (err) { return false; }
+    })();
 
     // ── tiny helpers ─────────────────────────────────────────────────────
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -244,6 +248,136 @@
         }
       }
       return bad;
+    }
+
+    // ── auto lane placement ──────────────────────────────────────────────
+    /* Mirror across the vertical axis through the Core (ships face "up"):
+       relative (dq, dr) -> (-dq, dq + dr). Direction indexes map likewise. */
+    const MIRROR_DIR = [4, 3, 2, 1, 0, 5];
+
+    function mirrorCoord(q, r) {
+      const core = coreTile();
+      const dq = q - core.q, dr = r - core.r;
+      return [core.q - dq, core.r + dq + dr];
+    }
+
+    function isShipSymmetric() {
+      if (!coreTile()) return false;
+      const coords = new Set(design.tiles.map((t) => key(t.q, t.r)));
+      return design.tiles.every((t) => {
+        const [mq, mr] = mirrorCoord(t.q, t.r);
+        return coords.has(key(mq, mr));
+      });
+    }
+
+    const laneKey = (cells, dir) => key(cells[0][0], cells[0][1]) + "|" + (((dir % 6) + 6) % 6);
+
+    /* Every legal secondary-lane placement on the current hull: full lines
+       not through the Core that sever at least the required components. */
+    function validLaneCandidates() {
+      const seen = new Set();
+      const candidates = [];
+      for (const [q, r] of gridCells()) {
+        for (let dir = 0; dir < 6; dir++) {
+          const cells = laneCells(q, r, dir);
+          const candidateKey = laneKey(cells, dir);
+          if (seen.has(candidateKey)) continue;
+          seen.add(candidateKey);
+          if (laneThroughCore(cells)) continue;
+          if (severedCount(cells) < META.secondary_lane_min_severed) continue;
+          candidates.push({ q: cells[0][0], r: cells[0][1], dir, key: candidateKey, cells });
+        }
+      }
+      return candidates;
+    }
+
+    function mirrorCandidateKey(candidate) {
+      const [mq, mr] = mirrorCoord(candidate.q, candidate.r);
+      const mdir = MIRROR_DIR[candidate.dir];
+      return laneKey(laneCells(mq, mr, mdir), mdir);
+    }
+
+    /* Deterministic PRNG so arrangement #N is stable for a given hull. */
+    function mulberry32(seed) {
+      return function () {
+        seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function shuffled(list, rand) {
+      const copy = list.slice();
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    /* Auto-place all six secondary lanes. Symmetric hulls get mirrored lane
+       pairs on (3,9) / (5,11) / (6,8); each click cycles to a different
+       valid arrangement. */
+    function autoPlaceLanes() {
+      if (!coreTile()) {
+        setStatus("Place the Core first — lanes are judged by what they sever from it.", false);
+        return;
+      }
+      const candidates = validLaneCandidates();
+      const byKey = Object.fromEntries(candidates.map((c) => [c.key, c]));
+      const rand = mulberry32(0x5D0C + laneCycle * 7919);
+      const symmetric = isShipSymmetric();
+      let chosen = null; // [{roll, cand}]
+
+      if (symmetric) {
+        const pairs = [];
+        const used = new Set();
+        for (const candidate of candidates) {
+          if (used.has(candidate.key)) continue;
+          const mirrorKey = mirrorCandidateKey(candidate);
+          const partner = byKey[mirrorKey];
+          if (!partner || mirrorKey === candidate.key || used.has(mirrorKey)) continue;
+          used.add(candidate.key);
+          used.add(mirrorKey);
+          pairs.push([candidate, partner]);
+        }
+        if (pairs.length >= 3) {
+          const picked = shuffled(pairs, rand).slice(0, 3);
+          const rollPairs = [[3, 9], [5, 11], [6, 8]];
+          chosen = [];
+          picked.forEach((pair, index) => {
+            const [a, b] = pair[0].key < pair[1].key ? pair : [pair[1], pair[0]];
+            chosen.push({ roll: rollPairs[index][0], cand: a });
+            chosen.push({ roll: rollPairs[index][1], cand: b });
+          });
+        }
+      }
+      if (!chosen) {
+        if (candidates.length < 6) {
+          setStatus(
+            `Only ${candidates.length} legal lane placements exist — add tiles so more lines can sever `
+            + `${META.secondary_lane_min_severed}+ components from the Core.`, false);
+          return;
+        }
+        const picked = shuffled(candidates, rand).slice(0, 6);
+        chosen = SECONDARY_ROLLS.map((roll, index) => ({ roll, cand: picked[index] }));
+      }
+
+      design.lanes = {};
+      for (const { roll, cand } of chosen) {
+        design.lanes[String(roll)] = { q: cand.q, r: cand.r, dir: cand.dir };
+      }
+      laneCycle += 1;
+      laneRoll = null;
+      lanePick = null;
+      markDirty();
+      renderTools();
+      renderMeters();
+      drawBoard();
+      setStatus(
+        `Lane arrangement #${laneCycle}${symmetric ? " (symmetric ship — mirrored lanes)" : ""}`
+        + " — click again for another.", true);
     }
 
     function isConnected() {
@@ -523,40 +657,64 @@
       if (!host) return;
       const lanes = placedLanes();
       const bad = Object.fromEntries(laneProblems().map((b) => [String(b.roll), b.reason]));
+      const anyPlaced = Object.keys(lanes).length > 0;
+      const hint = laneRoll != null
+        ? "Click a hex the lane should pass through, then pick its direction."
+        : advancedLanes
+          ? "Click a number, then place that lane on the board. Each lane must sever ≥ "
+            + META.secondary_lane_min_severed + " components from the Core when shot fully through."
+          : "Auto-place finds legal lane sets for your hull"
+            + " — every lane severs ≥ " + META.secondary_lane_min_severed
+            + " components from the Core when shot fully through. Symmetric hulls get mirrored lanes.";
       host.innerHTML = `
         <div class="sd-lanes-title">Secondary damage lanes</div>
         <div class="sd-lane-chips">
           ${SECONDARY_ROLLS.map((roll) => {
             const placed = !!lanes[roll];
             const badReason = bad[String(roll)];
-            const cls = laneRoll === roll ? "picking" : placed ? (badReason ? "bad" : "ok") : "";
+            const cls = (laneRoll === roll ? "picking" : placed ? (badReason ? "bad" : "ok") : "")
+              + (advancedLanes ? " clickable" : "");
             return `<span class="sd-lane-chip ${cls}" data-lane="${roll}"
               title="${placed ? (badReason ? esc(badReason) : "placed") : "not placed"}">${roll}${placed ? (badReason ? " ⚠" : " ✓") : ""}
-              ${placed ? `<button class="sd-lane-clear" data-lane-clear="${roll}" title="Remove lane ${roll}">✕</button>` : ""}
+              ${placed && advancedLanes ? `<button class="sd-lane-clear" data-lane-clear="${roll}" title="Remove lane ${roll}">✕</button>` : ""}
             </span>`;
           }).join("")}
         </div>
-        <div class="sd-lane-hint">${laneRoll != null
-          ? `Click a hex the lane should pass through, then pick its direction.`
-          : "Click a number, then place that lane on the board. Each lane must sever ≥ "
-            + META.secondary_lane_min_severed + " components from the Core when shot fully through."}</div>`;
-      host.querySelectorAll("[data-lane]").forEach((chip) => chip.addEventListener("click", (event) => {
-        if (event.target.closest("[data-lane-clear]")) return;
-        const roll = parseInt(chip.dataset.lane, 10);
-        laneRoll = laneRoll === roll ? null : roll;
+        <div class="sd-lane-actions">
+          <button id="sd-lane-auto" class="btn ghost small">🎲 ${anyPlaced ? "Next lane arrangement" : "Auto-place lanes"}</button>
+        </div>
+        <label class="sd-lane-toggle"><input id="sd-lane-adv" type="checkbox" ${advancedLanes ? "checked" : ""}>
+          Advanced: place lanes manually</label>
+        <div class="sd-lane-hint">${hint}</div>`;
+      el("sd-lane-auto").addEventListener("click", autoPlaceLanes);
+      el("sd-lane-adv").addEventListener("change", () => {
+        advancedLanes = el("sd-lane-adv").checked;
+        try { localStorage.setItem("ss_stardock_adv_lanes", advancedLanes ? "1" : "0"); } catch (err) { /* ok */ }
+        laneRoll = null;
         lanePick = null;
         renderTools();
         renderLanePanel();
         drawBoard();
-      }));
-      host.querySelectorAll("[data-lane-clear]").forEach((button) => button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        delete design.lanes[String(button.dataset.laneClear)];
-        markDirty();
-        renderLanePanel();
-        renderMeters();
-        drawBoard();
-      }));
+      });
+      if (advancedLanes) {
+        host.querySelectorAll("[data-lane]").forEach((chip) => chip.addEventListener("click", (event) => {
+          if (event.target.closest("[data-lane-clear]")) return;
+          const roll = parseInt(chip.dataset.lane, 10);
+          laneRoll = laneRoll === roll ? null : roll;
+          lanePick = null;
+          renderTools();
+          renderLanePanel();
+          drawBoard();
+        }));
+        host.querySelectorAll("[data-lane-clear]").forEach((button) => button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          delete design.lanes[String(button.dataset.laneClear)];
+          markDirty();
+          renderLanePanel();
+          renderMeters();
+          drawBoard();
+        }));
+      }
     }
 
     function renderUpgradePanel() {
@@ -848,7 +1006,9 @@
           <div><b>2.</b> Those 10 components are your <b>starting deck</b>, bought with <b>15 Core Component points</b>:
             Engine = Move 1 (1 pt), Double Engine = Move 2 (2 pts), Cannon = Aim +1 (1 pt), Double Cannon = Aim +2 (2 pts).</div>
           <div><b>3.</b> The 6 gold <b>primary damage lanes</b> follow the Core — at most 10 components may sit on them.
-            Place the 6 blue <b>secondary lanes</b> yourself; each must sever at least 2 components from the Core if shot fully through.</div>
+            The 6 blue <b>secondary lanes</b> must each sever at least 2 components from the Core if shot fully through:
+            use <b>🎲 Auto-place lanes</b> to cycle legal arrangements (mirrored on symmetric ships), or tick
+            <b>Advanced</b> to place them by hand.</div>
           <div><b>4.</b> Pick <b>1 special upgrade</b>: +1 shield, +1 card draw, flat Defense, flat Aim, or +2 Core points.</div>
           <div><b>5.</b> Save a battle-ready design, then choose it as <b>Your Ship</b> when creating or joining a raid.</div>
         </div>

@@ -1028,7 +1028,32 @@
       document.getElementById("setting-overdrive-style").value = rules.overdrive_style || "copy_action";
       document.getElementById("setting-overdrive-desperation").checked = !!rules.allow_overdrive_desperation;
       renderStarBreachSettings(settings.star_breach || {});
+      renderStarDockSettings(settings.stardock || {});
     } catch (err) { /* not admin yet */ }
+  }
+
+  const STARDOCK_FIELDS = [
+    ["setting-stardock-max-tiles", "max_tiles"],
+    ["setting-stardock-primary-limit", "primary_lane_limit"],
+    ["setting-stardock-min-severed", "secondary_lane_min_severed"],
+    ["setting-stardock-defense-bonus", "upgrade_defense_bonus"],
+    ["setting-stardock-aim-bonus", "upgrade_aim_bonus"],
+  ];
+
+  function renderStarDockSettings(stardock) {
+    for (const [elementId, key] of STARDOCK_FIELDS) {
+      const input = document.getElementById(elementId);
+      if (input && stardock[key] != null) input.value = stardock[key];
+    }
+  }
+
+  function starDockSettingsBody() {
+    const body = {};
+    for (const [elementId, key] of STARDOCK_FIELDS) {
+      const input = document.getElementById(elementId);
+      if (input && input.value !== "") body["stardock_" + key] = parseInt(input.value, 10);
+    }
+    return body;
   }
 
   function renderStarBreachSettings(starBreach) {
@@ -1064,8 +1089,10 @@
         allow_overdrive_desperation: document.getElementById("setting-overdrive-desperation").checked,
         default_starbreach_boss_design_id: document.getElementById("setting-starbreach-default-boss").value,
         allowed_starbreach_boss_design_ids: selectedAllowedStarBreachBosses(),
+        ...starDockSettingsBody(),
       });
       renderStarBreachSettings(result.star_breach || {});
+      renderStarDockSettings(result.stardock || {});
       status("settings-status",
         `✔ Saved. Password gate: ${result.site_auth ? "ON" : "OFF"} · ` +
         (result.maintenance ? `under construction: "${result.maintenance}"` : "site open to all"), true);

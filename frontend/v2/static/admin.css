@@ -205,6 +205,10 @@
   color: var(--ink); font: inherit; padding: 8px 10px; margin-top: 6px;
 }
 .setting-row input[type="checkbox"] { accent-color: var(--gold); width: 17px; height: 17px; }
+.setting-row .setting-number {
+  width: 76px; background: #0a1020; border: 1px solid var(--panel-edge); border-radius: 6px;
+  color: var(--ink); font: inherit; padding: 6px 8px; margin-left: auto;
+}
 .setting-check-list {
   display: grid;
   gap: 6px;
