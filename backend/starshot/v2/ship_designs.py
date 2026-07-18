@@ -46,6 +46,7 @@ from starshot.rules.player_ships import (
     DECK_SIZE,
     LEGACY_TILE_TYPES,
     PLAYER_SHIP_GRID_RADIUS,
+    PRIMARY_LANE_DIRS,
     PLAYER_TILE_TYPES,
     REQUIRED_LIFE_SUPPORTS,
     SECONDARY_LANE_ROLLS,
@@ -55,9 +56,12 @@ from starshot.rules.player_ships import (
     core_tile,
     deck_component_count,
     lane_cells,
+    lane_number,
     lane_severed_count,
     points_breakdown,
     primary_lane_tile_count,
+    primary_lane_id,
+    secondary_lane_id,
     secondary_lanes,
     stardock_config,
 )
@@ -172,6 +176,23 @@ def _normalize_lanes(raw) -> dict:
     return lanes
 
 
+def _normalize_lane_numbers(raw) -> dict:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ShipDesignError("lane_numbers must be an object keyed by lane id.")
+    numbers: dict[str, int] = {}
+    for key, value in raw.items():
+        text_key = str(key)
+        if not (text_key.startswith("p:") or text_key.startswith("s:")):
+            raise ShipDesignError(f"lane_numbers key {key!r} is not a lane id.")
+        number = _as_int(value, f"lane_numbers[{text_key}]")
+        if not 1 <= number <= 12:
+            raise ShipDesignError(f"lane_numbers[{text_key}] must be 1-12.")
+        numbers[text_key] = number
+    return numbers
+
+
 def normalize_design(raw: dict) -> dict:
     """Canonical copy of `raw`, or raise ShipDesignError. Legacy pre-overhaul
     documents (shields/draw stats, old tile types) still normalize so they
@@ -206,11 +227,25 @@ def normalize_design(raw: dict) -> dict:
         "description": str(raw.get("description", ""))[:500],
         "tiles": tiles,
         "lanes": _normalize_lanes(raw.get("lanes")),
+        "lane_numbers": _normalize_lane_numbers(raw.get("lane_numbers")),
         "upgrade": upgrade,
     }
 
 
 # ── design-quality validation (warnings, never fatal) ───────────────────────
+
+
+def _active_lane_numbers(design: dict) -> dict[str, int]:
+    numbers: dict[str, int] = {}
+    for default_roll, direction in PRIMARY_LANE_DIRS.items():
+        lane_id = primary_lane_id(direction)
+        numbers[lane_id] = lane_number(design, lane_id, default_roll)
+    for default_roll, lane in secondary_lanes(design).items():
+        direction = int(lane["dir"])
+        cells = lane_cells(int(lane["q"]), int(lane["r"]), direction)
+        lane_id = secondary_lane_id(cells, direction)
+        numbers[lane_id] = lane_number(design, lane_id, default_roll)
+    return numbers
 
 
 def _connected(hexes: set[tuple[int, int]]) -> bool:
@@ -325,6 +360,12 @@ def validate_design(design: dict, config: dict | None = None) -> list[str]:
                 f"Secondary lane {roll} must be placed so shooting fully through it severs at least "
                 f"{min_severed} non-core components from the Core."
             )
+
+    active_numbers = _active_lane_numbers(design)
+    if len(active_numbers) == 12:
+        values = list(active_numbers.values())
+        if sorted(values) != list(range(1, 13)):
+            problems.append("Lane numbering must assign each damage lane a unique number from 1 to 12.")
 
     if design.get("upgrade") not in SHIP_UPGRADES:
         problems.append("Choose the ship's special upgrade.")

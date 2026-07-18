@@ -108,6 +108,16 @@
     let advancedLanes = (() => {
       try { return localStorage.getItem("ss_stardock_adv_lanes") === "1"; } catch (err) { return false; }
     })();
+    let printTone = "color";  // color | bw
+    let printZoom = 1;        // ship-drawing scale multiplier (0.5 - 2.0)
+    let printOptions = {
+      lanes: true,
+      laneList: true,
+      coords: false,
+      components: true,
+      deck: true,
+      checklist: true,
+    };
 
     // ── tiny helpers ─────────────────────────────────────────────────────
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -271,6 +281,14 @@
     }
 
     const laneKey = (cells, dir) => key(cells[0][0], cells[0][1]) + "|" + (((dir % 6) + 6) % 6);
+    const primaryLaneId = (dir) => "p:" + (((dir % 6) + 6) % 6);
+    const secondaryLaneId = (cells, dir) => "s:" + laneKey(cells, dir);
+
+    function laneDisplayRoll(kind, defaultRoll, cells, dir) {
+      const laneId = kind === "primary" ? primaryLaneId(dir) : secondaryLaneId(cells, dir);
+      const n = parseInt((design.lane_numbers || {})[laneId], 10);
+      return n >= 1 && n <= 12 ? n : parseInt(defaultRoll, 10);
+    }
 
     /* Every legal secondary-lane placement on the current hull: full lines
        not through the Core that sever at least the required components. */
@@ -314,6 +332,68 @@
         [copy[i], copy[j]] = [copy[j], copy[i]];
       }
       return copy;
+    }
+
+    function laneEntriesForNumbering() {
+      const core = coreTile();
+      if (!core) return [];
+      const entries = [];
+      for (const defaultRoll of Object.keys(PRIMARY_DIRS)) {
+        const dir = PRIMARY_DIRS[defaultRoll];
+        const cells = laneCells(core.q, core.r, dir);
+        entries.push({ id: primaryLaneId(dir), defaultRoll: parseInt(defaultRoll, 10), dir, cells, kind: "primary" });
+      }
+      for (const [defaultRoll, lane] of Object.entries(placedLanes())) {
+        const dir = parseInt(lane.dir, 10);
+        const cells = laneCells(lane.q, lane.r, dir);
+        entries.push({ id: secondaryLaneId(cells, dir), defaultRoll: parseInt(defaultRoll, 10), dir, cells, kind: "secondary" });
+      }
+      return entries;
+    }
+
+    function laneEntryAngle(entry) {
+      const firstHitIndex = entry.cells.findIndex(([q, r]) => !!tileAt(q, r));
+      if (firstHitIndex < 0) return null;
+      const first = entry.cells[firstHitIndex];
+      const previous = entry.cells[firstHitIndex - 1] || first;
+      const next = entry.cells[firstHitIndex + 1] || first;
+      const [fx, fy] = xy(first[0], first[1]);
+      const [px, py] = xy(previous[0], previous[1]);
+      const [nx, ny] = xy(next[0], next[1]);
+      let dx = nx - px, dy = ny - py;
+      if (!dx && !dy) { dx = 0; dy = 1; }
+      const len = Math.hypot(dx, dy) || 1;
+      const bx = fx - (dx / len) * SIZE * 1.55;
+      const by = fy - (dy / len) * SIZE * 1.55;
+      const core = coreTile();
+      const [cx, cy] = core ? xy(core.q, core.r) : [0, 0];
+      const angle = Math.atan2(by - cy, bx - cx);
+      return (angle + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+    }
+
+    function renumberLanesLinearly(options = {}) {
+      const entries = laneEntriesForNumbering()
+        .map((entry) => ({ ...entry, angle: laneEntryAngle(entry) }))
+        .filter((entry) => entry.angle != null)
+        .sort((a, b) => a.angle - b.angle || a.defaultRoll - b.defaultRoll);
+      if (entries.length !== 12) {
+        if (!options.silent) setStatus("Place all 6 secondary lanes before renumbering all 12 lane arrows.", false);
+        return false;
+      }
+      design.lane_numbers = {};
+      entries.forEach((entry, index) => {
+        design.lane_numbers[entry.id] = index + 1;
+      });
+      laneRoll = null;
+      lanePick = null;
+      if (options.mark !== false) markDirty();
+      if (options.render !== false) {
+        renderTools();
+        renderMeters();
+        drawBoard();
+      }
+      if (!options.silent) setStatus("Lane arrows renumbered 1-12 clockwise from the nose.", true);
+      return true;
     }
 
     /* Auto-place all six secondary lanes. Symmetric hulls get mirrored lane
@@ -368,6 +448,7 @@
       for (const { roll, cand } of chosen) {
         design.lanes[String(roll)] = { q: cand.q, r: cand.r, dir: cand.dir };
       }
+      const renumbered = renumberLanesLinearly({ silent: true, render: false, mark: false });
       laneCycle += 1;
       laneRoll = null;
       lanePick = null;
@@ -517,7 +598,7 @@
         const name = el("sd-new-name").value.trim();
         if (!name) { setStatus("Name your ship first.", false); return; }
         const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "ship";
-        design = { id, name, description: "", tiles: [], lanes: {}, upgrade: null };
+        design = { id, name, description: "", tiles: [], lanes: {}, lane_numbers: {}, upgrade: null };
         dirty = true;
         tool = "core";
         laneRoll = null;
@@ -596,19 +677,49 @@
           </div>
           <div class="sd-editor">
             <div class="sd-side">
+              <div class="sd-view-tabs">
+                <button id="sd-tab-edit" class="btn gold small" type="button">Edit Ship</button>
+                <button id="sd-tab-print" class="btn ghost small" type="button">Print Sheets</button>
+              </div>
               <div id="sd-points" class="sd-points"></div>
               <div id="sd-deck" class="sd-deck"></div>
-              <div class="sd-tools" id="sd-tools"></div>
-              <div id="sd-tool-note" class="sd-tool-note"></div>
-              <div id="sd-lanes-panel" class="sd-lanes-panel"></div>
-              <div id="sd-upgrade" class="sd-upgrade"></div>
+              <div id="sd-edit-controls">
+                <div class="sd-tools" id="sd-tools"></div>
+                <div id="sd-tool-note" class="sd-tool-note"></div>
+                <div id="sd-lanes-panel" class="sd-lanes-panel"></div>
+                <div id="sd-upgrade" class="sd-upgrade"></div>
+              </div>
+              <div id="sd-print-controls" class="sd-print-controls hidden">
+                <div class="sd-lanes-title">Printable export</div>
+                <label>Tone
+                  <select id="sd-print-tone">
+                    <option value="color" ${printTone === "color" ? "selected" : ""}>Color</option>
+                    <option value="bw" ${printTone === "bw" ? "selected" : ""}>Black and white</option>
+                  </select>
+                </label>
+                <label><input type="checkbox" data-sd-print-opt="lanes" ${printOptions.lanes ? "checked" : ""}> Damage lane arrows</label>
+                <label><input type="checkbox" data-sd-print-opt="laneList" ${printOptions.laneList ? "checked" : ""}> Damage lane list</label>
+                <label><input type="checkbox" data-sd-print-opt="coords" ${printOptions.coords ? "checked" : ""}> Hex coordinates</label>
+                <label><input type="checkbox" data-sd-print-opt="components" ${printOptions.components ? "checked" : ""}> Component legend</label>
+                <label><input type="checkbox" data-sd-print-opt="deck" ${printOptions.deck ? "checked" : ""}> Starting deck</label>
+                <label><input type="checkbox" data-sd-print-opt="checklist" ${printOptions.checklist ? "checked" : ""}> Table checklist</label>
+                <label>Ship scale
+                  <input id="sd-print-zoom" type="range" min="50" max="200" step="5" value="${Math.round(printZoom * 100)}">
+                  <span id="sd-print-zoom-value">${Math.round(printZoom * 100)}%</span>
+                </label>
+                <div class="sd-print-actions">
+                  <button class="btn gold small" id="sd-print-download" type="button">Download SVG</button>
+                  <button class="btn ghost small" id="sd-print-now" type="button">Print</button>
+                </div>
+              </div>
               <div id="sd-checklist" class="sd-checklist"></div>
               <label class="sd-lane-toggle"><input id="sd-lanes" type="checkbox" ${showLanes ? "checked" : ""}> Show damage lanes</label>
               <textarea id="sd-desc" rows="2" maxlength="500" placeholder="Description (optional)">${esc(design.description || "")}</textarea>
               <div id="sd-status" class="admin-status"></div>
               <div id="sd-problems" class="sd-problems"></div>
             </div>
-            <div class="sd-board-wrap"><svg id="sd-board" xmlns="http://www.w3.org/2000/svg"></svg></div>
+            <div class="sd-board-wrap" id="sd-board-wrap"><svg id="sd-board" xmlns="http://www.w3.org/2000/svg"></svg></div>
+            <div class="sd-print hidden" id="sd-print"></div>
           </div>
         </div>`;
 
@@ -622,6 +733,25 @@
       el("sd-desc").addEventListener("input", () => { design.description = el("sd-desc").value; markDirty(); });
       el("sd-lanes").addEventListener("change", () => { showLanes = el("sd-lanes").checked; drawBoard(); });
       el("sd-save").addEventListener("click", saveDesign);
+      el("sd-tab-edit").addEventListener("click", () => setEditorMode("edit"));
+      el("sd-tab-print").addEventListener("click", () => setEditorMode("print"));
+      el("sd-print-tone").addEventListener("change", (event) => {
+        printTone = event.target.value === "bw" ? "bw" : "color";
+        renderPrintView();
+      });
+      root().querySelectorAll("[data-sd-print-opt]").forEach((box) => {
+        box.addEventListener("change", () => {
+          printOptions[box.dataset.sdPrintOpt] = !!box.checked;
+          renderPrintView();
+        });
+      });
+      el("sd-print-zoom").addEventListener("input", (event) => {
+        printZoom = Math.max(0.5, Math.min(2, (parseInt(event.target.value, 10) || 100) / 100));
+        el("sd-print-zoom-value").textContent = Math.round(printZoom * 100) + "%";
+        renderPrintView();
+      });
+      el("sd-print-download").addEventListener("click", downloadPrintSheet);
+      el("sd-print-now").addEventListener("click", printSheet);
 
       renderTools();
       renderLanePanel();
@@ -629,6 +759,18 @@
       renderMeters();
       renderProblems(problems || []);
       drawBoard();
+    }
+
+    function setEditorMode(mode) {
+      const printing = mode === "print";
+      el("sd-tab-edit").className = "btn " + (printing ? "ghost" : "gold") + " small";
+      el("sd-tab-print").className = "btn " + (printing ? "gold" : "ghost") + " small";
+      el("sd-edit-controls").classList.toggle("hidden", printing);
+      el("sd-print-controls").classList.toggle("hidden", !printing);
+      el("sd-board-wrap").classList.toggle("hidden", printing);
+      el("sd-print").classList.toggle("hidden", !printing);
+      if (printing) renderPrintView();
+      else drawBoard();
     }
 
     function renderTools() {
@@ -671,6 +813,9 @@
         <div class="sd-lane-chips">
           ${SECONDARY_ROLLS.map((roll) => {
             const placed = !!lanes[roll];
+            const lane = lanes[roll];
+            const cells = lane ? laneCells(lane.q, lane.r, lane.dir) : null;
+            const displayRoll = lane ? laneDisplayRoll("secondary", roll, cells, lane.dir) : roll;
             const badReason = bad[String(roll)];
             const cls = (laneRoll === roll ? "picking" : placed ? (badReason ? "bad" : "ok") : "")
               + (advancedLanes ? " clickable" : "");
@@ -682,11 +827,13 @@
         </div>
         <div class="sd-lane-actions">
           <button id="sd-lane-auto" class="btn ghost small">🎲 ${anyPlaced ? "Next lane arrangement" : "Auto-place lanes"}</button>
+          <button id="sd-lane-renumber" class="btn ghost small">Renumber lanes linearly</button>
         </div>
         <label class="sd-lane-toggle"><input id="sd-lane-adv" type="checkbox" ${advancedLanes ? "checked" : ""}>
           Advanced: place lanes manually</label>
         <div class="sd-lane-hint">${hint}</div>`;
       el("sd-lane-auto").addEventListener("click", autoPlaceLanes);
+      el("sd-lane-renumber").addEventListener("click", () => renumberLanesLinearly());
       el("sd-lane-adv").addEventListener("change", () => {
         advancedLanes = el("sd-lane-adv").checked;
         try { localStorage.setItem("ss_stardock_adv_lanes", advancedLanes ? "1" : "0"); } catch (err) { /* ok */ }
@@ -759,6 +906,7 @@
       el("sd-checklist").innerHTML = checklist().map((item) =>
         `<div class="sd-check ${item.ok ? "ok" : ""}">${item.ok ? "✔" : "○"} ${esc(item.text)}</div>`).join("");
       renderLanePanel();
+      if (el("sd-print") && !el("sd-print").classList.contains("hidden")) renderPrintView();
     }
 
     function renderProblems(problems) {
@@ -834,9 +982,11 @@
         const core = coreTile();
         if (core) {
           for (const roll of Object.keys(PRIMARY_DIRS)) {
-            const cellsOnLine = laneCells(core.q, core.r, PRIMARY_DIRS[roll]);
+            const dir = PRIMARY_DIRS[roll];
+            const cellsOnLine = laneCells(core.q, core.r, dir);
             const hits = cellsOnLine.filter(([q, r]) => tileAt(q, r)).length;
-            body += laneMarkerSvg(roll, cellsOnLine, "#ffd75e",
+            const displayRoll = laneDisplayRoll("primary", roll, cellsOnLine, dir);
+            body += laneMarkerSvg(displayRoll, cellsOnLine, "#ffd75e",
               `Primary lane ${roll}: ${hits} tile(s) — contains the Core`);
           }
         }
@@ -848,7 +998,8 @@
           const hits = cellsOnLine.filter(([q, r]) => tileAt(q, r)).length;
           const badReason = bad[String(roll)];
           const severed = severedCount(cellsOnLine);
-          body += laneMarkerSvg(roll, cellsOnLine, badReason ? "#ff8d7a" : "#8fd7ff",
+          const displayRoll = laneDisplayRoll("secondary", roll, cellsOnLine, lane.dir);
+          body += laneMarkerSvg(displayRoll, cellsOnLine, badReason ? "#ff8d7a" : "#8fd7ff",
             `Lane ${roll}: ${hits} tile(s), severs ${severed}${badReason ? " — " + badReason : ""}`);
         }
       }
@@ -925,6 +1076,311 @@
       }
       renderMeters();
       drawBoard();
+    }
+
+    function sortedTiles() {
+      return [...(design.tiles || [])].sort((a, b) => (a.r - b.r) || (a.q - b.q));
+    }
+
+    function componentBadges() {
+      const prefixes = {
+        core: "CR", life_support: "LS", bone_room: "BR", docking_bay: "DB",
+        engine: "E", double_engine: "DE", cannon: "CN", double_cannon: "DC",
+        structure: "ST",
+        weapon: "W", crew: "CQ", bay: "DB", shield_generator: "SG",
+        signal_jammer: "J", targeting_sensors: "TS",
+      };
+      const totals = {};
+      for (const tile of design.tiles || []) totals[tile.type] = (totals[tile.type] || 0) + 1;
+      const seen = {};
+      const badges = {};
+      for (const tile of sortedTiles()) {
+        seen[tile.type] = (seen[tile.type] || 0) + 1;
+        const prefix = prefixes[tile.type] || tile.type.slice(0, 2).toUpperCase();
+        badges[key(tile.q, tile.r)] = totals[tile.type] > 1 ? prefix + seen[tile.type] : prefix;
+      }
+      return badges;
+    }
+
+    function tileLabel(tile) {
+      const meta = TILE_TOOLS.find((entry) => entry.type === tile.type);
+      return meta?.label || tile.type.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    }
+
+    function printPalette() {
+      if (printTone === "bw") {
+        return {
+          page: "#ffffff", text: "#111111", dim: "#555555", line: "#111111",
+          hull: "#f5f5f5", core: "#d0d0d0", life: "#e4e4e4", utility: "#ffffff",
+          move: "#dddddd", attack: "#eeeeee", structure: "#f8f8f8",
+          primary: "#111111", secondary: "#555555", card: "#ffffff",
+        };
+      }
+      return {
+        page: "#fffaf0", text: "#151923", dim: "#5f6675", line: "#283246",
+        hull: "#f2ead8", core: "#f0b090", life: "#f4df89", utility: "#dcc0a0",
+        move: "#bce7b8", attack: "#ffc9c9", structure: "#ccd3df",
+        primary: "#b98a12", secondary: "#2c8fc4", card: "#fffdf7",
+      };
+    }
+
+    function printTileFill(tile, colors) {
+      if (tile.type === "core") return colors.core;
+      if (tile.type === "life_support" || tile.type === "bone_room") return colors.life;
+      if (tile.type === "docking_bay" || tile.type === "bay") return colors.utility;
+      if (tile.type === "engine" || tile.type === "double_engine") return colors.move;
+      if (tile.type === "cannon" || tile.type === "double_cannon" || tile.type === "weapon") return colors.attack;
+      return colors.structure;
+    }
+
+    function printSheetSVG() {
+      if (!design) return "";
+      const colors = printPalette();
+      const badges = componentBadges();
+      const pageW = 1400;
+      let pageH = 1720;
+      const shipBox = { x: 55, y: 175, w: pageW - 110, h: 690 };
+      const baseSize = 34;
+      const baseXy = (q, r) => [baseSize * 1.5 * q, baseSize * SQ * (r + q / 2)];
+      const basePoints = design.tiles.length ? design.tiles.map((tile) => baseXy(tile.q, tile.r)) : [[0, 0]];
+      const baseMinX = Math.min(...basePoints.map(([x]) => x)) - baseSize;
+      const baseMaxX = Math.max(...basePoints.map(([x]) => x)) + baseSize;
+      const baseMinY = Math.min(...basePoints.map(([, y]) => y)) - baseSize;
+      const baseMaxY = Math.max(...basePoints.map(([, y]) => y)) + baseSize;
+      const shipScale = Math.min(
+        1,
+        (shipBox.w - 70) / Math.max(1, baseMaxX - baseMinX),
+        (shipBox.h - 70) / Math.max(1, baseMaxY - baseMinY),
+      ) * printZoom;
+      const shipSize = baseSize * shipScale;
+      const rawXy = (q, r) => [shipSize * 1.5 * q, shipSize * SQ * (r + q / 2)];
+      const rawPoints = design.tiles.length ? design.tiles.map((tile) => rawXy(tile.q, tile.r)) : [[0, 0]];
+      const minRawX = Math.min(...rawPoints.map(([x]) => x)) - shipSize;
+      const maxRawX = Math.max(...rawPoints.map(([x]) => x)) + shipSize;
+      const minRawY = Math.min(...rawPoints.map(([, y]) => y)) - shipSize;
+      const maxRawY = Math.max(...rawPoints.map(([, y]) => y)) + shipSize;
+      const shipX = shipBox.x + shipBox.w / 2 - (minRawX + maxRawX) / 2;
+      const shipY = shipBox.y + shipBox.h / 2 - (minRawY + maxRawY) / 2;
+      const pxy = (q, r) => {
+        const [x, y] = rawXy(q, r);
+        return [shipX + x, shipY + y];
+      };
+
+      let ship = "";
+      for (const tile of sortedTiles()) {
+        const [x, y] = pxy(tile.q, tile.r);
+        const badge = badges[key(tile.q, tile.r)] || "";
+        ship += `<g>
+          <polygon points="${hexPoints(x, y, shipSize - 1.2)}" fill="${printTileFill(tile, colors)}" stroke="${colors.line}" stroke-width="2"/>
+          <text x="${x}" y="${y + 6}" text-anchor="middle" class="ps-badge">${esc(badge)}</text>
+          ${printOptions.coords ? `<text x="${x}" y="${y + shipSize - 5}" text-anchor="middle" class="ps-coord">${tile.q},${tile.r}</text>` : ""}
+          <title>${esc(tileLabel(tile))} (${tile.q},${tile.r})</title>
+        </g>`;
+      }
+
+      const laneEntries = [];
+      const core = coreTile();
+      if (core) {
+        for (const roll of Object.keys(PRIMARY_DIRS)) {
+          const dir = PRIMARY_DIRS[roll];
+          const cells = laneCells(core.q, core.r, dir);
+          laneEntries.push({ roll: laneDisplayRoll("primary", roll, cells, dir), cells, kind: "primary" });
+        }
+      }
+      for (const roll of SECONDARY_ROLLS) {
+        const lane = (design.lanes || {})[String(roll)];
+        if (lane) {
+          const cells = laneCells(lane.q, lane.r, lane.dir);
+          laneEntries.push({ roll: laneDisplayRoll("secondary", roll, cells, lane.dir), cells, kind: "secondary" });
+        }
+      }
+      if (printOptions.lanes) {
+        for (const entry of laneEntries) {
+          const firstHitIndex = entry.cells.findIndex(([q, r]) => !!tileAt(q, r));
+          if (firstHitIndex < 0) continue;
+          const first = entry.cells[firstHitIndex];
+          const previous = entry.cells[firstHitIndex - 1] || first;
+          const next = entry.cells[firstHitIndex + 1] || first;
+          const [fx, fy] = pxy(first[0], first[1]);
+          const [px, py] = pxy(previous[0], previous[1]);
+          const [nx, ny] = pxy(next[0], next[1]);
+          let dx = nx - px, dy = ny - py;
+          if (!dx && !dy) { dx = 0; dy = 1; }
+          const len = Math.hypot(dx, dy) || 1;
+          const ux = dx / len, uy = dy / len;
+          const color = entry.kind === "primary" ? colors.primary : colors.secondary;
+          const bubbleR = Math.max(8.5, Math.min(14, shipSize * 0.36));
+          const faceDist = shipSize * 0.88;
+          const bubbleDist = faceDist + bubbleR + shipSize * 0.34;
+          const bx = fx - ux * bubbleDist, by = fy - uy * bubbleDist;
+          const startX = bx + ux * (bubbleR + 1.5), startY = by + uy * (bubbleR + 1.5);
+          const hx = fx - ux * faceDist, hy = fy - uy * faceDist;
+          const headLen = Math.max(5.5, shipSize * 0.22);
+          const headHalf = Math.max(3.5, shipSize * 0.12);
+          const shaftW = Math.max(1.8, shipSize * 0.075);
+          const baseX = hx - ux * headLen, baseY = hy - uy * headLen;
+          const perpX = -uy, perpY = ux;
+          const arrowPoints = `${hx.toFixed(1)},${hy.toFixed(1)} `
+            + `${(baseX + perpX * headHalf).toFixed(1)},${(baseY + perpY * headHalf).toFixed(1)} `
+            + `${(baseX - perpX * headHalf).toFixed(1)},${(baseY - perpY * headHalf).toFixed(1)}`;
+          ship += `<g class="ps-lane">
+            <line x1="${startX.toFixed(1)}" y1="${startY.toFixed(1)}" x2="${baseX.toFixed(1)}" y2="${baseY.toFixed(1)}" stroke="${color}" stroke-width="${shaftW.toFixed(1)}" stroke-linecap="round"/>
+            <polygon points="${arrowPoints}" fill="${color}"/>
+            <circle cx="${bx.toFixed(1)}" cy="${by.toFixed(1)}" r="${bubbleR.toFixed(1)}" fill="${colors.page}" stroke="${color}" stroke-width="2"/>
+            <text x="${bx}" y="${by + 5}" text-anchor="middle" class="ps-lane-num" fill="${color}">${entry.roll}</text>
+          </g>`;
+        }
+      }
+
+      let side = "";
+      let cursorY = shipBox.y + shipBox.h + 56;
+      const colX = [70, 520, 930];
+      const counts = deckCounts();
+      const upgradeLabels = UPGRADE_LABELS();
+      const summary = [
+        `Shields: ${META.base_shields + (design.upgrade === "shield" ? 1 : 0)}`,
+        `Draw: ${META.base_draw + (design.upgrade === "draw" ? 1 : 0)}`,
+        `Core points: ${corePointsSpent()} / ${corePointsBudget()}`,
+        `Tiles: ${design.tiles.length} / ${META.max_tiles}`,
+      ];
+      side += `<text x="70" y="${cursorY}" class="ps-section">Ship Summary</text>`;
+      cursorY += 30;
+      summary.forEach((line, index) => {
+        side += `<text x="${colX[index % 3]}" y="${cursorY + Math.floor(index / 3) * 24}" class="ps-list">${esc(line)}</text>`;
+      });
+      cursorY += Math.ceil(summary.length / 3) * 24 + 18;
+      side += `<text x="70" y="${cursorY}" class="ps-list">Special advantage: ${esc(upgradeLabels[design.upgrade] || "not chosen")}</text>`;
+      cursorY += 38;
+
+      if (printOptions.deck) {
+        side += `<text x="70" y="${cursorY}" class="ps-section">Starting Deck</text>`;
+        cursorY += 28;
+        const cardTypes = [
+          ["engine", counts.engine],
+          ["double_engine", counts.double_engine],
+          ["cannon", counts.cannon],
+          ["double_cannon", counts.double_cannon],
+        ];
+        let cardIndex = 0;
+        for (const [type, count] of cardTypes) {
+          for (let i = 0; i < count; i++) {
+            const x = 70 + (cardIndex % 5) * 246;
+            const y = cursorY + Math.floor(cardIndex / 5) * 72;
+            const isMove = type.includes("engine");
+            side += `<g>
+              <rect x="${x}" y="${y}" width="220" height="54" rx="7" fill="${colors.card}" stroke="${colors.line}" stroke-width="1.8"/>
+              <rect x="${x}" y="${y}" width="10" height="54" rx="5" fill="${isMove ? colors.move : colors.attack}"/>
+              <text x="${x + 24}" y="${y + 32}" class="ps-card">${esc(DECK_CARD_NAMES[type])}</text>
+            </g>`;
+            cardIndex += 1;
+          }
+        }
+        if (!cardIndex) side += `<text x="70" y="${cursorY}" class="ps-small">No deck components placed.</text>`;
+        cursorY += Math.max(1, Math.ceil(Math.max(cardIndex, 1) / 5)) * 72 + 16;
+      }
+
+      if (printOptions.components) {
+        side += `<text x="70" y="${cursorY}" class="ps-section">Components</text>`;
+        cursorY += 28;
+        sortedTiles().forEach((tile, index) => {
+          const column = index % 3;
+          const row = Math.floor(index / 3);
+          const x = colX[column];
+          const y = cursorY + row * 23;
+          side += `<text x="${x}" y="${y}" class="ps-list">${esc(badges[key(tile.q, tile.r)] || "")}</text>
+            <text x="${x + 58}" y="${y}" class="ps-small">${esc(tileLabel(tile))} (${tile.q},${tile.r})</text>`;
+        });
+        cursorY += Math.ceil(Math.max(sortedTiles().length, 1) / 3) * 23 + 24;
+      }
+
+      if (printOptions.laneList) {
+        side += `<text x="70" y="${cursorY}" class="ps-section">Damage Lanes</text>`;
+        cursorY += 28;
+        laneEntries.sort((a, b) => a.roll - b.roll).forEach((entry, index) => {
+          const ids = entry.cells
+            .map(([q, r]) => badges[key(q, r)])
+            .filter(Boolean)
+            .join(" -> ") || "miss";
+          const x = index % 2 === 0 ? 70 : 700;
+          const y = cursorY + Math.floor(index / 2) * 24;
+          side += `<text x="${x}" y="${y}" class="ps-list">${entry.roll}</text>
+            <text x="${x + 38}" y="${y}" class="ps-small">${esc(entry.kind)}: ${esc(ids)}</text>`;
+        });
+        cursorY += Math.ceil(Math.max(laneEntries.length, 1) / 2) * 24 + 24;
+      }
+
+      if (printOptions.checklist) {
+        side += `<text x="70" y="${cursorY}" class="ps-section">Table Checklist</text>`;
+        cursorY += 28;
+        [
+          `Use one d12 for player damage lanes; each roll follows that numbered lane.`,
+          `Track shields (${META.base_shields + (design.upgrade === "shield" ? 1 : 0)} max), hand draw (${META.base_draw + (design.upgrade === "draw" ? 1 : 0)}), and destroyed components.`,
+          `When a component is destroyed, remove any intact components no longer connected to the Core.`,
+          `Special advantage: ${upgradeLabels[design.upgrade] || "not chosen"}.`,
+        ].forEach((line) => {
+          side += `<text x="70" y="${cursorY}" class="ps-list">- ${esc(line)}</text>`;
+          cursorY += 24;
+        });
+      }
+      if (design.description) {
+        cursorY += 10;
+        side += `<text x="70" y="${cursorY}" class="ps-small">${esc(design.description).slice(0, 190)}</text>`;
+        cursorY += 22;
+      }
+      pageH = Math.max(1200, cursorY + 110);
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
+        <defs>
+          <style>
+            .ps-title{font:700 44px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+            .ps-sub{font:600 18px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+            .ps-section{font:700 24px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+            .ps-badge{font:700 17px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+            .ps-coord{font:600 10px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+            .ps-lane-num{font:700 14px 'Space Grotesk',Arial,sans-serif}
+            .ps-card{font:700 17px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+            .ps-small{font:500 13px 'Space Grotesk',Arial,sans-serif;fill:${colors.dim}}
+            .ps-list{font:600 16px 'Space Grotesk',Arial,sans-serif;fill:${colors.text}}
+          </style>
+        </defs>
+        <rect width="${pageW}" height="${pageH}" fill="${colors.page}"/>
+        <text x="70" y="78" class="ps-title">${esc(design.name || "Player Ship")}</text>
+        <text x="72" y="112" class="ps-sub">StarShot printable StarDock ship sheet - ${printTone === "bw" ? "black and white" : "color"}</text>
+        <text x="70" y="155" class="ps-section">Hull, Components, and Damage Lane Arrows</text>
+        <rect x="${shipBox.x}" y="${shipBox.y}" width="${shipBox.w}" height="${shipBox.h}" rx="14" fill="${colors.hull}" stroke="${colors.line}" stroke-width="2"/>
+        ${ship}
+        ${side}
+      </svg>`;
+    }
+
+    function renderPrintView() {
+      const container = el("sd-print");
+      if (!container) return;
+      container.innerHTML = `<div class="sd-print-preview">${printSheetSVG()}</div>`;
+    }
+
+    function downloadPrintSheet() {
+      const blob = new Blob([printSheetSVG()], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `starshot-${(design.id || "ship").replace(/[^a-z0-9_-]+/gi, "-")}-ship-sheet.svg`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function printSheet() {
+      const win = window.open("", "_blank");
+      if (!win) {
+        setStatus("Popup blocked. Use Download SVG and print the exported image.", false);
+        return;
+      }
+      win.document.write(`<!doctype html><html><head><title>${esc(design.name)} ship sheet</title>
+        <style>body{margin:0;background:white}svg{width:100%;height:auto;display:block}@media print{body{margin:0}}</style>
+        </head><body>${printSheetSVG()}<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>`);
+      win.document.close();
     }
 
     async function saveDesign() {

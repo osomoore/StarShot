@@ -19,6 +19,8 @@ from starshot.rules.player_ships import (
     generate_damage_lanes,
     lane_cells,
     lane_severed_count,
+    primary_lane_id,
+    secondary_lane_id,
     points_breakdown,
     primary_lane_tile_count,
 )
@@ -100,6 +102,24 @@ class LaneMathTests(unittest.TestCase):
             self.assertNotIn("core_x", lanes[roll], f"secondary lane {roll} must avoid the core")
         # lane 1 and 7 are the same line in opposite orders
         self.assertEqual(tuple(reversed(lanes[1])), lanes[7])
+
+    def test_lane_numbers_override_compiled_damage_rolls(self):
+        design = ship_designs.normalize_design(vanguard_design())
+        secondary_cells = lane_cells(0, 1, 1)
+        design["lane_numbers"] = {
+            primary_lane_id(2): 3,
+            primary_lane_id(1): 1,
+            secondary_lane_id(secondary_cells, 1): 2,
+        }
+        entries_by_coord = {
+            (tile["q"], tile["r"]): f'{tile["type"]}_x' for tile in design["tiles"]
+        }
+
+        lanes = generate_damage_lanes(design, entries_by_coord)
+
+        self.assertIn("core_x", lanes[3])
+        self.assertNotIn("core_x", lanes[2])
+        self.assertNotEqual(lanes[1], lanes[3])
 
     def test_missing_core_yields_empty_primary_lanes(self):
         design = ship_designs.normalize_design(vanguard_design())

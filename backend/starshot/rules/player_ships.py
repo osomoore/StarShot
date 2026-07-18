@@ -60,6 +60,7 @@ UPGRADE_EXTRA_POINTS = 2
 
 PRIMARY_LANE_ROLLS = (1, 2, 4, 7, 10, 12)
 SECONDARY_LANE_ROLLS = (3, 5, 6, 8, 9, 11)
+PRIMARY_LANE_DIRS = {1: 2, 7: 5, 4: 0, 12: 3, 2: 1, 10: 4}
 
 # Admin-configurable StarDock rules. The v2 layer injects overrides into a
 # design's "config" key (never persisted with the design); the rules layer
@@ -262,6 +263,27 @@ def secondary_lane_cells(design: dict) -> dict[int, list[tuple[int, int]]]:
     }
 
 
+def _lane_key(cells: list[tuple[int, int]], direction: int) -> str:
+    q, r = cells[0]
+    return f"{q},{r}|{direction % 6}"
+
+
+def primary_lane_id(direction: int) -> str:
+    return f"p:{direction % 6}"
+
+
+def secondary_lane_id(cells: list[tuple[int, int]], direction: int) -> str:
+    return f"s:{_lane_key(cells, direction)}"
+
+
+def lane_number(design: dict, lane_id: str, default_roll: int) -> int:
+    try:
+        number = int((design.get("lane_numbers") or {}).get(lane_id, default_roll))
+    except (TypeError, ValueError):
+        return default_roll
+    return number if 1 <= number <= 12 else default_roll
+
+
 def lane_severed_count(design: dict, cells: list[tuple[int, int]]) -> int:
     """How many surviving non-core components get separated from the Core
     when every component on `cells` is destroyed."""
@@ -293,7 +315,7 @@ def _line(tiles_by_coord: dict[tuple[int, int], str], selector, order_key, rever
     return tuple(tiles_by_coord[coord] for coord in coords)
 
 
-def generate_damage_lanes(design: dict, component_ids: dict[tuple[int, int], str]) -> dict[int, tuple[str, ...]]:
+def _generate_default_damage_lanes(design: dict, component_ids: dict[tuple[int, int], str]) -> dict[int, tuple[str, ...]]:
     """The d12 lane table for a design: six auto primary lanes through the
     Core plus the player's six placed secondary lanes. Lanes over empty
     lines are empty: those rolls simply miss."""
@@ -310,6 +332,33 @@ def generate_damage_lanes(design: dict, component_ids: dict[tuple[int, int], str
         lanes[2] = _line(component_ids, lambda c: c[0] + c[1] == cq + cr, by_q, reverse=False)
         lanes[10] = _line(component_ids, lambda c: c[0] + c[1] == cq + cr, by_q, reverse=True)
     for roll, cells in secondary_lane_cells(design).items():
+        lanes[roll] = tuple(component_ids[coord] for coord in cells if coord in component_ids)
+    return lanes
+
+
+def generate_damage_lanes(design: dict, component_ids: dict[tuple[int, int], str]) -> dict[int, tuple[str, ...]]:
+    """The d12 lane table for a design, honoring optional StarDock lane_numbers."""
+    lanes: dict[int, tuple[str, ...]] = {roll: () for roll in range(1, 13)}
+    core = core_tile(design)
+    if core is not None:
+        cq, cr = core["q"], core["r"]
+        by_r = lambda coord: coord[1]
+        by_q = lambda coord: coord[0]
+        primary_entries = (
+            (1, 2, _line(component_ids, lambda c: c[0] == cq, by_r, reverse=True)),
+            (7, 5, _line(component_ids, lambda c: c[0] == cq, by_r, reverse=False)),
+            (4, 0, _line(component_ids, lambda c: c[1] == cr, by_q, reverse=False)),
+            (12, 3, _line(component_ids, lambda c: c[1] == cr, by_q, reverse=True)),
+            (2, 1, _line(component_ids, lambda c: c[0] + c[1] == cq + cr, by_q, reverse=False)),
+            (10, 4, _line(component_ids, lambda c: c[0] + c[1] == cq + cr, by_q, reverse=True)),
+        )
+        for default_roll, direction, components in primary_entries:
+            roll = lane_number(design, primary_lane_id(direction), default_roll)
+            lanes[roll] = components
+    for default_roll, lane in secondary_lanes(design).items():
+        direction = int(lane["dir"])
+        cells = lane_cells(int(lane["q"]), int(lane["r"]), direction)
+        roll = lane_number(design, secondary_lane_id(cells, direction), default_roll)
         lanes[roll] = tuple(component_ids[coord] for coord in cells if coord in component_ids)
     return lanes
 

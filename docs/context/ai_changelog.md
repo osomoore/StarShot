@@ -2,6 +2,68 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 16:03:05 -05:00
+
+- Title: StarDock linear lane numbering
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Added optional `lane_numbers` metadata to StarDock ship designs and taught compiled player damage lanes to honor it, so saved/played ships match their printable lane labels.
+  - Added a StarDock "Renumber lanes linearly" control next to auto lane placement; auto-placement runs it automatically. It assigns 1-12 clockwise by lane-entry marker angle, starting from the nose.
+  - Updated StarDock board/print lane labels to use assigned lane numbers and bumped the StarDock JS query string in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js` and `PYTHONPATH=backend python -m unittest tests.test_player_ships`.
+
+## 2026-07-18 15:50:58 -05:00
+
+- Title: StarDock scaled arrows
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Replaced fixed-size SVG marker lane arrows on StarDock print sheets with ship-scale triangle arrowheads and scaled shaft widths, keeping tips on the designated entry faces.
+  - Bumped the StarDock JS query string in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js`.
+
+## 2026-07-18 15:49:05 -05:00
+
+- Title: StarDock arrow readability
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Enlarged StarDock print-sheet lane arrowheads, thickened their leader lines, and added a little more leader length while keeping arrow tips anchored on entry faces.
+  - Bumped the StarDock JS query string in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js`.
+
+## 2026-07-18 15:46:44 -05:00
+
+- Title: StarDock entry-face arrows
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Corrected StarDock print-sheet lane arrows to anchor on the first occupied component in each damage lane, so the arrowhead touches the entry face it designates instead of the outer grid edge.
+  - Bumped the StarDock JS query string in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js`.
+
+## 2026-07-18 14:59:21 -05:00
+
+- Title: StarDock print lane markers
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Moved StarDock printable sheet lane bubbles and arrowheads up close to the entry tile faces by deriving a short leader from each hex face instead of using long off-ship callouts.
+  - Bumped the StarDock JS query string in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js`.
+
+## 2026-07-18 14:54:26 -05:00
+
+- Title: StarDock print sheets
+- Build ID: `76007b5`
+- AI agent: Codex
+- Summary:
+  - Added a StarDock Print Sheets view to the player ship designer, following the StarBreach boss-sheet approach: generated SVG preview, Download SVG, Print, color/B&W tone selection, ship scale, and toggles for lanes, lane list, coordinates, components, starting deck, and table checklist.
+  - The printed sheet shows the ship hull, numbered damage-lane arrows, component labels, starting deck cards from Engine/Cannon components, shield/draw/core-point summary, and the selected special advantage.
+  - Bumped the v2 StarDock JS/CSS query strings in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/shipdesigner.js` and `PYTHONPATH=backend python -m unittest tests.test_player_ships`.
+
 ## 2026-07-18 13:00:00 -05:00
 
 - Title: StarDock overhaul — lanes, core points, upgrades
