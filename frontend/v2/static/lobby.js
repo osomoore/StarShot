@@ -149,8 +149,9 @@
       const meta = AI_META[type];
       const node = document.createElement("div");
       node.className = "ai-pick";
-      node.innerHTML = `<div class="ai-face">${meta.face}</div>
-        <div class="ai-name">${esc(meta.name)}<br><i>${esc(meta.blurb)}</i></div>
+      node.innerHTML = `<div class="ai-name">${esc(meta.name)}</div>
+        <div class="ai-face">${meta.face}</div>
+        <div class="ai-blurb">${esc(meta.blurb)}</div>
         <div class="ai-count" data-type="${type}">×0</div>`;
       node.addEventListener("click", () => {
         const count = crew.filter((entry) => entry === type).length;

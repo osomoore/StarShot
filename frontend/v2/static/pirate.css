@@ -198,8 +198,8 @@ h1, h2, .brand, .poster-title, .banner-text {
 
 /* ── lobby ───────────────────────────────── */
 .lobby-grid {
-  display: grid; grid-template-columns: 1fr 340px; gap: 18px;
-  padding: 18px; max-width: 1280px; margin: 0 auto; width: 100%;
+  display: grid; grid-template-columns: 310px minmax(360px, 1fr) 340px; gap: 18px;
+  padding: 18px; max-width: 1440px; margin: 0 auto; width: 100%;
 }
 .panel {
   background: linear-gradient(180deg, rgba(20,29,54,.92), rgba(13,20,38,.92));
@@ -212,6 +212,26 @@ h1, h2, .brand, .poster-title, .banner-text {
 .panel-sub { color: var(--gold); font-size: 15px; letter-spacing: .06em; text-transform: uppercase; margin: 18px 0 8px; }
 
 .sail-row { display: flex; align-items: center; gap: 16px; }
+.lobby-setup .sail-row,
+.lobby-setup .crew-controls {
+  align-items: stretch;
+  flex-direction: column;
+}
+.lobby-setup .btn.big,
+.lobby-setup #btn-create-match {
+  width: 100%;
+}
+.lobby-setup #ai-pickers {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  width: 100%;
+}
+.lobby-setup .advanced-features,
+.lobby-setup .foes-group,
+.lobby-setup .flesh-foes {
+  width: 100%;
+}
 .queue-status { color: var(--ink-dim); display: flex; align-items: center; gap: 10px; }
 .spinner {
   width: 14px; height: 14px; border-radius: 50%;
@@ -224,13 +244,44 @@ h1, h2, .brand, .poster-title, .banner-text {
 .crew-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 #ai-pickers { display: flex; gap: 8px; flex-wrap: wrap; }
 .ai-pick {
+  align-items: center;
   border: 1px solid var(--panel-edge); border-radius: 10px; padding: 8px 12px;
   background: #0d1426; cursor: pointer; text-align: center; user-select: none;
+  display: grid;
+  gap: 8px;
+  grid-template-areas:
+    "face name count"
+    "face blurb count";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 46px;
   transition: border-color .15s, box-shadow .15s;
 }
-.ai-pick .ai-face { font-size: 22px; }
-.ai-pick .ai-name { font-size: 11px; color: var(--ink-dim); }
-.ai-pick .ai-count { color: var(--gold-bright); font-weight: 700; font-size: 13px; }
+.ai-pick .ai-face { font-size: 20px; grid-area: face; line-height: 1; }
+.ai-pick .ai-name {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  grid-area: name;
+  line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-pick .ai-blurb {
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  font-style: italic;
+  grid-area: blurb;
+  line-height: 1.12;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-pick .ai-count { color: var(--gold-bright); font-weight: 800; font-size: 15px; grid-area: count; }
 .ai-pick.picked { border-color: var(--gold); box-shadow: 0 0 10px rgba(212,167,72,.35); }
 .open-seats-label { color: var(--ink-dim); font-size: 13px; }
 .open-seats-label select { background: #0d1426; color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 4px 6px; }
@@ -271,6 +322,20 @@ h1, h2, .brand, .poster-title, .banner-text {
   min-width: 38px;
   padding-left: 12px;
   padding-right: 12px;
+}
+.flesh-foes .choice-button {
+  font-size: 16px;
+  min-height: 40px;
+}
+.ai-level-label .choice-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ai-level-label .choice-button {
+  font-size: 12px;
+  min-height: 34px;
+  padding: 7px 5px;
+  white-space: nowrap;
 }
 .flesh-foes {
   min-width: 220px;
@@ -1346,6 +1411,46 @@ h1, h2, .brand, .poster-title, .banner-text {
     padding: 10px;
   }
 
+  :root[data-device="phone"] .lobby-side {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    display: contents;
+    padding: 0;
+  }
+
+  :root[data-device="phone"] .lobby-side > .panel-title:first-child,
+  :root[data-device="phone"] .captains-on-deck-section,
+  :root[data-device="phone"] .scoreboard-section {
+    background: linear-gradient(180deg, rgba(20,29,54,.92), rgba(13,20,38,.92));
+    border: 1px solid var(--panel-edge);
+    box-shadow: var(--shadow);
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  :root[data-device="phone"] .lobby-side > .panel-title:first-child {
+    border-bottom: 0;
+    border-radius: 10px 10px 0 0;
+    margin: 0 0 -12px;
+    order: -2;
+    padding-top: 14px;
+  }
+
+  :root[data-device="phone"] .captains-on-deck-section {
+    border-radius: 0 0 10px 10px;
+    border-top: 0;
+    order: -1;
+    padding-bottom: 14px;
+  }
+
+  :root[data-device="phone"] .scoreboard-section {
+    border-radius: 10px;
+    order: 3;
+    padding-bottom: 14px;
+    padding-top: 14px;
+  }
+
   :root[data-device="phone"] .panel {
     border-radius: 10px;
     padding: 14px;
@@ -1360,7 +1465,7 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .ai-pick {
-    min-height: 68px;
+    min-height: 48px;
     width: 100%;
   }
 
@@ -1372,20 +1477,34 @@ h1, h2, .brand, .poster-title, .banner-text {
   }
 
   :root[data-device="phone"] .ai-pick {
-    padding: 7px 4px;
+    gap: 5px;
+    grid-template-areas:
+      "name name name"
+      "face blurb count";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 7px 5px;
   }
 
   :root[data-device="phone"] .ai-pick .ai-face {
-    font-size: 17px;
+    font-size: 16px;
+    grid-area: face;
   }
 
   :root[data-device="phone"] .ai-pick .ai-name {
-    font-size: 10px;
-    line-height: 1.18;
+    font-size: 15px;
+    line-height: 1.15;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  :root[data-device="phone"] .ai-pick .ai-blurb {
+    font-size: 8.5px;
+    text-align: center;
   }
 
   :root[data-device="phone"] .ai-pick .ai-count {
-    font-size: 12px;
+    font-size: 13px;
+    justify-self: end;
   }
 
   :root[data-device="phone"] .ai-level-label,
@@ -1411,6 +1530,21 @@ h1, h2, .brand, .poster-title, .banner-text {
     min-height: 44px;
     padding: 10px 6px;
     width: 100%;
+  }
+
+  :root[data-device="phone"] .flesh-foes .choice-button {
+    font-size: 18px;
+  }
+
+  :root[data-device="phone"] .ai-level-label .choice-button {
+    align-items: center;
+    display: flex;
+    font-size: 13px;
+    justify-content: center;
+    line-height: 1.08;
+    min-height: 50px;
+    padding: 9px 4px;
+    white-space: normal;
   }
 
   :root[data-device="phone"] .expansion-box {
@@ -1837,5 +1971,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 @media (max-width: 1200px) {
   .game-grid { grid-template-columns: 220px minmax(0, 1fr) 480px; }
   .hand-area .card { width: 100px; height: 140px; }
+}
+@media (max-width: 1080px) {
   .lobby-grid { grid-template-columns: 1fr; }
 }

@@ -2,6 +2,19 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 17:18:13 -05:00
+
+- Title: Lobby setup layout polish
+- Build ID: `b3934bb`
+- AI agent: Codex
+- Summary:
+  - Split the lobby into desktop setup, raids/history, and existing scoreboard columns; on mobile, Captains on Deck now appears above Set Sail while the scoreboard remains separate.
+  - Reordered mobile setup controls to Flesh and Blood Foes, Digital Scallywags, then Advanced Game Features.
+  - Reworked Digital Scallywags buttons into compact desktop rows and mobile cards with the AI name full-width on top, then icon, blurb, and count below; increased the mobile AI name size to 15px.
+  - Increased Flesh and Blood Foes seat-button numbers and tuned Experience Level button text/wrapping for desktop and mobile.
+  - Bumped v2 pirate CSS and lobby JS query strings in `frontend/v2/index.html`.
+  - Verified with `node --check frontend/v2/static/lobby.js` and markup/CSS diff inspection.
+
 ## 2026-07-18 16:18:11 -05:00
 
 - Title: Lobby expansion panels
