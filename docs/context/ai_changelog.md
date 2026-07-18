@@ -2,6 +2,18 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 16:18:11 -05:00
+
+- Title: Lobby expansion panels
+- Build ID: `c706f57`
+- AI agent: Codex
+- Summary:
+  - Reworked the lobby battle setup order with a "Flesh and Blood Foes" seat panel above Digital Scallywags and kept Advanced Game Features folding out below it.
+  - Added a StarDock checkbox beside StarCommand and StarBreach; StarBreach and StarDock now reveal their boss/ship selectors plus compact builder icon buttons only when enabled.
+  - Renamed Build New Content hub choices to StarBreach / Build Bosses and StarDock / Build Player Ships.
+  - On mobile StarDock, the ship board now moves below the selected-tool reminder and above the secondary damage lane panel.
+  - Verified with `node --check frontend/v2/static/lobby.js`, `node --check frontend/v2/static/bossdesigner.js`, and `node --check frontend/v2/static/shipdesigner.js`.
+
 ## 2026-07-18 16:03:05 -05:00
 
 - Title: StarDock linear lane numbering

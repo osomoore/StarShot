@@ -272,6 +272,9 @@ h1, h2, .brand, .poster-title, .banner-text {
   padding-left: 12px;
   padding-right: 12px;
 }
+.flesh-foes {
+  min-width: 220px;
+}
 
 .match-list { display: flex; flex-direction: column; gap: 8px; }
 .match-row {
@@ -493,6 +496,29 @@ h1, h2, .brand, .poster-title, .banner-text {
   flex: 0 0 auto;
   height: 18px;
   width: 18px;
+}
+.expansion-detail {
+  border-left: 2px solid rgba(212, 167, 72, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: -2px 0 4px 15px;
+  padding: 4px 0 6px 10px;
+}
+.expansion-detail .open-seats-label {
+  width: 100%;
+}
+.expansion-detail .open-seats-label select {
+  min-width: min(260px, 100%);
+}
+.builder-icon-btn {
+  align-items: center;
+  display: inline-flex;
+  font-size: 15px;
+  justify-content: center;
+  min-height: 32px;
+  min-width: 36px;
+  padding: 5px 8px;
 }
 .tutorial-steps { display: grid; gap: 10px; text-align: left; color: var(--ink-dim); font-size: 13px; line-height: 1.4; }
 .tutorial-role { margin-left: 18px; padding-left: 10px; border-left: 2px solid rgba(212,167,72,.3); }
@@ -1367,6 +1393,10 @@ h1, h2, .brand, .poster-title, .banner-text {
     width: 100%;
   }
 
+  :root[data-device="phone"] .flesh-foes {
+    min-width: 0;
+  }
+
   :root[data-device="phone"] .choice-buttons {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1394,6 +1424,10 @@ h1, h2, .brand, .poster-title, .banner-text {
     min-height: 52px;
     padding: 12px;
     width: 100%;
+  }
+
+  :root[data-device="phone"] .expansion-detail {
+    margin-left: 10px;
   }
 
   :root[data-device="phone"] .expansion-toggle input {

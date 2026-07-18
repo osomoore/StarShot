@@ -118,6 +118,7 @@
       deck: true,
       checklist: true,
     };
+    let boardPlacementWired = false;
 
     // ── tiny helpers ─────────────────────────────────────────────────────
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -723,6 +724,7 @@
           </div>
         </div>`;
 
+      syncBoardPlacement();
       el("sd-back").addEventListener("click", async () => {
         if (dirty && !window.confirm("Discard unsaved changes?")) return;
         design = null;
@@ -761,7 +763,26 @@
       drawBoard();
     }
 
+    function syncBoardPlacement() {
+      const board = el("sd-board-wrap");
+      const editor = root().querySelector(".sd-editor");
+      const print = el("sd-print");
+      const note = el("sd-tool-note");
+      if (!board || !editor || !print || !note) return;
+      const mobile = window.matchMedia && window.matchMedia("(max-width: 860px)").matches;
+      if (mobile) {
+        note.after(board);
+      } else {
+        editor.insertBefore(board, print);
+      }
+      if (!boardPlacementWired) {
+        boardPlacementWired = true;
+        window.addEventListener("resize", syncBoardPlacement);
+      }
+    }
+
     function setEditorMode(mode) {
+      syncBoardPlacement();
       const printing = mode === "print";
       el("sd-tab-edit").className = "btn " + (printing ? "ghost" : "gold") + " small";
       el("sd-tab-print").className = "btn " + (printing ? "gold" : "ghost") + " small";

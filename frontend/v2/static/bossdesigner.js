@@ -2618,8 +2618,8 @@
       <div class="picker">
         <h3>🛠 Build New Content</h3>
         <div class="bd-hub-actions">
-          <button class="btn gold" id="bd-hub-ships">🚀 My Ships<span class="btn-sub">design the ship you fly</span></button>
-          <button class="btn gold" id="bd-hub-bosses">👹 My Bosses<span class="btn-sub">design StarBreach foes</span></button>
+          <button class="btn gold" id="bd-hub-bosses">StarBreach<span class="btn-sub">Build Bosses</span></button>
+          <button class="btn gold" id="bd-hub-ships">StarDock<span class="btn-sub">Build Player Ships</span></button>
         </div>
         <button class="btn ghost picker-cancel" id="bd-hub-cancel">Never mind</button>
       </div>`;

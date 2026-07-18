@@ -73,11 +73,7 @@
       <div class="crew-builder">
         <div id="crew-slots"></div>
         <div class="crew-controls">
-          <div class="foes-group group-box">
-            <label>Digital Scallywags:</label>
-            <div id="ai-pickers"></div>
-          </div>
-          <label class="open-seats-label">Open seats for humans:
+          <label class="open-seats-label flesh-foes group-box">Flesh and Blood Foes:
             <select id="open-seats"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
           </label>
           <div class="advanced-features group-box" id="advanced-features">
@@ -91,12 +87,22 @@
                   <input id="exp-star-command" type="checkbox">
                   <span>StarCommand</span>
                 </label>
-                <label class="expansion-toggle" title="StarBreach is in Alpha — expect rough edges and balance changes.">
+                <label class="expansion-toggle expansion-toggle-row" title="StarBreach is in Alpha — expect rough edges and balance changes.">
                   <input id="exp-star-breach" type="checkbox">
                   <span>StarBreach (co-op) <span class="badge-alpha">ALPHA</span></span>
                 </label>
+                <div class="expansion-detail hidden" id="star-breach-detail"></div>
+                <label class="expansion-toggle expansion-toggle-row" title="StarDock lets you fly custom player ships.">
+                  <input id="exp-stardock" type="checkbox">
+                  <span>StarDock <span class="badge-alpha">ALPHA</span></span>
+                </label>
+                <div class="expansion-detail hidden" id="stardock-detail"></div>
               </div>
             </div>
+          </div>
+          <div class="foes-group group-box">
+            <label>Digital Scallywags:</label>
+            <div id="ai-pickers"></div>
           </div>
           <button id="btn-create-match" class="btn crimson">🏴‍☠ Launch Raid</button>
         </div>
@@ -185,9 +191,9 @@
 <script src="/v2/static/effects.js?v=7"></script>
 <script src="/v2/static/cards.js?v=9"></script>
 <script src="/v2/static/tutorial.js?v=9"></script>
-<script src="/v2/static/shipdesigner.js?v=9"></script>
-<script src="/v2/static/bossdesigner.js?v=26"></script>
-<script src="/v2/static/lobby.js?v=35"></script>
+<script src="/v2/static/shipdesigner.js?v=10"></script>
+<script src="/v2/static/bossdesigner.js?v=27"></script>
+<script src="/v2/static/lobby.js?v=36"></script>
 <script src="/v2/static/game.js?v=64"></script>
 <script src="/v2/static/app.js?v=8"></script>
 <script src="/v2/static/buildfooter.js?v=2"></script>

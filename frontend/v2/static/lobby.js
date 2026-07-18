@@ -31,6 +31,7 @@
   })();
   let starCommandActive = false;
   let starBreachActive = false;
+  let starDockActive = false;
   const activeExpansions = () => [
     ...(starCommandActive ? ["star_command"] : []),
     ...(starBreachActive ? ["star_breach"] : []),
@@ -43,6 +44,7 @@
   const EXPANSION_META = {
     star_command: { label: "SC", name: "StarCommand" },
     star_breach: { label: "SB", name: "StarBreach" },
+    stardock: { label: "SD", name: "StarDock" },
   };
   function expansionBadges(match) {
     const expansions = match.active_expansions || [];
@@ -263,6 +265,13 @@
       breachToggle.checked = starBreachActive;
       breachToggle.closest(".expansion-toggle")?.classList.toggle("active", starBreachActive);
     }
+    const dockToggle = document.getElementById("exp-stardock");
+    if (dockToggle) {
+      dockToggle.checked = starDockActive;
+      dockToggle.closest(".expansion-toggle")?.classList.toggle("active", starDockActive);
+    }
+    document.getElementById("star-breach-detail")?.classList.toggle("hidden", !starBreachActive);
+    document.getElementById("stardock-detail")?.classList.toggle("hidden", !starDockActive);
   }
 
   /* "Your Ship" picker: the ship this captain flies in every raid they
@@ -270,15 +279,14 @@
      standard base ship. The choice persists in localStorage. */
   function ensureShipPicker() {
     if (document.getElementById("ship-pick")) return;
-    const controls = document.querySelector(".advanced-features-body") || document.querySelector(".crew-controls");
+    const controls = document.getElementById("stardock-detail");
     if (!controls) return;
     const label = document.createElement("label");
     label.className = "open-seats-label ship-pick-label";
     label.innerHTML = `Your Ship:
       <select id="ship-pick"><option value="">Standard ship</option></select>
-      <button type="button" class="btn ghost small" id="btn-my-ships" title="StarDock: design yer own ships (19 points, up to 10 designs) and fly them">🛠 StarDock</button>`;
-    const expansionBox = controls.querySelector(".expansion-box");
-    controls.insertBefore(label, expansionBox || null);
+      <button type="button" class="btn ghost small builder-icon-btn" id="btn-my-ships" title="Build Player Ships" aria-label="Build Player Ships">🛠</button>`;
+    controls.appendChild(label);
     label.querySelector("select").addEventListener("change", (event) => {
       shipDesignSelection = event.target.value || "";
       try { localStorage.setItem("ss_preferred_ship", shipDesignSelection); } catch (err) { /* private mode */ }
@@ -296,6 +304,8 @@
   async function updateShipPicker() {
     const select = document.getElementById("ship-pick");
     if (!select || shipDesignsLoaded) return;
+    document.getElementById("stardock-detail")?.classList.toggle("hidden", !starDockActive);
+    if (!starDockActive) return;
     shipDesignsLoaded = true;
     try {
       const data = await API.shipDesigns();
@@ -318,7 +328,7 @@
 
   function ensureStarBreachPreyPicker() {
     if (document.getElementById("star-breach-prey")) return;
-    const box = document.querySelector(".expansion-box");
+    const box = document.getElementById("star-breach-detail");
     if (!box) return;
     const label = document.createElement("label");
     label.className = "open-seats-label star-breach-prey-label hidden";
@@ -353,7 +363,7 @@
     label.className = "open-seats-label star-breach-boss-label hidden";
     label.innerHTML = `StarBreach Boss:
       <select id="star-breach-boss"><option value="">Loading boss designs...</option></select>
-      <button type="button" class="btn ghost small" id="btn-my-bosses" title="Design yer own StarBreach bosses (up to 10) and battle them">🛠 My Bosses</button>`;
+      <button type="button" class="btn ghost small builder-icon-btn" id="btn-my-bosses" title="Build Bosses" aria-label="Build Bosses">🛠</button>`;
     box.appendChild(label);
     label.querySelector("select").addEventListener("change", (event) => {
       starBreachBossSelection = event.target.value || "";
@@ -1195,6 +1205,14 @@
         if (starBreachActive) maybeShowStarBreachTutorial();
       });
     }
+    const dockToggle = document.getElementById("exp-stardock");
+    if (dockToggle) {
+      dockToggle.addEventListener("change", (event) => {
+        starDockActive = !!event.target.checked;
+        renderExpansionToggle();
+        updateCrewUI();
+      });
+    }
     document.getElementById("btn-create-match").addEventListener("click", async () => {
       const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
       try {
@@ -1206,7 +1224,7 @@
           star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
           star_breach_role: starBreachActive ? (starBreachRoleSelection || null) : null,
           star_breach_boss_design_id: starBreachActive ? (starBreachBossSelection || null) : null,
-          ship_design_id: shipDesignSelection || null,
+          ship_design_id: starDockActive ? (shipDesignSelection || null) : null,
         });
         crew = [];
         updateCrewUI();
