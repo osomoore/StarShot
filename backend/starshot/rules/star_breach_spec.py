@@ -115,6 +115,11 @@ def default_spec() -> dict:
         ],
         "fleet_move": sb_data.HUNTER_KILLER_MOVE,
         "fleet_aim": sb_data.HUNTER_KILLER_AIM,
+        # AI programs, one-shot Super abilities, and the player victory goal.
+        "boss_ai": "hunter_killer",
+        "fleet_ai": "hunter_killer",
+        "supers": [],
+        "goal": {"kind": "escape_fang"},
     }
 
 
@@ -361,6 +366,19 @@ def spec_from_design(design: dict) -> dict:
         "fleet": fleet,
         "fleet_move": sb_data.HUNTER_KILLER_MOVE,
         "fleet_aim": sb_data.HUNTER_KILLER_AIM,
+        "boss_ai": design["behavior"].get("boss_ai", "hunter_killer"),
+        "fleet_ai": fleet_config.get("ai", "hunter_killer"),
+        "supers": [
+            {
+                "id": f"super_{index + 1}",
+                "effect": super_def["effect"],
+                "core": super_def.get("core", 1),
+                "stack": super_def.get("stack", "starbreach"),
+                "trigger": dict(super_def["trigger"]),
+            }
+            for index, super_def in enumerate(design.get("supers", []))
+        ],
+        "goal": dict(design.get("goal") or {"kind": "escape_fang"}),
     }
 
 
@@ -471,10 +489,45 @@ def phase_kind(spec: dict, phase_key: str) -> str:
     raise KeyError(f"Unknown boss phase: {phase_key}")
 
 
+def core_hex_for(spec: dict, core_number: int) -> list[int] | None:
+    """Hull hex of the Core with this number (a Core saved without a number,
+    like the stock Breacher Core, counts as Core 1)."""
+    for component in spec["components"]:
+        if component["type"] == "core" and int(component.get("number") or 1) == int(core_number):
+            return [component["q"], component["r"]]
+    return None
+
+
+def _super_slot(spec: dict, super_def: dict) -> dict:
+    """A Super expressed as an action-stack slot: it acts every round in its
+    stack while its Core is alive and its round/progression gate is open."""
+    slot: dict = {
+        "slot": "super",
+        "super_id": super_def["id"],
+        "effect": super_def["effect"],
+        "kind": "super",
+        "core_hex": core_hex_for(spec, super_def.get("core", 1)),
+    }
+    trigger = super_def.get("trigger") or {}
+    if trigger.get("kind") == "round":
+        slot["min_round"] = int(trigger.get("value", 1))
+    elif trigger.get("kind") == "progress":
+        # Progression-gated Supers follow the tier rule: a step reached
+        # mid-round only powers the Super from the next round's start.
+        slot["tier"] = int(trigger.get("value", 1))
+    return slot
+
+
 def phase_slots(spec: dict, phase_key: str) -> list[dict]:
     for phase in spec["phases"]:
         if phase["key"] == phase_key:
-            return phase["slots"]
+            slots = list(phase["slots"])
+            slots.extend(
+                _super_slot(spec, super_def)
+                for super_def in (spec.get("supers") or ())
+                if super_def.get("stack", "starbreach") == phase_key
+            )
+            return slots
     return []
 
 
@@ -510,6 +563,15 @@ def slot_is_active(
         return True
     if slot["slot"] == "component":
         return slot["component_id"] not in destroyed_component_ids(spec, destroyed_hexes)
+    if slot["slot"] == "super":
+        # A Super needs its synced Core alive AND its round/progression gate.
+        core_hex = slot.get("core_hex")
+        if core_hex is None or (core_hex[0], core_hex[1]) in destroyed_hexes:
+            return False
+        if "tier" in slot and slot["tier"] not in active_tiers:
+            return False
+        min_round = slot.get("min_round")
+        return min_round is None or round_number >= min_round
     if slot["slot"] == "tier":
         if slot["tier"] not in active_tiers:
             return False
@@ -607,9 +669,35 @@ def boss_layout_to_dict(spec: dict) -> dict:
         "fleet_actions": {key: list(kinds) for key, kinds in spec.get("fleet_actions", {}).items()},
         "tier_labels": tier_labels(spec),
         "tier_spawns": {str(tier): dict(entry) for tier, entry in (spec.get("tier_spawns") or {}).items()},
+        "boss_ai": boss_ai(spec),
+        "fleet_ai": fleet_ai(spec),
+        "supers": boss_supers(spec),
+        "goal": boss_goal(spec),
     }
 
 
 def progress_triggers(spec: dict) -> list[str] | None:
     """None = built-in stock rules; a list = designer-selected triggers."""
     return spec["progress_triggers"]
+
+
+def boss_ai(spec: dict) -> str:
+    """AI program driving the boss token (specs saved before AI programs
+    existed default to the classic hunter-killer)."""
+    return spec.get("boss_ai") or "hunter_killer"
+
+
+def fleet_ai(spec: dict) -> str:
+    """AI program driving the fleet craft."""
+    return spec.get("fleet_ai") or "hunter_killer"
+
+
+def boss_supers(spec: dict) -> list[dict]:
+    """One-shot Super abilities, in definition order."""
+    return [dict(entry) for entry in (spec.get("supers") or ())]
+
+
+def boss_goal(spec: dict) -> dict:
+    """The player victory goal for this scenario."""
+    goal = spec.get("goal") or {}
+    return dict(goal) if goal.get("kind") in ("escape_fang", "capture_vaults", "destroy_fleet") else {"kind": "escape_fang"}

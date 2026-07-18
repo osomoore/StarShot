@@ -202,6 +202,27 @@
       el("text", { x: nx, y: ny - HEX * 1.15, "text-anchor": "middle", "font-size": 9, fill: "#d9a6ff", class: "ship-label" }, group)
         .textContent = "☄ StarBreacher";
     }
+    for (const mine of sb.mines || []) {
+      const [x, y] = axialToXY(mine.q, mine.r);
+      const group = el("g", { transform: `translate(${x},${y})`, class: "boss-mine" }, bossLayer);
+      el("circle", { cx: 0, cy: 0, r: 6.5, fill: "#2a1038", stroke: "#ff5a5a", "stroke-width": 1.6 }, group);
+      for (let spike = 0; spike < 6; spike++) {
+        const angle = (Math.PI / 3) * spike;
+        el("line", {
+          x1: Math.cos(angle) * 6.5, y1: Math.sin(angle) * 6.5,
+          x2: Math.cos(angle) * 10, y2: Math.sin(angle) * 10,
+          stroke: "#ff5a5a", "stroke-width": 1.6,
+        }, group);
+      }
+      el("circle", { cx: 0, cy: 0, r: 2.2, fill: "#ff5a5a" }, group);
+      const tip = el("title", {}, group);
+      tip.textContent = "Proximity mine — 3 damage to any ship passing within 2 hexes";
+      // Danger radius ring.
+      el("circle", {
+        cx: x, cy: y, r: HEX * 2.05, fill: "none", stroke: "#ff5a5a",
+        "stroke-width": 0.9, "stroke-dasharray": "3 4", opacity: 0.45, "pointer-events": "none",
+      }, bossLayer);
+    }
     for (const craft of sb.fleet || []) {
       // During replays the game supplies live craft positions/liveness so the
       // sprites match the moment being animated, not the end-of-round state.

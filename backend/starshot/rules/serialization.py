@@ -124,6 +124,29 @@ def star_breach_to_dict(sb: StarBreachState, *, round_number: int = 1) -> dict:
         "boss_layout": sb_spec.boss_layout_to_dict(spec),
         "roles": {role.id: sb_data.role_to_dict(role) for role in sb_data.ROLES},
         "boss_spec": sb.boss_spec,
+        "boss_ai": sb_spec.boss_ai(spec),
+        "fleet_ai": sb_spec.fleet_ai(spec),
+        "boss_ai_target_id": sb.boss_ai_target_id,
+        "boss_ai_switch_round": sb.boss_ai_switch_round,
+        "fleet_ai_target_id": sb.fleet_ai_target_id,
+        "fleet_ai_switch_round": sb.fleet_ai_switch_round,
+        "supers": [
+            {
+                **super_def,
+                "active": sb_spec.slot_is_active(
+                    spec,
+                    sb_spec._super_slot(spec, super_def),
+                    sb.destroyed_hexes,
+                    set(sb.active_tiers),
+                    round_number,
+                ),
+            }
+            for super_def in sb_spec.boss_supers(spec)
+        ],
+        "mines": [dict(mine) for mine in sb.mines],
+        "immobilized_player_ids": list(sb.immobilized_player_ids),
+        "marked_player_ids": list(sb.marked_player_ids),
+        "goal": sb_spec.boss_goal(spec),
     }
 
 
@@ -143,6 +166,13 @@ def star_breach_from_dict(data: dict) -> StarBreachState:
         repaired_ship_ids_this_action=list(data.get("repaired_ship_ids_this_action", [])),
         progressed_source_ids_this_action=list(data.get("progressed_source_ids_this_action", [])),
         boss_spec=data.get("boss_spec"),
+        boss_ai_target_id=data.get("boss_ai_target_id"),
+        boss_ai_switch_round=data.get("boss_ai_switch_round", 0),
+        fleet_ai_target_id=data.get("fleet_ai_target_id"),
+        fleet_ai_switch_round=data.get("fleet_ai_switch_round", 0),
+        mines=[dict(mine) for mine in data.get("mines", [])],
+        immobilized_player_ids=list(data.get("immobilized_player_ids", [])),
+        marked_player_ids=list(data.get("marked_player_ids", [])),
     )
 
 

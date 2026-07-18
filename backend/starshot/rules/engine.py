@@ -416,7 +416,8 @@ def _move_distance_multiplier_by_expansion(
                     overdrive_copy=overdrive_copy,
                 )
             )
-    return max(1, multiplier)
+    # A multiplier of 0 is a full movement cancel (StarBreach Immobilizer).
+    return max(0, multiplier)
 
 
 def _move_defense_distance_by_expansion(

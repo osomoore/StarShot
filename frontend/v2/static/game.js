@@ -449,7 +449,9 @@
       "starfall_take_cover_damage", "captain_cleanup_movement",
       "boss_phase_started", "boss_phase_resolved", "enemy_volley_resolved",
       "boss_volley_resolved", "craft_volley_resolved", "repair_volley_resolved",
-      "boss_progress_advanced", "boss_tiers_activated", "boss_fleet_spawned"].includes(event.type);
+      "boss_progress_advanced", "boss_tiers_activated", "boss_fleet_spawned",
+      "boss_super_activated", "boss_super_resolved", "mine_detonated",
+      "boss_directive_changed", "boss_vault_pickup"].includes(event.type);
   }
 
   function shouldOfferEntryReplay(event) {
@@ -597,9 +599,18 @@
       .join(" ");
     const fleetAlive = (sb.fleet || []).filter((craft) => !craft.destroyed).length;
     const roleNames = myRoles().map((role) => (sb.roles && sb.roles[role] ? sb.roles[role].name : role)).join(" + ");
+    const goal = sb.goal || { kind: "escape_fang" };
+    const vaultsTaken = (view.vaults || []).reduce((total, vault) =>
+      total + (vault.is_fang ? 0 : (vault.claimed_by || []).filter((who) => who !== "starbreacher").length), 0);
+    const goalText = goal.kind === "capture_vaults"
+      ? `Goal: capture ${goal.count || 8} vaults (${vaultsTaken} so far)`
+      : goal.kind === "destroy_fleet"
+        ? `Goal: destroy the fleet (${fleetAlive} left)`
+        : "Goal: get The Prey to The Fang by round 6";
     setScenarioStatus(node, "starbreach", "◎", `<b>☄ StarBreacher</b>
       <span>Prey: ${esc(displayName(sb.prey_player_id))} · Progress ${sb.progress}
       · Shields ${esc(shields)} · Hunters ${fleetAlive}${roleNames ? ` · You: ${esc(roleNames)}` : ""}
+      · ${esc(goalText)}
       </span>`);
     node.title = "StarBreach status.";
     renderBossBattleBoardMini();
@@ -1063,6 +1074,32 @@
           : "fumbles the repair";
         return { cls: "loot", text: `🔧 ${name(event.attacker_id)} works on ${name(event.target_id)} — 🎲${event.roll} vs ${event.defense_threshold}: ${result}.` };
       }
+      case "boss_super_activated":
+        return { cls: "hit", text: `💥 BOSS SUPER: ${event.name || event.effect}!` };
+      case "boss_super_resolved": {
+        const detail = event.detail || {};
+        if (detail.skipped) return null;
+        let text = "";
+        switch (event.effect) {
+          case "immobilizer_shot": text = `${name(detail.target_id)}'s engines are locked — no movement for the rest of the round.`; break;
+          case "tractor_beam": text = `${name(detail.target_id)} is dragged ${detail.moved || 0} hex${detail.moved === 1 ? "" : "es"} toward the boss.`; break;
+          case "knockback": text = `${name(detail.target_id)} is hurled ${detail.moved || 0} hex${detail.moved === 1 ? "" : "es"} away from the boss.`; break;
+          case "inferno_zone": text = `The zone around the boss ignites — ${(detail.targets || []).length} ship${(detail.targets || []).length === 1 ? "" : "s"} scorched.`; break;
+          case "infuser": text = "The fleet surges forward with 3 bonus move actions."; break;
+          case "chain_shot": text = `Lightning arcs across ${(detail.links || []).length} ship${(detail.links || []).length === 1 ? "" : "s"}.`; break;
+          case "scattershot": text = `A 120° spread rakes ${(detail.shots || []).length} ship${(detail.shots || []).length === 1 ? "" : "s"}.`; break;
+          case "mark_the_prey": text = `${name(detail.target_id)} is MARKED: -5 defense for the rest of the round.`; break;
+          case "mine_dropper": text = "A proximity mine tumbles out of the boss's hull."; break;
+          default: text = "";
+        }
+        return { cls: "hit", text: `💥 ${event.name || event.effect}: ${text}` };
+      }
+      case "mine_detonated":
+        return { cls: "hit", text: `💣 A mine detonates on ${name(event.player_id)} — ${event.shields_absorbed ? event.shields_absorbed + " soaked by shields, " : ""}${event.damage_applied || 0} hull damage.` };
+      case "boss_directive_changed":
+        return { cls: "hit", text: `☄ The ${event.scope === "fleet" ? "enemy fleet" : "StarBreacher"} changes its directive: hunt ${name(event.target_id)} (${{ boss_hit: "returned fire", craft_hit: "returned fire", player_heal: "punish the healer", bauble_pickup: "bauble thief", core_lane_open: "core exposed" }[event.reason] || event.reason}).` };
+      case "boss_vault_pickup":
+        return { cls: "hit", text: `☄ The enemy snatches a vault before the crew can get to it!` };
       case "player_forfeited": return { cls: "round", text: `🏳 ${name(event.player_id)} strikes their colors and abandons the battle!` };
       case "deck_refreshed": return { cls: "", text: `${name(event.player_id)} reshuffles.` };
       default: return null;
@@ -3768,6 +3805,107 @@
         await wait(800);
         return;
       }
+      case "boss_super_activated": {
+        const at = Board.hexToScreen(event.boss_position?.q ?? 0, event.boss_position?.r ?? 0);
+        callout(`💥 ${event.name || event.effect} 💥`, true);
+        FX.shockwave(at, "#ff5aa0");
+        await wait(500);
+        FX.shockwave(at, "#d9a6ff");
+        await wait(700);
+        return;
+      }
+      case "boss_super_resolved": {
+        const detail = event.detail || {};
+        if (detail.skipped) return;
+        switch (event.effect) {
+          case "immobilizer_shot": {
+            const ship = displayShipFor(detail.target_id);
+            const at = Board.hexToScreen(ship.q, ship.r);
+            FX.shield(at);
+            FX.floatText(at, "⛓ ENGINES LOCKED", "#7ed8ff", 15);
+            break;
+          }
+          case "tractor_beam":
+          case "knockback": {
+            if (detail.before && detail.after) {
+              const at = Board.hexToScreen(detail.before.q, detail.before.r);
+              FX.floatText(at, event.effect === "tractor_beam" ? "⇘ TRACTOR BEAM" : "⇗ KNOCKBACK", "#d9a6ff", 15);
+              await playMovementEvents([{
+                player_id: detail.target_id,
+                steps: [{ before: detail.before, after: detail.after, distance: detail.moved || 0 }],
+              }]);
+            }
+            break;
+          }
+          case "inferno_zone": {
+            for (const target of detail.targets || []) {
+              const at = Board.hexToScreen(target.position?.q ?? 0, target.position?.r ?? 0);
+              FX.impact(at, true);
+              if (target.shielded) {
+                FX.shield(at);
+                const ship = replayShipStates && replayShipStates[target.player_id];
+                if (ship) ship.shields = Math.max(0, (ship.shields || 0) - 1);
+              } else {
+                applyDamageResult(target.player_id, target);
+              }
+              await wait(220);
+            }
+            renderFleet();
+            break;
+          }
+          case "infuser": {
+            for (const move of detail.fleet_moves || []) {
+              const pose = replayFleetPose && replayFleetPose[move.craft_id];
+              if (pose && move.after) { pose.q = move.after[0]; pose.r = move.after[1]; }
+            }
+            Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
+            break;
+          }
+          case "mark_the_prey": {
+            const ship = displayShipFor(detail.target_id);
+            const at = Board.hexToScreen(ship.q, ship.r);
+            FX.impact(at, false);
+            FX.floatText(at, "☠ MARKED: -5 DEFENSE", "#ff5a5a", 16);
+            break;
+          }
+          case "mine_dropper": {
+            const mine = detail.mine || {};
+            const at = Board.hexToScreen(mine.q ?? 0, mine.r ?? 0);
+            FX.warp(at);
+            FX.floatText(at, "💣 MINE DEPLOYED", "#ff8d7a", 14);
+            break;
+          }
+          default:
+            break; // chain_shot / scattershot animate via their volley events
+        }
+        await wait(650);
+        return;
+      }
+      case "mine_detonated": {
+        const at = Board.hexToScreen(event.target_position?.q ?? 0, event.target_position?.r ?? 0);
+        FX.explosion(at);
+        FX.floatText(at, `💣 MINE — ${event.damage_applied || 0} DMG${event.shields_absorbed ? " (+" + event.shields_absorbed + " shielded)" : ""}`, "#ff8d7a", 15);
+        if (event.shields_absorbed) {
+          const ship = replayShipStates && replayShipStates[event.player_id];
+          if (ship) ship.shields = Math.max(0, (ship.shields || 0) - event.shields_absorbed);
+        }
+        applyDamageResult(event.player_id, event);
+        renderFleet();
+        Board.renderStarBreach(effectiveStarBreach(), bossRenderOptions());
+        await wait(750);
+        return;
+      }
+      case "boss_directive_changed": {
+        const hunter = event.scope === "fleet" ? "Enemy fleet" : "StarBreacher";
+        callout(`☄ ${hunter} now hunts ${Board.shortName(event.target_id)}!`, true);
+        await wait(650);
+        return;
+      }
+      case "boss_vault_pickup": {
+        callout("☄ The enemy snatches a vault!", true);
+        await wait(550);
+        return;
+      }
       case "starfall_take_cover_damage": {
         callout("Take Cover!", true);
         for (const target of event.targets || []) {
@@ -3910,8 +4048,24 @@
     const forfeits = (view.event_log || [])
       .filter((event) => event.type === "player_forfeited")
       .map((event) => `${displayName(event.player_id)} struck their colors in round ${event.round}`);
-    const reason = view.result && RESULT_REASONS[view.result.reason]
-      ? RESULT_REASONS[view.result.reason]
+    // StarBreach outcome text depends on the scenario's victory goal.
+    const goal = (view.star_breach && view.star_breach.goal) || { kind: "escape_fang" };
+    const goalReasons = {
+      escape_fang: {
+        star_breach_victory: "The Prey reached The Fang — the StarBreacher is denied!",
+        star_breach_objective_failed: "Round 6 ended with The Prey outside The Fang",
+      },
+      capture_vaults: {
+        star_breach_victory: `The crew captured ${goal.count || 8} vaults — the heist succeeds!`,
+        star_breach_objective_failed: `Round 6 ended before the crew captured ${goal.count || 8} vaults`,
+      },
+      destroy_fleet: {
+        star_breach_victory: "The enemy fleet was wiped out — the void is clear!",
+        star_breach_objective_failed: "Round 6 ended with the enemy fleet still flying",
+      },
+    }[goal.kind] || {};
+    const reason = view.result && (goalReasons[view.result.reason] || RESULT_REASONS[view.result.reason])
+      ? (goalReasons[view.result.reason] || RESULT_REASONS[view.result.reason])
       : (view.result && view.result.reason) || "";
     overlay.innerHTML = "";
     overlay.classList.remove("hidden");

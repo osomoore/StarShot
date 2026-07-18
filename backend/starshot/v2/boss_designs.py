@@ -72,10 +72,17 @@ SPAWN_MAX_COUNT = 3
 # Player-owned designs are capped so the library stays browsable.
 PLAYER_DESIGN_LIMIT = 10
 
-# Behavior options (single choices for now; enums so the schema can grow).
-BOSS_AIS = ("hunter_killer",)
+# Behavior options. The boss and its fleet may run the same or different
+# AI programs ("AI" = a very simple targeting/movement policy):
+#   hunter_killer — close on The Prey and shoot The Prey.
+#   vault_runner  — harvest the current round's vault; if it can't reach it
+#                   with this round's movement, head for next round's vault.
+#   blaster       — move to and fire at the nearest player ship.
+#   dynamic       — may switch its directive up to once per round, reacting
+#                   to player activity (hits, heals, baubles, core threats).
+BOSS_AIS = ("hunter_killer", "vault_runner", "blaster", "dynamic")
 FLEET_KINDS = ("hunter_killer",)
-FLEET_AIS = ("hunter_killer",)
+FLEET_AIS = ("hunter_killer", "vault_runner", "blaster", "dynamic")
 FLEET_MAX_COUNT = 6
 FLEET_MAX_ACTION_COUNT = 9
 # Fleet craft act during the numbered boss stacks (not the StarBreach stack).
@@ -88,6 +95,29 @@ TRIGGER_TYPES = (
     "prey_hull_damage_fleet",
     "player_kill",
 )
+
+# Boss Super effects: showpiece abilities. Each Super is synced to a Core and
+# occupies an action-stack slot like any other boss action: it fires every
+# round in its stack once its round/progression requirement is met, for as
+# long as its Core is alive. A destroyed Core silences the Super.
+SUPER_EFFECTS = (
+    "immobilizer_shot",   # cancels the target's movement for the rest of the round
+    "tractor_beam",       # pulls the target 2 hexes toward the boss
+    "knockback",          # pushes the target 2 hexes away from the boss
+    "inferno_zone",       # damages every player ship within 3 hexes of the boss
+    "infuser",            # grants 3 immediate move actions to the fleet
+    "chain_shot",         # attack jumps between player ships within 4 hexes
+    "scattershot",        # attacks every player in a 120° forward spread
+    "mark_the_prey",      # The Prey gets -5 defense for the rest of the round
+    "mine_dropper",       # drops a proximity mine (3 damage within 2 hexes)
+)
+SUPER_TRIGGER_KINDS = ("round", "progress")
+MAX_SUPERS = 12
+
+# Player victory goals a designed boss scenario can use.
+GOAL_KINDS = ("escape_fang", "capture_vaults", "destroy_fleet")
+DEFAULT_VAULT_GOAL_COUNT = 8
+MAX_VAULT_GOAL_COUNT = 30
 
 
 class BossDesignError(ValueError):
@@ -108,6 +138,10 @@ def default_behavior() -> dict:
     }
 
 
+def default_goal() -> dict:
+    return {"kind": "escape_fang"}
+
+
 def empty_design(design_id: str, name: str) -> dict:
     return {
         "id": design_id,
@@ -117,6 +151,8 @@ def empty_design(design_id: str, name: str) -> dict:
         "shield_regions": [],
         "progression": {"triggers": [], "steps": []},
         "behavior": default_behavior(),
+        "supers": [],
+        "goal": default_goal(),
     }
 
 
@@ -274,6 +310,50 @@ def _normalize_behavior(raw) -> dict:
     }
 
 
+def _normalize_super(raw, index: int) -> dict:
+    if not isinstance(raw, dict):
+        raise BossDesignError(f"supers[{index}] must be an object.")
+    label = f"supers[{index}]"
+    effect = raw.get("effect")
+    if effect not in SUPER_EFFECTS:
+        raise BossDesignError(f"{label}.effect must be one of {', '.join(SUPER_EFFECTS)}.")
+    core = _as_int(raw.get("core", 1), f"{label}.core")
+    if not 1 <= core <= 9:
+        raise BossDesignError(f"{label}.core must be 1-9.")
+    stack = str(raw.get("stack", "starbreach"))
+    if stack not in ACTION_STACKS:
+        raise BossDesignError(f"{label}.stack must be one of {', '.join(ACTION_STACKS)}.")
+    trigger_raw = raw.get("trigger")
+    if not isinstance(trigger_raw, dict):
+        raise BossDesignError(f"{label}.trigger must be an object.")
+    kind = trigger_raw.get("kind")
+    if kind not in SUPER_TRIGGER_KINDS:
+        raise BossDesignError(f"{label}.trigger.kind must be one of {', '.join(SUPER_TRIGGER_KINDS)}.")
+    value = _as_int(trigger_raw.get("value", 1), f"{label}.trigger.value")
+    if kind == "round" and not 1 <= value <= 99:
+        raise BossDesignError(f"{label}.trigger.value (round) must be 1-99.")
+    if kind == "progress" and not 1 <= value <= 60:
+        raise BossDesignError(f"{label}.trigger.value (progression step) must be 1-60.")
+    return {"effect": effect, "core": core, "stack": stack, "trigger": {"kind": kind, "value": value}}
+
+
+def _normalize_goal(raw) -> dict:
+    if raw is None:
+        return default_goal()
+    if not isinstance(raw, dict):
+        raise BossDesignError("goal must be an object.")
+    kind = raw.get("kind", "escape_fang")
+    if kind not in GOAL_KINDS:
+        raise BossDesignError(f"goal.kind must be one of {', '.join(GOAL_KINDS)}.")
+    goal: dict = {"kind": kind}
+    if kind == "capture_vaults":
+        count = _as_int(raw.get("count", DEFAULT_VAULT_GOAL_COUNT), "goal.count")
+        if not 1 <= count <= MAX_VAULT_GOAL_COUNT:
+            raise BossDesignError(f"goal.count must be 1-{MAX_VAULT_GOAL_COUNT}.")
+        goal["count"] = count
+    return goal
+
+
 def _normalize_step(raw, index: int) -> dict:
     if raw is None:
         return {"kind": "filler"}
@@ -380,6 +460,11 @@ def normalize_design(raw: dict) -> dict:
         raise BossDesignError("progression.steps must be a list (max 60).")
     steps = [_normalize_step(entry, index) for index, entry in enumerate(steps_raw)]
 
+    supers_raw = raw.get("supers", [])
+    if not isinstance(supers_raw, list) or len(supers_raw) > MAX_SUPERS:
+        raise BossDesignError(f"supers must be a list (max {MAX_SUPERS}).")
+    supers = [_normalize_super(entry, index) for index, entry in enumerate(supers_raw)]
+
     return {
         "id": design_id,
         "name": name[:80],
@@ -388,6 +473,8 @@ def normalize_design(raw: dict) -> dict:
         "shield_regions": regions,
         "progression": {"triggers": triggers, "steps": steps},
         "behavior": _normalize_behavior(raw.get("behavior")),
+        "supers": supers,
+        "goal": _normalize_goal(raw.get("goal")),
     }
 
 
@@ -501,6 +588,23 @@ def validate_design(design: dict) -> list[str]:
     spawn_steps = [step for step in steps if step["kind"] == "spawn_fleet"]
     if spawn_steps and not any(tile["type"] == "docking_bay" for tile in tiles):
         problems.append("Spawn fleet steps need at least one Docking Bay component.")
+
+    for index, super_def in enumerate(design.get("supers", [])):
+        trigger = super_def["trigger"]
+        if super_def["core"] not in core_set:
+            problems.append(
+                f"Super {index + 1} is synced to core {super_def['core']}, which is not on the ship."
+            )
+        if trigger["kind"] == "progress" and trigger["value"] > max(len(steps), 0) and steps:
+            problems.append(
+                f"Super {index + 1} needs progression step {trigger['value']}, beyond the {len(steps)}-step track."
+            )
+        if trigger["kind"] == "progress" and not steps:
+            problems.append(f"Super {index + 1} is tied to the progression track, but the track is empty.")
+
+    goal = design.get("goal") or default_goal()
+    if goal["kind"] == "destroy_fleet" and fleet["count"] <= 0 and not spawn_steps:
+        problems.append("The goal is to destroy the fleet, but this boss has no fleet craft and never spawns any.")
 
     return problems
 

@@ -16,7 +16,7 @@ from starshot.rules.engine import (
     _selected_card_family,
     _ship_in_facing_cone_120,
 )
-from starshot.rules.vaults import ship_inside_vault
+from starshot.rules.vaults import VAULT_RADIUS, ship_inside_vault
 from starshot.rules.decks import card_by_id
 from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GameConfig, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
 from starshot.rules import star_breach as sb_data
@@ -85,6 +85,8 @@ def before_award_vaults(state: GameState) -> None:
 
 
 def vault_awarded(state: GameState, player: PlayerState, award: dict) -> bool:
+    # Dynamic enemy AI reacts to bauble grabs: hunt the collector.
+    _dynamic_directive_switch(state, player, "bauble_pickup")
     if "vault_runner" not in player.roles:
         return False
     award["vault_runner_bonus_draw"] = True
@@ -93,10 +95,16 @@ def vault_awarded(state: GameState, player: PlayerState, award: dict) -> bool:
 
 def after_award_vaults(state: GameState) -> None:
     _check_star_breach_defeat(state)
+    _check_star_breach_victory(state)
 
 
 def activate_round(state: GameState) -> None:
     _activate_star_breach_tiers(state)
+    sb = state.star_breach
+    if sb is not None:
+        # Round-scoped Super effects wear off when a new round begins.
+        sb.immobilized_player_ids = []
+        sb.marked_player_ids = []
 
 
 def overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
@@ -135,6 +143,9 @@ def adjust_player_action_landing(
     player: PlayerState,
     movement_path: list[tuple[int, int]],
 ) -> dict | None:
+    _detonate_mines(state, player, movement_path)
+    if state.phase == GamePhase.COMPLETE:
+        return None
     return _adjust_player_action_landing(state, player, movement_path)
 
 
@@ -240,18 +251,51 @@ def _player_with_role(state: GameState, role_id: str) -> PlayerState | None:
     return None
 
 
+def _player_vault_captures(state: GameState) -> int:
+    """Total vault captures by the crew (each player's claim counts once)."""
+    return sum(
+        sum(1 for claimant in vault.claimed_by if claimant != "starbreacher")
+        for vault in state.vaults
+        if not vault.is_fang
+    )
+
+
+def _goal_reached(state: GameState) -> bool:
+    """Whether an immediate-win goal (vault haul / fleet wipe) is satisfied."""
+    sb = state.star_breach
+    goal = sb_spec.boss_goal(sb_spec.spec_for(sb))
+    if goal["kind"] == "capture_vaults":
+        return _player_vault_captures(state) >= int(goal.get("count", 8))
+    if goal["kind"] == "destroy_fleet":
+        return bool(sb.fleet) and all(craft.destroyed for craft in sb.fleet)
+    return False
+
+
 def _star_breach_result(state: GameState, *, final_round_complete: bool) -> GameResult | None:
     sb = state.star_breach
     assert sb is not None
     prey = state.players.get(sb.prey_player_id)
     if prey is None or prey.eliminated or prey.ship.destroyed:
         return GameResult(winner_ids=(), reason="star_breach_prey_destroyed")
+    goal = sb_spec.boss_goal(sb_spec.spec_for(sb))
+    if goal["kind"] != "escape_fang" and _goal_reached(state):
+        return GameResult(winner_ids=tuple(state.players), reason="star_breach_victory")
     if final_round_complete:
-        fang = _fang(state)
-        if fang is not None and ship_inside_vault(prey.ship, fang):
-            return GameResult(winner_ids=tuple(state.players), reason="star_breach_victory")
+        if goal["kind"] == "escape_fang":
+            fang = _fang(state)
+            if fang is not None and ship_inside_vault(prey.ship, fang):
+                return GameResult(winner_ids=tuple(state.players), reason="star_breach_victory")
         return GameResult(winner_ids=(), reason="star_breach_objective_failed")
     return None
+
+
+def _check_star_breach_victory(state: GameState) -> None:
+    """Immediate-win goals complete the game the moment they are met."""
+    if state.star_breach is None or state.result is not None:
+        return
+    if _goal_reached(state):
+        state.result = GameResult(winner_ids=tuple(state.players), reason="star_breach_victory")
+        _change_phase(state, GamePhase.COMPLETE)
 
 
 def _check_star_breach_defeat(state: GameState) -> None:
@@ -386,7 +430,11 @@ def _star_breach_move_distance_multiplier(
     *,
     overdrive_copy: bool,
 ) -> int:
-    if state.star_breach is None or "vault_runner" not in player.roles or overdrive_copy:
+    if state.star_breach is None:
+        return 1
+    if player.id in state.star_breach.immobilized_player_ids:
+        return 0  # Immobilizer Shot: movement cancelled for the rest of the round
+    if "vault_runner" not in player.roles or overdrive_copy:
         return 1
     effect = _card_effect(card, selection, stack.seal_mode)
     if effect.family == CardFamily.MOVE and effect.move is not None and not effect.is_desperate_face:
@@ -439,20 +487,60 @@ def _living_players(state: GameState) -> list[PlayerState]:
     ]
 
 
-def _enemy_pick_target(state: GameState, distance_to: callable) -> PlayerState | None:
-    """Shared enemy targeting: pick The Prey, else the nearest living player,
-    then apply the Tank's Proximity Jammer — if that target is within 3 hexes
-    of the Tank, the Tank steps in and takes the hit instead."""
+def _boss_ai(sb: StarBreachState) -> str:
+    return sb_spec.boss_ai(sb_spec.spec_for(sb))
+
+
+def _fleet_ai(sb: StarBreachState) -> str:
+    return sb_spec.fleet_ai(sb_spec.spec_for(sb))
+
+
+def _living_prey(state: GameState) -> PlayerState | None:
+    prey = state.players.get(state.star_breach.prey_player_id)
+    if prey is not None and not prey.eliminated and not prey.ship.destroyed:
+        return prey
+    return None
+
+
+def _nearest_living_player(state: GameState, distance_to: callable) -> PlayerState | None:
+    living = _living_players(state)
+    if not living:
+        return None
+    return min(living, key=lambda player: (distance_to(player) or 10**6, player.id))
+
+
+def _directive_player(state: GameState, scope: str) -> PlayerState | None:
+    """The dynamic AI's current hunt target, if it is still in the fight."""
+    sb = state.star_breach
+    target_id = sb.boss_ai_target_id if scope == "boss" else sb.fleet_ai_target_id
+    player = state.players.get(target_id) if target_id else None
+    if player is not None and not player.eliminated and not player.ship.destroyed:
+        return player
+    return None
+
+
+def _primary_enemy_target(state: GameState, distance_to: callable, scope: str) -> PlayerState | None:
+    """AI-program targeting, before the Tank's Proximity Jammer redirect."""
+    sb = state.star_breach
+    ai = _boss_ai(sb) if scope == "boss" else _fleet_ai(sb)
+    if ai == "dynamic":
+        directive = _directive_player(state, scope)
+        if directive is not None:
+            return directive
+    if ai in ("blaster", "vault_runner"):
+        return _nearest_living_player(state, distance_to)
+    return _living_prey(state) or _nearest_living_player(state, distance_to)
+
+
+def _enemy_pick_target(state: GameState, distance_to: callable, *, scope: str = "boss") -> PlayerState | None:
+    """Enemy attack targeting: the AI program picks a primary target, then
+    the Tank's Proximity Jammer applies — if the target is within 3 hexes of
+    the Tank, the Tank steps in and takes the hit instead."""
     sb = state.star_breach
     assert sb is not None
-    prey = state.players.get(sb.prey_player_id)
-    if prey is not None and not prey.eliminated and not prey.ship.destroyed:
-        primary = prey
-    else:
-        living = _living_players(state)
-        if not living:
-            return None
-        primary = min(living, key=lambda player: (distance_to(player) or 10**6, player.id))
+    primary = _primary_enemy_target(state, distance_to, scope)
+    if primary is None:
+        return None
     tank = _player_with_role(state, "tank")
     if (
         tank is not None
@@ -463,6 +551,50 @@ def _enemy_pick_target(state: GameState, distance_to: callable) -> PlayerState |
     ):
         return tank
     return primary
+
+
+def _enemy_move_target(state: GameState, distance_to: callable, scope: str) -> PlayerState | None:
+    """Pursuit targeting: the jammer redirects attacks, not movement."""
+    return _primary_enemy_target(state, distance_to, scope)
+
+
+def _dynamic_directive_switch(
+    state: GameState,
+    player: PlayerState | None,
+    reason: str,
+    scopes: tuple[str, ...] = ("boss", "fleet"),
+) -> None:
+    """Dynamic AI programs react to player activity — hitting the enemy,
+    healing, grabbing a bauble, or opening a damage lane to a Core — by
+    hunting that player. Each program may switch at most once per round."""
+    sb = state.star_breach
+    if sb is None or state.result is not None or player is None:
+        return
+    if player.eliminated or player.ship.destroyed:
+        return
+    for scope in scopes:
+        ai = _boss_ai(sb) if scope == "boss" else _fleet_ai(sb)
+        if ai != "dynamic":
+            continue
+        current = sb.boss_ai_target_id if scope == "boss" else sb.fleet_ai_target_id
+        switch_round = sb.boss_ai_switch_round if scope == "boss" else sb.fleet_ai_switch_round
+        if current == player.id or switch_round >= state.round_number:
+            continue
+        if scope == "boss":
+            sb.boss_ai_target_id = player.id
+            sb.boss_ai_switch_round = state.round_number
+        else:
+            sb.fleet_ai_target_id = player.id
+            sb.fleet_ai_switch_round = state.round_number
+        state.event_log.append(
+            {
+                "type": "boss_directive_changed",
+                "round": state.round_number,
+                "scope": scope,
+                "target_id": player.id,
+                "reason": reason,
+            }
+        )
 
 
 def _roll_d8(state: GameState) -> int:
@@ -555,7 +687,9 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
         entry["amount"] = 1
         slot_kind = slot.get("kind", kind)
         if slot_kind == "move":
-            entry["movement"] = _move_boss_toward_prey(state, 1)
+            entry["movement"] = _move_boss(state, 1, phase_key)
+        elif slot_kind == "super":
+            entry["super"] = _fire_super_slot(state, slot, phase_key)
         elif slot_kind == "spawn":
             spawn = slot.get("spawn") or {
                 "count": 1,
@@ -580,7 +714,7 @@ def _resolve_boss_phase(state: GameState, phase_key: str) -> None:
                 if craft.destroyed:
                     continue
                 if craft_kind == "move":
-                    craft_results.append(_move_craft(state, craft))
+                    craft_results.append(_move_craft(state, craft, phase_key))
                 else:
                     craft_results.append(_craft_attack(state, craft))
                     _check_star_breach_defeat(state)
@@ -650,37 +784,107 @@ def _adjust_player_action_landing(
     }
 
 
-def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
-    """Move the boss token toward The Prey. The nose leads: facing becomes the
-    direction of the last hex moved. The boss token can share a hex with
+def _remaining_boss_move_slots(state: GameState, phase_key: str) -> int:
+    """Move actions still ahead of the boss this round (this phase onward)."""
+    sb = state.star_breach
+    assert sb is not None
+    spec = sb_spec.spec_for(sb)
+    keys = [phase["key"] for phase in spec["phases"]]
+    if phase_key not in keys:
+        return 0
+    remaining = 0
+    for key in keys[keys.index(phase_key):]:
+        default_kind = sb_spec.phase_kind(spec, key)
+        for slot in sb_spec.active_phase_slots(
+            spec, key, sb.destroyed_hexes, set(sb.active_tiers), state.round_number
+        ):
+            if slot.get("kind", default_kind) == "move":
+                remaining += 1
+    return remaining
+
+
+def _remaining_fleet_move_hexes(state: GameState, phase_key: str) -> int:
+    """Hexes of movement a fleet craft still has ahead of it this round."""
+    sb = state.star_breach
+    assert sb is not None
+    spec = sb_spec.spec_for(sb)
+    keys = [phase["key"] for phase in spec["phases"]]
+    if phase_key not in keys:
+        return 0
+    actions = 0
+    for key in keys[keys.index(phase_key):]:
+        actions += sum(1 for kind in spec["fleet_actions"].get(key, ()) if kind == "move")
+    return actions * int(spec["fleet_move"])
+
+
+def _vault_goal_hex(state: GameState, distance_to_hex, reach: int) -> tuple[int, int] | None:
+    """Vault Runner AI: harvest the current round's vault; if it is out of
+    reach with this round's remaining movement (or already snatched), head
+    for next round's vault instead. The Fang is never a target."""
+
+    def vault_for(number: int):
+        for vault in state.vaults:
+            if not vault.is_fang and vault.number == number and "starbreacher" not in vault.claimed_by:
+                return vault
+        return None
+
+    current = vault_for(min(state.round_number, 5))
+    nxt = vault_for(min(state.round_number + 1, 5))
+    if nxt is not None and current is not None and nxt.id == current.id:
+        nxt = None
+    if current is not None:
+        needed = max(0, distance_to_hex(current.q, current.r) - VAULT_RADIUS)
+        if needed <= reach or nxt is None:
+            return (current.q, current.r)
+    if nxt is not None:
+        return (nxt.q, nxt.r)
+    return None
+
+
+def _move_boss(state: GameState, steps: int, phase_key: str) -> dict:
+    """Move the boss token per its AI program. The nose leads: facing becomes
+    the direction of the last hex moved. The boss token can share a hex with
     other ships; it does not push them."""
     sb = state.star_breach
     assert sb is not None
-    prey = state.players.get(sb.prey_player_id)
     before = {"anchor_q": sb.anchor_q, "anchor_r": sb.anchor_r, "facing": sb.facing}
     moved = 0
-    if prey is None or prey.eliminated or prey.ship.destroyed:
-        target = _enemy_pick_target(state, lambda player: _boss_distance_to(sb, player.ship.q, player.ship.r))
-    else:
-        target = prey
-    if target is None:
-        return {"before": before, "after": dict(before), "moved": 0}
+    goal: tuple[int, int] | None = None
+    goal_is_vault = False
+    if _boss_ai(sb) == "vault_runner":
+        goal = _vault_goal_hex(
+            state,
+            lambda q, r: hex_distance(sb.anchor_q, sb.anchor_r, q, r),
+            _remaining_boss_move_slots(state, phase_key),
+        )
+        goal_is_vault = goal is not None
+    if goal is None:
+        target = _enemy_move_target(
+            state, lambda player: _boss_distance_to(sb, player.ship.q, player.ship.r), "boss"
+        )
+        if target is None:
+            return {"before": before, "after": dict(before), "moved": 0}
+        goal = (target.ship.q, target.ship.r)
 
     for _ in range(steps):
-        current = _boss_distance_to(sb, target.ship.q, target.ship.r)
-        if current is None or current <= 1:
-            break
+        if goal_is_vault:
+            if hex_distance(sb.anchor_q, sb.anchor_r, goal[0], goal[1]) <= VAULT_RADIUS:
+                break
+        else:
+            current = _boss_distance_to(sb, goal[0], goal[1])
+            if current is None or current <= 1:
+                break
         # The nose leads: steer by nose distance (the flanks trail behind and
         # would otherwise stall the strict-improvement check). Prefer holding
         # the current heading on ties.
         best_direction = None
-        best_distance = hex_distance(sb.anchor_q, sb.anchor_r, target.ship.q, target.ship.r)
+        best_distance = hex_distance(sb.anchor_q, sb.anchor_r, goal[0], goal[1])
         for direction in ((sb.facing + offset) % 6 for offset in range(6)):
             dq, dr = move_forward(0, 0, direction, 1)
             candidate_hexes = sb_data.boss_board_hexes(sb.anchor_q + dq, sb.anchor_r + dr, direction)
             if any(not is_within_board(hex_q, hex_r) for hex_q, hex_r in candidate_hexes):
                 continue
-            candidate = hex_distance(sb.anchor_q + dq, sb.anchor_r + dr, target.ship.q, target.ship.r)
+            candidate = hex_distance(sb.anchor_q + dq, sb.anchor_r + dr, goal[0], goal[1])
             if candidate < best_distance:
                 best_distance = candidate
                 best_direction = direction
@@ -708,25 +912,33 @@ def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
     }
 
 
-def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
-    """Hunter-Killer movement: directly toward The Prey, never overshooting."""
+def _move_craft(state: GameState, craft: FleetCraftState, phase_key: str = "1.5") -> dict:
+    """Fleet craft movement per the fleet AI program, never overshooting."""
     sb = state.star_breach
     assert sb is not None
-    target = _enemy_pick_target(
-        state, lambda player: hex_distance(craft.q, craft.r, player.ship.q, player.ship.r)
-    )
     before = [craft.q, craft.r]
-    if target is None:
-        return {"craft_id": craft.id, "before": before, "after": before, "moved": 0}
-    # The jammer redirects attacks, not pursuit: Hunter-Killers fly at The Prey.
-    prey = state.players.get(sb.prey_player_id)
-    if prey is not None and not prey.eliminated and not prey.ship.destroyed:
-        target = prey
+    goal: tuple[int, int] | None = None
+    stop_at = 1
+    if _fleet_ai(sb) == "vault_runner":
+        goal = _vault_goal_hex(
+            state,
+            lambda q, r: hex_distance(craft.q, craft.r, q, r),
+            _remaining_fleet_move_hexes(state, phase_key),
+        )
+        if goal is not None:
+            stop_at = VAULT_RADIUS
+    if goal is None:
+        target = _enemy_move_target(
+            state, lambda player: hex_distance(craft.q, craft.r, player.ship.q, player.ship.r), "fleet"
+        )
+        if target is None:
+            return {"craft_id": craft.id, "before": before, "after": before, "moved": 0}
+        goal = (target.ship.q, target.ship.r)
     boss_hexes = set(_boss_token_hexes(sb))
     moved = 0
     for _ in range(sb_spec.spec_for(sb)["fleet_move"]):
-        distance = hex_distance(craft.q, craft.r, target.ship.q, target.ship.r)
-        if distance <= 1:
+        distance = hex_distance(craft.q, craft.r, goal[0], goal[1])
+        if distance <= stop_at:
             break
         occupied = _occupied_ship_hexes(state, ignore_craft_id=craft.id) | boss_hexes
         candidates = []
@@ -734,7 +946,7 @@ def _move_craft(state: GameState, craft: FleetCraftState) -> dict:
             q, r = move_forward(craft.q, craft.r, direction, 1)
             if not is_within_board(q, r) or (q, r) in occupied:
                 continue
-            candidates.append((hex_distance(q, r, target.ship.q, target.ship.r), direction, q, r))
+            candidates.append((hex_distance(q, r, goal[0], goal[1]), direction, q, r))
         if not candidates:
             break
         best = min(candidates)
@@ -759,11 +971,15 @@ def _resolve_enemy_shot(
     dice = 1 if "tank" in target.roles else 2
     roll = _roll_d6_sum(state, dice)
     roll_total = roll + aim_bonus
+    sb = state.star_breach
+    # Mark the Prey: -5 defense against enemy shots for the rest of the round.
+    marked_penalty = 5 if sb is not None and target.id in sb.marked_player_ids else 0
     defense_threshold = (
         distance
         + target.ship.movement_this_action
         + target.ship.defense_bonus_this_action
         + _jammer_defense_bonus(target)
+        - marked_penalty
     )
     hit = roll_total >= defense_threshold or (dice >= 2 and roll >= 12)
     event = {
@@ -780,6 +996,7 @@ def _resolve_enemy_shot(
         "roll_total": roll_total,
         "distance": distance,
         "defense_threshold": defense_threshold,
+        "marked_penalty": marked_penalty,
         "hit": hit,
         "shielded": False,
         "damage_applied": 0,
@@ -792,7 +1009,6 @@ def _resolve_enemy_shot(
         event.update(damage_result)
     state.event_log.append(event)
 
-    sb = state.star_breach
     if sb is not None:
         triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
         source_key = str(attacker_label)
@@ -806,7 +1022,8 @@ def _resolve_enemy_shot(
                     _advance_boss_progress(state, sb_data.PROGRESS_PER_PREY_KILL - sb_data.PROGRESS_PER_PREY_HIT)
         else:
             # Designer-selected triggers: hull damage means damage got through.
-            source = "boss" if attacker_label == "starbreacher" else "fleet"
+            # Chain/Scatter Super shots ("starbreacher_*") count as the boss.
+            source = "boss" if str(attacker_label).startswith("starbreacher") else "fleet"
             if (
                 hit
                 and target.id == sb.prey_player_id
@@ -845,15 +1062,17 @@ def _advance_boss_progress(state: GameState, amount: int) -> None:
 def _collect_enemy_vaults(
     state: GameState, source: str, positions: tuple[tuple[int, int], ...], *, label: str
 ) -> None:
-    """Designed bosses may progress by snatching vaults: when the trigger is
-    enabled, the boss token (or a fleet craft) covering a vault claims it
-    once and advances the track. The Fang is never taken."""
+    """Enemies may snatch vaults: the boss token (or a fleet craft) covering
+    a vault claims it once. Claiming advances the progress track only when
+    the matching vault-pickup trigger is enabled; a Vault Runner AI harvests
+    vaults even without the trigger. The Fang is never taken."""
     sb = state.star_breach
     assert sb is not None
     triggers = sb_spec.progress_triggers(sb_spec.spec_for(sb))
-    if triggers is None or f"vault_pickup_{source}" not in triggers:
+    trigger_on = triggers is not None and f"vault_pickup_{source}" in triggers
+    ai = _boss_ai(sb) if source == "boss" else _fleet_ai(sb)
+    if not trigger_on and ai != "vault_runner":
         return
-    from starshot.rules.vaults import VAULT_RADIUS
 
     for vault in state.vaults:
         if vault.is_fang or "starbreacher" in vault.claimed_by:
@@ -871,7 +1090,8 @@ def _collect_enemy_vaults(
                     "vault_id": vault.id,
                 }
             )
-            _advance_boss_progress(state, 1)
+            if trigger_on:
+                _advance_boss_progress(state, 1)
 
 
 def _boss_attack(state: GameState) -> dict:
@@ -901,7 +1121,9 @@ def _boss_attack(state: GameState) -> dict:
 
 def _craft_attack(state: GameState, craft: FleetCraftState) -> dict:
     target = _enemy_pick_target(
-        state, lambda player: hex_distance(craft.q, craft.r, player.ship.q, player.ship.r)
+        state,
+        lambda player: hex_distance(craft.q, craft.r, player.ship.q, player.ship.r),
+        scope="fleet",
     )
     if target is None:
         return {"skipped": "no_target", "craft_id": craft.id}
@@ -916,6 +1138,292 @@ def _craft_attack(state: GameState, craft: FleetCraftState) -> dict:
     )
     event["craft_id"] = craft.id
     return event
+
+
+# --- Boss Super effects -----------------------------------------------------
+# Showpiece abilities synced to a Core. A Super occupies an action-stack slot
+# like any other boss action and fires every round in its stack while its
+# Core is alive and its round/progression requirement is met (the gate itself
+# lives in sb_spec.slot_is_active).
+
+
+SUPER_LABELS = {
+    "immobilizer_shot": "Immobilizer Shot",
+    "tractor_beam": "Tractor Beam",
+    "knockback": "Knockback",
+    "inferno_zone": "Inferno Zone",
+    "infuser": "Infuser",
+    "chain_shot": "Chain Shot",
+    "scattershot": "ScatterShot",
+    "mark_the_prey": "Mark the Prey",
+    "mine_dropper": "Mine Dropper",
+}
+
+
+def _fire_super_slot(state: GameState, slot: dict, phase_key: str) -> dict:
+    """Resolve one active Super slot: announce it, apply its effect."""
+    sb = state.star_breach
+    assert sb is not None
+    name = SUPER_LABELS.get(slot["effect"], slot["effect"])
+    state.event_log.append(
+        {
+            "type": "boss_super_activated",
+            "round": state.round_number,
+            "boss_phase": phase_key,
+            "super_id": slot.get("super_id"),
+            "effect": slot["effect"],
+            "name": name,
+            "core_hex": list(slot.get("core_hex") or ()) or None,
+            "boss_position": {"q": sb.anchor_q, "r": sb.anchor_r, "facing": sb.facing},
+        }
+    )
+    detail = _resolve_super_effect(state, slot["effect"])
+    state.event_log.append(
+        {
+            "type": "boss_super_resolved",
+            "round": state.round_number,
+            "boss_phase": phase_key,
+            "super_id": slot.get("super_id"),
+            "effect": slot["effect"],
+            "name": name,
+            "detail": detail,
+        }
+    )
+    return {"super_id": slot.get("super_id"), "effect": slot["effect"], "detail": detail}
+
+
+def _resolve_super_effect(state: GameState, effect: str) -> dict:
+    sb = state.star_breach
+    assert sb is not None
+
+    def boss_distance(player: PlayerState):
+        return _boss_distance_to(sb, player.ship.q, player.ship.r)
+
+    if effect == "immobilizer_shot":
+        target = _enemy_pick_target(state, boss_distance)
+        if target is None:
+            return {"skipped": "no_target"}
+        if target.id not in sb.immobilized_player_ids:
+            sb.immobilized_player_ids.append(target.id)
+        return {"target_id": target.id}
+    if effect in ("tractor_beam", "knockback"):
+        target = _enemy_pick_target(state, boss_distance)
+        if target is None:
+            return {"skipped": "no_target"}
+        return _drag_player(state, target, 2, inward=effect == "tractor_beam")
+    if effect == "inferno_zone":
+        return _inferno_zone(state)
+    if effect == "infuser":
+        moves = []
+        for _ in range(3):
+            for craft in sb.fleet:
+                if not craft.destroyed:
+                    moves.append(_move_craft(state, craft, "starbreach"))
+        return {"fleet_moves": moves}
+    if effect == "chain_shot":
+        return _chain_shot(state)
+    if effect == "scattershot":
+        return _scattershot(state)
+    if effect == "mark_the_prey":
+        target = _living_prey(state) or _enemy_pick_target(state, boss_distance)
+        if target is None:
+            return {"skipped": "no_target"}
+        if target.id not in sb.marked_player_ids:
+            sb.marked_player_ids.append(target.id)
+        return {"target_id": target.id, "defense_penalty": 5}
+    if effect == "mine_dropper":
+        return _drop_mine(state)
+    return {"skipped": "unknown_effect"}
+
+
+def _drag_player(state: GameState, target: PlayerState, steps: int, *, inward: bool) -> dict:
+    """Tractor Beam / Knockback: force the target along the line to the boss
+    nose, one hex at a time, clamped to the board."""
+    sb = state.star_breach
+    assert sb is not None
+    before = {"q": target.ship.q, "r": target.ship.r, "facing": target.ship.facing}
+    moved = 0
+    for _ in range(steps):
+        distance = hex_distance(target.ship.q, target.ship.r, sb.anchor_q, sb.anchor_r)
+        if inward and distance <= 1:
+            break
+        candidates = []
+        for direction in range(6):
+            q, r = move_forward(target.ship.q, target.ship.r, direction, 1)
+            if not is_within_board(q, r):
+                continue
+            candidates.append((hex_distance(q, r, sb.anchor_q, sb.anchor_r), q, r))
+        if not candidates:
+            break
+        best = min(candidates) if inward else max(candidates)
+        if (inward and best[0] >= distance) or (not inward and best[0] <= distance):
+            break
+        target.ship.q, target.ship.r = best[1], best[2]
+        moved += 1
+    return {
+        "target_id": target.id,
+        "before": before,
+        "after": {"q": target.ship.q, "r": target.ship.r, "facing": target.ship.facing},
+        "moved": moved,
+    }
+
+
+def _inferno_zone(state: GameState) -> dict:
+    """One damage to every player ship within 3 hexes of the boss token."""
+    sb = state.star_breach
+    assert sb is not None
+    targets = []
+    for player in _living_players(state):
+        distance = _boss_distance_to(sb, player.ship.q, player.ship.r)
+        if distance is None or distance > 3:
+            continue
+        entry: dict = {
+            "player_id": player.id,
+            "position": {"q": player.ship.q, "r": player.ship.r},
+            "distance": distance,
+            "shielded": False,
+            "damage_applied": 0,
+        }
+        if player.ship.shields > 0:
+            player.ship.shields -= 1
+            entry["shielded"] = True
+        else:
+            entry.update(_apply_unshielded_damage(state, player, 1))
+        targets.append(entry)
+    return {"radius": 3, "targets": targets}
+
+
+def _chain_shot(state: GameState) -> dict:
+    """An attack that arcs between player ships within 4 hexes of each other,
+    rolling to hit on each; no ship is struck twice."""
+    sb = state.star_breach
+    assert sb is not None
+    spec = sb_spec.spec_for(sb)
+    aim = sb_spec.boss_aim_bonus(spec, sb.destroyed_hexes, set(sb.active_tiers))
+    target = _enemy_pick_target(state, lambda player: _boss_distance_to(sb, player.ship.q, player.ship.r))
+    if target is None:
+        return {"skipped": "no_target"}
+    attacker_pos = min(
+        _boss_token_hexes(sb),
+        key=lambda hex_: hex_distance(target.ship.q, target.ship.r, hex_[0], hex_[1]),
+    )
+    links = []
+    visited: set[str] = set()
+    while target is not None:
+        distance = max(1, hex_distance(attacker_pos[0], attacker_pos[1], target.ship.q, target.ship.r))
+        event = _resolve_enemy_shot(
+            state,
+            target,
+            attacker_label="starbreacher_chain",
+            attacker_position=attacker_pos,
+            distance=distance,
+            aim_bonus=aim,
+        )
+        visited.add(target.id)
+        links.append({"target_id": target.id, "hit": event["hit"]})
+        _check_star_breach_defeat(state)
+        if state.phase == GamePhase.COMPLETE:
+            break
+        attacker_pos = (target.ship.q, target.ship.r)
+        candidates = [
+            player
+            for player in _living_players(state)
+            if player.id not in visited
+            and hex_distance(player.ship.q, player.ship.r, attacker_pos[0], attacker_pos[1]) <= 4
+        ]
+        target = (
+            min(
+                candidates,
+                key=lambda player: (
+                    hex_distance(player.ship.q, player.ship.r, attacker_pos[0], attacker_pos[1]),
+                    player.id,
+                ),
+            )
+            if candidates
+            else None
+        )
+    return {"links": links}
+
+
+def _scattershot(state: GameState) -> dict:
+    """Attack every player ship inside the boss's forward 120° spread."""
+    sb = state.star_breach
+    assert sb is not None
+    spec = sb_spec.spec_for(sb)
+    aim = sb_spec.boss_aim_bonus(spec, sb.destroyed_hexes, set(sb.active_tiers))
+    nose = ShipState(q=sb.anchor_q, r=sb.anchor_r, facing=sb.facing)
+    shots = []
+    for player in _living_players(state):
+        if not _ship_in_facing_cone_120(nose, player.ship):
+            continue
+        distance = max(1, hex_distance(sb.anchor_q, sb.anchor_r, player.ship.q, player.ship.r))
+        event = _resolve_enemy_shot(
+            state,
+            player,
+            attacker_label="starbreacher_scatter",
+            attacker_position=(sb.anchor_q, sb.anchor_r),
+            distance=distance,
+            aim_bonus=aim,
+        )
+        shots.append({"target_id": player.id, "hit": event["hit"]})
+        _check_star_breach_defeat(state)
+        if state.phase == GamePhase.COMPLETE:
+            break
+    return {"shots": shots}
+
+
+def _drop_mine(state: GameState) -> dict:
+    """Deploy a proximity mine directly in front of the boss nose."""
+    sb = state.star_breach
+    assert sb is not None
+    dq, dr = DIRECTIONS[sb.facing % 6]
+    q, r = sb.anchor_q + dq, sb.anchor_r + dr
+    if not is_within_board(q, r):
+        q, r = sb.anchor_q, sb.anchor_r
+    drop_number = 1 + sum(
+        1 for event in state.event_log
+        if event.get("type") == "boss_super_resolved" and event.get("effect") == "mine_dropper"
+    )
+    mine = {"id": f"mine_{drop_number}", "q": q, "r": r}
+    sb.mines.append(mine)
+    return {"mine": dict(mine)}
+
+
+MINE_TRIGGER_RANGE = 2
+MINE_DAMAGE = 3
+
+
+def _detonate_mines(state: GameState, player: PlayerState, movement_path: list[tuple[int, int]]) -> None:
+    """A mine blows for 3 damage when a player ship passes within 2 hexes of
+    it (checked along the whole movement path, landing hex included)."""
+    sb = state.star_breach
+    if sb is None or not sb.mines or not movement_path or player.ship.destroyed:
+        return
+    for mine in list(sb.mines):
+        if not any(
+            hex_distance(q, r, mine["q"], mine["r"]) <= MINE_TRIGGER_RANGE for q, r in movement_path
+        ):
+            continue
+        sb.mines.remove(mine)
+        shields_absorbed = min(player.ship.shields, MINE_DAMAGE)
+        player.ship.shields -= shields_absorbed
+        event = {
+            "type": "mine_detonated",
+            "round": state.round_number,
+            "player_id": player.id,
+            "mine": dict(mine),
+            "target_position": {"q": player.ship.q, "r": player.ship.r},
+            "damage": MINE_DAMAGE,
+            "shields_absorbed": shields_absorbed,
+            "damage_applied": 0,
+        }
+        remaining = MINE_DAMAGE - shields_absorbed
+        if remaining and not player.ship.destroyed:
+            event.update(_apply_unshielded_damage(state, player, remaining))
+        state.event_log.append(event)
+        _check_star_breach_defeat(state)
+        if player.ship.destroyed or state.phase == GamePhase.COMPLETE:
+            return
 
 
 # --- Players attacking the StarBreacher and its fleet ----------------------
@@ -945,6 +1453,8 @@ def _resolve_star_breach_attacker(
         if copy_cards:
             volleys.append(copy_cards)
     for volley_index, cards in enumerate(volleys):
+        if state.result is not None:
+            break
         targets = _star_breach_targets_for_attack(state, attacker, stack, cards)
         for target in targets:
             _resolve_star_breach_volley(
@@ -957,6 +1467,8 @@ def _resolve_star_breach_attacker(
                 overdrive_copy=volley_index > 0,
             )
             resolved = True
+            if state.result is not None:
+                break
     return resolved
 
 
@@ -1139,6 +1651,7 @@ def _resolve_volley_vs_boss(
     hexes_destroyed = 0
     components_destroyed: list[str] = []
     desperation_cards_drawn = 0
+    core_lane_was_open = _open_core_lane_exists(spec, sb.destroyed_hexes)
     if hit:
         generator_intact = _shield_generator_intact(sb, area)
         for _shot in range(profile["damage"]):
@@ -1229,6 +1742,30 @@ def _resolve_volley_vs_boss(
             "vp_awarded": vp_awarded,
         }
     )
+    if hit:
+        # Dynamic boss AI: whoever hits the boss becomes its quarry.
+        _dynamic_directive_switch(state, attacker, "boss_hit", scopes=("boss",))
+        # If this volley just opened a damage lane straight to a Core, the
+        # whole enemy force turns on the attacker who opened it.
+        if not core_lane_was_open and _open_core_lane_exists(spec, sb.destroyed_hexes):
+            _dynamic_directive_switch(state, attacker, "core_lane_open")
+
+
+def _open_core_lane_exists(spec: dict, destroyed_hexes: set[tuple[int, int]]) -> bool:
+    """True when some damage lane's first intact hex is a Core: one clean hit
+    on that lane would strike the Core directly."""
+    core_hexes = {
+        (component["q"], component["r"])
+        for component in spec["components"]
+        if component["type"] == "core" and (component["q"], component["r"]) not in destroyed_hexes
+    }
+    if not core_hexes:
+        return False
+    for area, lanes in spec["damage_lanes"].items():
+        for roll in lanes:
+            if sb_spec.first_intact_lane_hex(spec, area, int(roll), destroyed_hexes) in core_hexes:
+                return True
+    return False
 
 
 def _shield_generator_intact(sb: StarBreachState, area: str) -> bool:
@@ -1352,6 +1889,11 @@ def _resolve_volley_vs_craft(
             "vp_awarded": vp_awarded,
         }
     )
+    if hit and damage_applied:
+        # Dynamic fleet AI: whoever hits the fleet becomes its quarry.
+        _dynamic_directive_switch(state, attacker, "craft_hit", scopes=("fleet",))
+    if craft.destroyed:
+        _check_star_breach_victory(state)
 
 
 def _resolve_repair_volley(
@@ -1424,6 +1966,9 @@ def _resolve_repair_volley(
             "shield_restored": shield_restored,
         }
     )
+    if hit:
+        # Dynamic enemy AI: a healer draws the enemy's attention.
+        _dynamic_directive_switch(state, attacker, "player_heal")
 
 
 def _repair_one_component(target: PlayerState) -> str | None:

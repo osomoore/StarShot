@@ -41,6 +41,14 @@ def _designer_meta() -> dict:
         "spawn_max_count": boss_designs.SPAWN_MAX_COUNT,
         "fleet_max_action_count": boss_designs.FLEET_MAX_ACTION_COUNT,
         "player_design_limit": boss_designs.PLAYER_DESIGN_LIMIT,
+        "boss_ais": list(boss_designs.BOSS_AIS),
+        "fleet_ais": list(boss_designs.FLEET_AIS),
+        "super_effects": list(boss_designs.SUPER_EFFECTS),
+        "super_trigger_kinds": list(boss_designs.SUPER_TRIGGER_KINDS),
+        "max_supers": boss_designs.MAX_SUPERS,
+        "goal_kinds": list(boss_designs.GOAL_KINDS),
+        "default_vault_goal_count": boss_designs.DEFAULT_VAULT_GOAL_COUNT,
+        "max_vault_goal_count": boss_designs.MAX_VAULT_GOAL_COUNT,
     }
 
 

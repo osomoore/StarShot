@@ -89,6 +89,13 @@
     requestAnimationFrame(frame);
   }
 
+  function hexToRgb(hex) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+    if (!match) return "255,90,160";
+    const value = parseInt(match[1], 16);
+    return `${(value >> 16) & 255},${(value >> 8) & 255},${value & 255}`;
+  }
+
   function burst(x, y, color, count, speed, size, duration, gravity) {
     const now = performance.now();
     for (let i = 0; i < count; i++) {
@@ -130,6 +137,22 @@
       burst(at.x, at.y, "#ff5330", 50, 3.2, 4, 1200);
       burst(at.x, at.y, "#88919f", 34, 2.2, 2.4, 1700, 0.02);
       flashes.push({ x: at.x, y: at.y, r: 70, color: "rgba(255,160,60,ALPHA)", duration: 800, until: performance.now() + 800 });
+      wrap.classList.remove("shake");
+      void wrap.offsetWidth;
+      wrap.classList.add("shake");
+    },
+    /* Boss Super hype: triple expanding flash + heavy particle ring + shake. */
+    shockwave(at, color = "#ff5aa0") {
+      const now = performance.now();
+      for (let i = 0; i < 3; i++) {
+        flashes.push({
+          x: at.x, y: at.y, r: 40 + i * 34,
+          color: "rgba(255,90,160,ALPHA)".replace("255,90,160", hexToRgb(color)),
+          duration: 700 + i * 220, until: now + 700 + i * 220,
+        });
+      }
+      burst(at.x, at.y, color, 60, 4.6, 3, 1200);
+      burst(at.x, at.y, "#ffffff", 24, 3.4, 2, 800);
       wrap.classList.remove("shake");
       void wrap.offsetWidth;
       wrap.classList.add("shake");

@@ -2,6 +2,32 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-17 21:35:00 -05:00
+
+- Title: Boss Supers reworked as core-synced recurring stack slots
+- Build ID: `6bad57b4d569`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Per design direction: each Super is now synced to a Core and occupies an action-stack slot like any other boss action. It fires every round in its assigned stack once its round or progression-step requirement is met, and falls silent while (or after) its Core is destroyed. Triggers are now `round`/`progress` only (`core_destroyed` removed); progression gates follow the powers-up-next-round tier rule.
+  - Spec: Supers materialize as `slot: "super"` entries via `phase_slots`, gated in `slot_is_active` (core hex intact + round/tier); they count in `expected_phase_actions`. Engine fires them in the slot loop (`_fire_super_slot`); dropped the one-shot `fired_super_ids` state.
+  - Designer: Super rows gained Core and Stack pickers (with a "missing!" marker for unsynced cores); Supers appear as ✹ cards in the Action Stacks organizer and on printed sheets (starburst icon, core-tinted stripe, table-aid lines).
+  - Serialized supers now carry an `active` flag instead of `fired`.
+  - Verified with `python -m unittest discover -s tests` (317 tests passing) and `node --check frontend/v2/static/bossdesigner.js`; bumped bossdesigner asset versions.
+
+## 2026-07-17 21:05:00 -05:00
+
+- Title: StarBreach AI programs, boss Supers, goals, editor zoom + autonumber
+- Build ID: `6bad57b4d569`
+- AI agent: Claude Fable 5 (Claude Code)
+- Summary:
+  - Enemy AI programs for the boss and fleet (independently selectable in the Behavior tab): Hunter-Killer (classic), Vault Runner (harvests the current vault, reroutes to next round's when out of reach; claims vaults on contact), Blaster (moves to/fires at the nearest player), and Dynamic (switches its hunt directive up to once per round when a player hits it, heals, grabs a bauble, or opens a damage lane to a Core — `boss_directive_changed` events with callouts).
+  - Boss Super effects: nine one-shot showpiece abilities (Immobilizer Shot, Tractor Beam, Knockback, Inferno Zone, Infuser, Chain Shot, ScatterShot, Mark the Prey, Mine Dropper) triggered by round, progress, or a Core's destruction. Designed in the Behavior tab, resolved at the start of boss half-phases, with `boss_super_activated`/`boss_super_resolved` events, a shockwave FX + callout in the v2 client, mine tokens rendered on the board, and mine detonations (3 dmg within 2 hexes) hooked into player movement.
+  - New player goals per boss design: capture at least N vaults (default 8) or eliminate the entire fleet (boss optional), both immediate wins; classic Fang escape remains the default. Goal shown in the StarBreach status widget and goal-aware endgame text.
+  - Boss editor: mouse-wheel zoom (cursor-centered) + drag pan with a "⤢ Fit" reset button on the hex board; pan suppresses tile-painting clicks.
+  - Damage lanes: "✨ Autonumber lanes" lays out a region's full lane set — evenly spaced along the region's hull perimeter for coverage/symmetry, preferring deeper rays and varied entry faces for a straight/angled mix, then renumbered in perimeter order.
+  - Schema/spec/state: `supers`, `goal`, expanded `boss_ai`/`fleet_ai` enums in boss designs (+ validation warnings and designer meta); compiled into boss specs with accessors; new StarBreachState fields (directives, fired supers, mines, immobilized/marked players) serialized and round-tripped.
+  - Verified with `python -m unittest discover -s tests` (316 tests passing, incl. 19 new in `tests/test_star_breach_features.py`) and `node --check` on `bossdesigner.js`, `game.js`, `board.js`, `effects.js`. Bumped v2 asset query strings.
+
 ## 2026-07-17 20:28:51 -05:00
 
 - Title: Boss designer zoom revert

@@ -75,7 +75,33 @@
     prey_hull_damage_fleet: "Prey hull damage — boss fleet",
     player_kill: "Kill a player ship",
   };
-  const ACTION_SYMBOL = { attack: "☄", move: "➤", shoot: "☄", breacher: "◉", spawn: "□", ability: "⚡", filler: "·" };
+  const ACTION_SYMBOL = { attack: "☄", move: "➤", shoot: "☄", breacher: "◉", spawn: "□", ability: "⚡", filler: "·", super: "✹" };
+  const AI_LABELS = {
+    hunter_killer: "Hunter-Killer — close on the Prey, shoot the Prey",
+    vault_runner: "Vault Runner — harvest the current vault, or next round's if out of reach",
+    blaster: "Blaster — move to and shoot the nearest player ship",
+    dynamic: "Dynamic — reacts to player activity, switching targets up to once per round",
+  };
+  const SUPER_LABELS = {
+    immobilizer_shot: "Immobilizer Shot — cancel target's movement this round",
+    tractor_beam: "Tractor Beam — pull target inward 2 hexes",
+    knockback: "Knockback — push target outward 2 hexes",
+    inferno_zone: "Inferno Zone — damage all ships within 3 hexes",
+    infuser: "Infuser — fleet gets 3 immediate move actions",
+    chain_shot: "Chain Shot — attack arcs between ships within 4 hexes",
+    scattershot: "ScatterShot — attack all players in a 120° spread",
+    mark_the_prey: "Mark the Prey — Prey takes -5 defense this round",
+    mine_dropper: "Mine Dropper — drop a mine (3 dmg within 2 hexes)",
+  };
+  const SUPER_TRIGGER_LABELS = {
+    round: "from round",
+    progress: "from progression step",
+  };
+  const GOAL_LABELS = {
+    escape_fang: "Escape — The Prey reaches The Fang by round 6 (classic)",
+    capture_vaults: "Heist — capture at least N vaults as a crew",
+    destroy_fleet: "Fleet wipe — eliminate the entire fleet (boss optional)",
+  };
 
   // ── state ────────────────────────────────────────────────────────────────
   let booted = false;
@@ -93,6 +119,7 @@
     components: false, progression: true, fleet: true,
   };
   let printZoom = 1; // ship-drawing scale multiplier (0.5 - 2.0)
+  let boardView = null; // {x, y, w, h} viewBox while zoomed/panned; null = fit all
 
   // ── tiny helpers ─────────────────────────────────────────────────────────
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -328,8 +355,9 @@
     const R = META.grid_radius;
     const extent = SIZE * 1.5 * R + SIZE * 3.2;
     const extentY = SIZE * SQ * R + SIZE * 3.2;
+    const view = boardView || { x: -extent, y: -extentY, w: extent * 2, h: extentY * 2 };
     el("bd-board").innerHTML = `
-      <svg viewBox="${-extent} ${-extentY} ${extent * 2} ${extentY * 2}">
+      <svg viewBox="${view.x} ${view.y} ${view.w} ${view.h}">
         <defs><marker id="bdLaneArrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
           <polygon points="0 0, 6 2.5, 0 5" fill="#e8e0cc"/></marker></defs>
         <g class="bd-lanes">${lanesSvg}</g>
@@ -542,6 +570,60 @@
     });
   }
 
+  /* Auto-assign a full set of lanes for a region: spread the region's
+     lane_count entries evenly along its stretch of hull perimeter (coverage +
+     symmetry), preferring within each slot the entry face whose ray pierces
+     the most hull and whose direction differs from the previous pick (a mix
+     of straight and angled lanes). Replaces the region's current lanes. */
+  function autonumberLanes(region) {
+    const footprint = footprintSet();
+    const inRegion = new Set(region.hexes.map(([q, r]) => key(q, r)));
+    const order = perimeterEdgeOrder(footprint);
+    const edges = [];
+    for (const [edgeId, idx] of order.entries()) {
+      const parts = edgeId.split(",").map(Number);
+      const [q, r, facing] = parts;
+      if (!inRegion.has(key(q, r))) continue;
+      // Ray depth = how much hull a hit entering this face can chew through.
+      let rayLen = 1;
+      let rq = q, rr = r;
+      const [dq, dr] = DIRS[facing];
+      while (footprint.has(key(rq - dq, rr - dr))) {
+        rq -= dq; rr -= dr; rayLen++;
+      }
+      edges.push({ q, r, facing, idx, rayLen });
+    }
+    if (!edges.length) return false;
+    edges.sort((a, b) => a.idx - b.idx);
+    const count = Math.min(regionLaneCount(region), edges.length);
+    const spacing = edges.length / count;
+    const chosen = [];
+    const used = new Set();
+    let lastFacing = null;
+    for (let k = 0; k < count; k++) {
+      const center = (k + 0.5) * spacing - 0.5;
+      const window = Math.max(1, Math.round(spacing / 2));
+      let best = null;
+      let bestScore = -Infinity;
+      for (let off = -window; off <= window; off++) {
+        const i = Math.round(center) + off;
+        if (i < 0 || i >= edges.length || used.has(i)) continue;
+        const edge = edges[i];
+        const score = edge.rayLen
+          + (edge.facing !== lastFacing ? 0.8 : 0)   // vary the entry angle
+          - Math.abs(i - center) * 0.55;             // stay near the even slot
+        if (score > bestScore) { bestScore = score; best = i; }
+      }
+      if (best === null) continue;
+      used.add(best);
+      lastFacing = edges[best].facing;
+      chosen.push(edges[best]);
+    }
+    region.lanes = chosen.map((edge) => ({ roll: 2, q: edge.q, r: edge.r, facing: edge.facing }));
+    renumberLanes(region);
+    return true;
+  }
+
   // ── panels ───────────────────────────────────────────────────────────────
   function renderModePanel() {
     el("bd-panel-structure").classList.toggle("hidden", mode !== "structure");
@@ -628,8 +710,21 @@
         }
       }
     }
+    (design.supers || []).forEach((sup, index) => {
+      const stack = sup.stack || "starbreach";
+      if (!byStack[stack]) return;
+      byStack[stack].push({
+        kind: "super",
+        label: `Super: ${superShortName(sup.effect)}`,
+        source: superRequirementText(sup),
+      });
+    });
     return byStack;
   }
+
+  const superShortName = (effect) => (SUPER_LABELS[effect] || effect).split(" — ")[0];
+  const superRequirementText = (sup) =>
+    `core ${sup.core || 1}, ${sup.trigger?.kind === "progress" ? "step" : "round"} ≥ ${sup.trigger?.value ?? 1}`;
 
   // ── action stacks view (drag components/steps between boss stacks) ───────
   let dragPayload = null; // {type: "tile"|"step"|"chip", ...}
@@ -868,6 +963,15 @@
           }
         }
       });
+      (design.supers || []).forEach((sup) => {
+        if ((sup.stack || "starbreach") !== stack) return;
+        addItem(
+          `${esc(superShortName(sup.effect))} <span class="bd-stack-symbol">${ACTION_SYMBOL.super}</span>`,
+          esc(superRequirementText(sup)),
+          null,
+          "bd-item-super"
+        );
+      });
       const fleetKinds = (design.behavior.fleet.actions || [])
         .filter((entry) => entry.stack === stack)
         .flatMap((entry) => Array.from(
@@ -946,6 +1050,7 @@
   function stackItemType(item) {
     if (item.kind === "fleet") return "fleet";
     if (item.kind === "breacher") return "breacher";
+    if (item.kind === "super") return "super";
     return item.source === "progression" ? "progression" : "component";
   }
 
@@ -1149,6 +1254,10 @@
     function actionIcon(item, cx, cy) {
       const source = stackItemType(item);
       if (source === "breacher") return glyphBreacher(cx, cy, 9);
+      if (source === "super") {
+        // Filled starburst with a hollow eye: the boss Super mark.
+        return glyphShoot(cx, cy, 9, true) + `<circle cx="${cx}" cy="${cy}" r="2.6" fill="${colors.page}"/>`;
+      }
       const shoot = itemAction(item) === "shoot";
       if (source === "fleet") {
         const one = (gx) => shoot ? glyphShoot(gx, cy, 5.4, true) : glyphMove(gx, cy, 5.4, true);
@@ -1163,6 +1272,7 @@
       if (source === "progression") return colors.progression;
       if (source === "fleet") return colors.fleet;
       if (source === "breacher") return colors.breacher;
+      if (source === "super") return colors.core;
       return itemAction(item) === "shoot" ? colors.attack : colors.move;
     };
 
@@ -1341,6 +1451,15 @@
           cursorY += 22;
         }
       }
+      if ((design.supers || []).length) {
+        side += `<text x="70" y="${cursorY}" class="ps-list">Super abilities (each fires every round in its stack while its Core lives):</text>`;
+        cursorY += 22;
+        for (const sup of design.supers) {
+          const gate = sup.trigger?.kind === "progress" ? `progression step ${sup.trigger.value}` : `round ${sup.trigger?.value ?? 1}`;
+          side += `<text x="96" y="${cursorY}" class="ps-list">${esc(superShortName(sup.effect))} — stack ${esc(STACK_SHORT[sup.stack] || sup.stack)}, from ${esc(gate)}, synced to Core ${sup.core || 1}.</text>`;
+          cursorY += 22;
+        }
+      }
       side += `<text x="70" y="${cursorY}" class="ps-list">Damage-lane roll of 1 is always a glancing blow.</text>`;
       cursorY += 24;
     }
@@ -1404,13 +1523,22 @@
     win.document.close();
   }
 
+  function fillSelect(node, values, labels, selected) {
+    node.innerHTML = values.map((value) =>
+      `<option value="${value}" ${value === selected ? "selected" : ""}>${esc(labels[value] || value)}</option>`).join("");
+  }
+
   function renderBehaviorPanel() {
     const fleet = design.behavior.fleet;
-    el("bd-boss-ai").value = design.behavior.boss_ai;
+    fillSelect(el("bd-boss-ai"), META.boss_ais || ["hunter_killer"], AI_LABELS, design.behavior.boss_ai);
+    fillSelect(el("bd-fleet-ai"), META.fleet_ais || ["hunter_killer"], AI_LABELS, fleet.ai);
     el("bd-fleet-count").value = fleet.count;
     el("bd-fleet-hp").value = fleet.hp;
     el("bd-fleet-kind").value = fleet.kind;
-    el("bd-fleet-ai").value = fleet.ai;
+    fillSelect(el("bd-goal-kind"), META.goal_kinds || ["escape_fang", "capture_vaults", "destroy_fleet"], GOAL_LABELS, design.goal.kind);
+    el("bd-goal-count-wrap").classList.toggle("hidden", design.goal.kind !== "capture_vaults");
+    el("bd-goal-count").value = design.goal.count || META.default_vault_goal_count || 8;
+    renderSupersPanel();
     const table = el("bd-fleet-actions");
     table.querySelectorAll("tr:not(:first-child)").forEach((row) => row.remove());
     for (const stack of FLEET_STACKS) {
@@ -1435,6 +1563,69 @@
         if (count > 0) fleet.actions.push(entry);
         markDirty();
       });
+    });
+  }
+
+  function shipCoreNumbers() {
+    return [...new Set(design.tiles
+      .filter((tile) => tile.type === "core").map((tile) => tile.number))].sort();
+  }
+
+  function renderSupersPanel() {
+    const list = el("bd-supers");
+    if (!list) return;
+    list.innerHTML = design.supers.length ? "" : '<div class="admin-note">No Supers yet — this boss fights fair.</div>';
+    const effects = META.super_effects || Object.keys(SUPER_LABELS);
+    const triggerKinds = META.super_trigger_kinds || ["round", "progress"];
+    const coreNumbers = shipCoreNumbers();
+    design.supers.forEach((sup, index) => {
+      const row = document.createElement("div");
+      row.className = "bd-super-row";
+      const coreOptions = (coreNumbers.length ? coreNumbers : [sup.core || 1]).map((n) =>
+        `<option value="${n}" ${(sup.core || 1) === n ? "selected" : ""}>${n}</option>`);
+      if (!coreNumbers.includes(sup.core || 1) && coreNumbers.length) {
+        coreOptions.unshift(`<option value="${sup.core || 1}" selected>${sup.core || 1} (missing!)</option>`);
+      }
+      row.innerHTML = `
+        <select data-f="effect">${effects.map((effect) =>
+          `<option value="${effect}" ${sup.effect === effect ? "selected" : ""}>${esc(SUPER_LABELS[effect] || effect)}</option>`).join("")}</select>
+        <span class="bd-super-when">
+          <label>core <select data-f="core">${coreOptions.join("")}</select></label>
+          <label>stack <select data-f="stack">${META.action_stacks.map((stack) =>
+            `<option value="${stack}" ${(sup.stack || "starbreach") === stack ? "selected" : ""}>${STACK_SHORT[stack] || stack}</option>`).join("")}</select></label>
+          <select data-f="kind">${triggerKinds.map((kind) =>
+            `<option value="${kind}" ${sup.trigger.kind === kind ? "selected" : ""}>${esc(SUPER_TRIGGER_LABELS[kind] || kind)}</option>`).join("")}</select>
+          <input data-f="value" type="number" min="1" max="99" value="${sup.trigger.value ?? 1}">
+          <button class="btn ghost small" data-a="del" title="Remove this Super">✕</button>
+        </span>`;
+      row.querySelector('[data-f="effect"]').addEventListener("change", (event) => {
+        sup.effect = event.target.value;
+        markDirty();
+      });
+      row.querySelector('[data-f="core"]').addEventListener("change", (event) => {
+        sup.core = parseInt(event.target.value, 10) || 1;
+        markDirty();
+      });
+      row.querySelector('[data-f="stack"]').addEventListener("change", (event) => {
+        sup.stack = event.target.value;
+        markDirty();
+        if (mode === "stacks") renderStacksView();
+      });
+      row.querySelector('[data-f="kind"]').addEventListener("change", (event) => {
+        sup.trigger.kind = event.target.value;
+        markDirty();
+      });
+      row.querySelector('[data-f="value"]').addEventListener("change", (event) => {
+        sup.trigger.value = Math.max(1, Math.min(99, parseInt(event.target.value, 10) || 1));
+        event.target.value = sup.trigger.value;
+        markDirty();
+      });
+      row.querySelector('[data-a="del"]').addEventListener("click", () => {
+        design.supers.splice(index, 1);
+        markDirty();
+        renderSupersPanel();
+      });
+      list.appendChild(row);
     });
   }
 
@@ -1725,6 +1916,17 @@
     design = document_;
     normalizeProgression();
     if (!design.behavior) design.behavior = defaultBehavior();
+    if (!Array.isArray(design.supers)) design.supers = [];
+    // Migrate any pre-core-sync Supers: default to core 1 / StarBreach stack.
+    design.supers = design.supers.map((sup) => ({
+      effect: sup.effect,
+      core: sup.core || 1,
+      stack: sup.stack || "starbreach",
+      trigger: sup.trigger && SUPER_TRIGGER_LABELS[sup.trigger.kind]
+        ? { kind: sup.trigger.kind, value: sup.trigger.value || 1 }
+        : { kind: "round", value: 1 },
+    }));
+    if (!design.goal || !design.goal.kind) design.goal = { kind: "escape_fang" };
     for (const region of design.shield_regions) {
       if (region.max_charges === undefined) region.max_charges = region.charges ?? 3;
       if (region.charges === undefined) region.charges = region.max_charges;
@@ -1830,6 +2032,7 @@
         <div class="bd-grid">
           <div class="bd-board-wrap">
             <div id="bd-board" class="bd-board"></div>
+            <button class="btn ghost small bd-view-reset hidden" id="bd-view-reset" title="Reset zoom and pan">⤢ Fit</button>
             <div id="bd-stacks" class="bd-stacks hidden"></div>
             <div id="bd-print" class="bd-print hidden"></div>
           </div>
@@ -1866,6 +2069,7 @@
               <div id="bd-lane-tools" class="bd-lane-tools hidden">
                 <label><input type="checkbox" id="bd-lane-stack"> Allow a second lane on a laned hex</label>
                 <button class="btn ghost small" id="bd-lane-renumber">⇢ Renumber lanes left-to-right</button>
+                <button class="btn ghost small" id="bd-lane-autonumber">✨ Autonumber lanes</button>
               </div>
               <div id="bd-region-info" class="bd-region-info"></div>
             </div>
@@ -1876,7 +2080,7 @@
             <div id="bd-panel-behavior" class="hidden">
               <h3 class="panel-sub">Boss behavior</h3>
               <label class="bd-field">Boss AI
-                <select id="bd-boss-ai"><option value="hunter_killer">Hunter-Killer — close on the Prey, shoot the Prey</option></select>
+                <select id="bd-boss-ai"></select>
               </label>
               <h3 class="panel-sub">Fleet craft</h3>
               <div class="bd-fleet-row">
@@ -1885,13 +2089,29 @@
               </div>
               <div class="bd-fleet-row">
                 <label>Type <select id="bd-fleet-kind"><option value="hunter_killer">Mini Hunter-Killer</option></select></label>
-                <label>AI <select id="bd-fleet-ai"><option value="hunter_killer">Hunter-Killer</option></select></label>
               </div>
+              <label class="bd-field">Fleet AI
+                <select id="bd-fleet-ai"></select>
+              </label>
+              <p class="admin-note">The boss and its fleet may run the same or different AI programs.</p>
               <h3 class="panel-sub">Fleet actions per boss stage</h3>
               <p class="admin-note">Set how many times the fleet moves or shoots at each boss action stage.</p>
               <table class="bd-fleet-actions" id="bd-fleet-actions">
                 <tr><th>Stage</th><th>Move</th><th>Shoot</th></tr>
               </table>
+              <h3 class="panel-sub">Super abilities</h3>
+              <p class="admin-note">Each Super is synced to a Core and joins an action stack like any
+                other boss action: it fires every round in that stack once its round or
+                progression-step requirement is met — and falls silent if its Core is destroyed.</p>
+              <div id="bd-supers" class="bd-supers"></div>
+              <button class="btn ghost small" id="bd-super-add">＋ Add Super</button>
+              <h3 class="panel-sub">Player goal</h3>
+              <label class="bd-field">Victory condition
+                <select id="bd-goal-kind"></select>
+              </label>
+              <label class="bd-field" id="bd-goal-count-wrap">Vaults needed
+                <input id="bd-goal-count" type="number" min="1" max="30">
+              </label>
             </div>
             <div id="bd-panel-print" class="hidden">
               <h3 class="panel-sub">Printable export</h3>
@@ -1949,6 +2169,8 @@
         id, name, description: "", tiles: [], shield_regions: [],
         progression: { triggers: [], steps: [] },
         behavior: defaultBehavior(),
+        supers: [],
+        goal: { kind: "escape_fang" },
       });
       el("bd-new-name").value = "";
       markDirty();
@@ -2038,6 +2260,19 @@
       renderShieldPanel();
       setStatus("Lanes renumbered left-to-right.", true);
     });
+    el("bd-lane-autonumber").addEventListener("click", () => {
+      const region = regionByNumber(currentRegion);
+      if (!region) { setStatus("Add a ship region first.", false); return; }
+      if (!region.hexes.length) { setStatus("Give this region some protected hexes first.", false); return; }
+      if (!autonumberLanes(region)) {
+        setStatus("No hull-edge faces found in this region — lanes need an outside entry face.", false);
+        return;
+      }
+      markDirty();
+      renderBoard();
+      renderShieldPanel();
+      setStatus(`✨ ${region.lanes.length} lanes laid out across region ${region.number}.`, true);
+    });
 
     el("bd-boss-ai").addEventListener("change", (event) => {
       design.behavior.boss_ai = event.target.value;
@@ -2060,6 +2295,35 @@
     el("bd-fleet-ai").addEventListener("change", (event) => {
       design.behavior.fleet.ai = event.target.value;
       markDirty();
+    });
+    el("bd-goal-kind").addEventListener("change", (event) => {
+      design.goal.kind = event.target.value;
+      if (design.goal.kind === "capture_vaults" && !design.goal.count) {
+        design.goal.count = META.default_vault_goal_count || 8;
+      }
+      if (design.goal.kind !== "capture_vaults") delete design.goal.count;
+      markDirty();
+      renderBehaviorPanel();
+    });
+    el("bd-goal-count").addEventListener("change", (event) => {
+      design.goal.count = Math.max(1, Math.min(META.max_vault_goal_count || 30,
+        parseInt(event.target.value, 10) || META.default_vault_goal_count || 8));
+      event.target.value = design.goal.count;
+      markDirty();
+    });
+    el("bd-super-add").addEventListener("click", () => {
+      if (design.supers.length >= (META.max_supers || 12)) {
+        setStatus("That's the Super limit — this boss is dramatic enough.", false);
+        return;
+      }
+      design.supers.push({
+        effect: (META.super_effects || ["immobilizer_shot"])[0],
+        core: shipCoreNumbers()[0] || 1,
+        stack: "starbreach",
+        trigger: { kind: "round", value: 2 },
+      });
+      markDirty();
+      renderSupersPanel();
     });
     el("bd-print-tone").addEventListener("change", (event) => {
       printTone = event.target.value === "bw" ? "bw" : "color";
@@ -2121,6 +2385,92 @@
 
     window.addEventListener("beforeunload", (event) => {
       if (dirty) event.preventDefault();
+    });
+
+    wireBoardZoomPan();
+  }
+
+  /* Zoom (mouse wheel, centered on the cursor) and pan (drag) over the hex
+     editor board. A drag beyond a few pixels suppresses the click so painting
+     tiles and panning don't fight over the mouse. */
+  function wireBoardZoomPan() {
+    const board = el("bd-board");
+    const defaultView = () => {
+      const R = META.grid_radius;
+      const extent = SIZE * 1.5 * R + SIZE * 3.2;
+      const extentY = SIZE * SQ * R + SIZE * 3.2;
+      return { x: -extent, y: -extentY, w: extent * 2, h: extentY * 2 };
+    };
+    const applyView = () => {
+      const svg = board.querySelector("svg");
+      const view = boardView || defaultView();
+      if (svg) svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+      el("bd-view-reset")?.classList.toggle("hidden", !boardView);
+    };
+    board.addEventListener("wheel", (event) => {
+      if (!design) return;
+      const svg = board.querySelector("svg");
+      if (!svg) return;
+      event.preventDefault();
+      const base = defaultView();
+      const view = boardView || { ...base };
+      const rect = board.getBoundingClientRect();
+      const fx = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+      const fy = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+      const factor = event.deltaY > 0 ? 1.18 : 1 / 1.18;
+      const w = Math.min(base.w * 1.4, Math.max(base.w / 8, view.w * factor));
+      const h = w * (base.h / base.w);
+      boardView = {
+        x: view.x + (view.w - w) * fx,
+        y: view.y + (view.h - h) * fy,
+        w, h,
+      };
+      if (Math.abs(w - base.w) < base.w * 0.02) boardView = null; // snapped back to fit
+      applyView();
+    }, { passive: false });
+
+    let drag = null;
+    let suppressClick = false;
+    board.addEventListener("pointerdown", (event) => {
+      if (!design || event.button !== 0) return;
+      drag = { startX: event.clientX, startY: event.clientY, panned: false, view: boardView };
+    });
+    board.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.panned && Math.hypot(dx, dy) < 5) return;
+      drag.panned = true;
+      const base = defaultView();
+      const view = drag.view || base;
+      const rect = board.getBoundingClientRect();
+      boardView = {
+        x: view.x - dx * (view.w / rect.width),
+        y: view.y - dy * (view.h / rect.height),
+        w: view.w,
+        h: view.h,
+      };
+      applyView();
+    });
+    const endDrag = () => {
+      if (drag && drag.panned) {
+        suppressClick = true;
+        setTimeout(() => { suppressClick = false; }, 0);
+      }
+      drag = null;
+    };
+    board.addEventListener("pointerup", endDrag);
+    board.addEventListener("pointerleave", endDrag);
+    // Capture-phase: a pan must not paint the tile under the cursor.
+    board.addEventListener("click", (event) => {
+      if (suppressClick) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    }, true);
+    el("bd-view-reset").addEventListener("click", () => {
+      boardView = null;
+      applyView();
     });
   }
 

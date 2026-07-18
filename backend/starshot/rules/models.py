@@ -244,6 +244,19 @@ class StarBreachState:
     # Compiled boss spec for designed bosses (see rules/star_breach_spec.py);
     # None means the stock Vault Breacher scenario.
     boss_spec: dict | None = None
+    # Dynamic AI directives: the player currently hunted by the boss / fleet
+    # (None = default prey-first targeting) and the round each last switched
+    # in (a dynamic program may switch at most once per round).
+    boss_ai_target_id: str | None = None
+    boss_ai_switch_round: int = 0
+    fleet_ai_target_id: str | None = None
+    fleet_ai_switch_round: int = 0
+    # Live proximity mines: {"id", "q", "r"}; blow for 3 within 2 hexes.
+    mines: list[dict] = field(default_factory=list)
+    # Players whose movement is cancelled for the rest of the round.
+    immobilized_player_ids: list[str] = field(default_factory=list)
+    # Players at -5 defense against enemy shots for the rest of the round.
+    marked_player_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

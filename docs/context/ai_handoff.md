@@ -125,9 +125,20 @@ Admin tools:
   blow — `region.lane_count` in the design, `lane_die` in the compiled spec;
   each lane has an entry face), and a progression track
   (triggers + filler/action-link/breacher-link/ability-trigger steps).
-  Also: per-region shield start/max charges, a Behavior tab (boss AI —
-  hunter-killer only for now; fleet craft count/type/HP/AI and numeric
-  move/shoot counts for fleet actions per boss stage), JSON download/upload of designs,
+  Also: per-region shield start/max charges, a Behavior tab (boss AI and
+  fleet AI — independently one of hunter_killer / vault_runner / blaster /
+  dynamic; fleet craft count/type/HP and numeric move/shoot counts for fleet
+  actions per boss stage; boss Supers — immobilizer_shot, tractor_beam,
+  knockback, inferno_zone, infuser, chain_shot, scattershot, mark_the_prey,
+  mine_dropper — each synced to a Core and assigned to an action stack: the
+  Super occupies a slot in that stack (a "super" slot from
+  `phase_slots`/`slot_is_active` in star_breach_spec.py) and fires every
+  round once its round or progression-step gate opens, for as long as its
+  Core is intact (progression gates follow the powers-up-next-round tier
+  rule); resolved in the slot loop via `_fire_super_slot` with
+  `boss_super_activated`/`boss_super_resolved` events; and the player goal —
+  escape_fang (default), capture_vaults (count, immediate win), or
+  destroy_fleet (immediate win)), JSON download/upload of designs,
   and delete-with-confirmation. Bundled developer designs are JSON documents
   in `resources/boss_designs/`; server-created and server-edited designs are
   saved under `.starshot/content/boss_designs/` so Git pulls do not overwrite
@@ -140,9 +151,16 @@ Admin tools:
   `frontend/v2/static/bossdesigner.js` + `bossdesigner.css`; tests in
   `tests/test_boss_designer.py`. Lane assignment supports a "Renumber lanes
   left-to-right" button, an "allow a second lane on a laned hex" tick box
-  (two lanes may share a hex with different rolls/faces), and partial lane
+  (two lanes may share a hex with different rolls/faces), an "Autonumber
+  lanes" button (evenly spaces a full lane set along the region's hull
+  perimeter, mixing straight and angled entry faces), and partial lane
   sets: regions need at least one lane, and unassigned lane numbers are
   rerolled at runtime (see the reroll loop in `_resolve_volley_vs_boss`).
+  The designer hex board supports wheel zoom + drag pan with a "Fit" reset.
+  Dynamic AI directives, mines, and immobilized/marked players live on
+  `StarBreachState`; Immobilizer works via a 0 move-distance multiplier,
+  mines detonate in `adjust_player_action_landing`, and immobilize/mark
+  wear off at round activation (Supers reapply them if still active).
   An "Action Stacks" mode shows one column per boss stack (0.5-3.5 +
   StarBreach) with draggable, equal-height columns of cards for Firing
   Cannons / Engines / action-link steps (drop on a column to reassign
@@ -220,7 +238,7 @@ Not implemented yet:
 - Deferred desperate faces: Reconfigure, Hull Repair, Holdo Maneuver, ScatterShot, Overdrive 2x.
 - Real player accounts, sessions, or multiplayer lobby UX.
 - WebSocket/live updates; current UI is manual/poll-style HTTP.
-- Expansion content: StarTech, StarTrader, additional StarBreach scenarios (Boss Deck, Boss Tier abilities, Breacher Core objectives, Bauble Runner/Blaster fleet behaviors), NPC missions.
+- Expansion content: StarTech, StarTrader, additional StarBreach scenarios (Boss Deck, remaining Breacher Core objectives), NPC missions.
 
 ## Important Conventions
 
@@ -248,7 +266,7 @@ Not implemented yet:
   base games or other expansions.
 - Always verify card counts, names, and behavior against `docs/rules/rules_0.2.txt` before implementing.
 - `/v2` is the active browser interface. The legacy non-v2 frontend has been removed; do not recreate it.
-- 256 tests passing as of last session (2 API test modules require `fastapi` installed).
+- 316 tests passing as of last session (2 API test modules require `fastapi` installed).
 - Replays rewind and animate StarBreach fleet craft (`replayFleetPose` in
   `game.js`, `options.fleetPose` in `board.js`), so lasers and impacts land
   where units actually stood at that moment.
