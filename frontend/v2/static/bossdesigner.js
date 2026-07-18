@@ -603,6 +603,16 @@
           label: `Step ${index + 1}: Breacher`,
           source: bits.length ? bits.join(", ") : "progression",
         });
+      } else if (step.kind === "spawn_fleet") {
+        const bay = design.tiles.find((tile) => tile.type === "docking_bay");
+        const bayStack = bay?.stack || "starbreach";
+        if (byStack[bayStack]) {
+          byStack[bayStack].push({
+            kind: "spawn",
+            label: `Step ${index + 1}: spawn fleet`,
+            source: bay ? `linked to ${componentLabel(bay, numbers)}` : "needs Docking Bay",
+          });
+        }
       }
     });
     const fleet = design.behavior?.fleet || defaultBehavior().fleet;
@@ -843,6 +853,19 @@
             null,
             index
           );
+        } else if (step.kind === "spawn_fleet") {
+          const bay = design.tiles.find((tile) => tile.type === "docking_bay");
+          const bayStack = bay?.stack || "starbreach";
+          if (stack === bayStack) {
+            addItem(
+              `Track ${index + 1} <span class="bd-stack-symbol">${ACTION_SYMBOL.spawn}</span>`,
+              bay ? `linked to ${esc(componentLabel(bay, numbers))}` : "needs Docking Bay",
+              null,
+              "bd-item-spawn",
+              bay ? [bay.q, bay.r] : null,
+              index
+            );
+          }
         }
       });
       const fleetKinds = (design.behavior.fleet.actions || [])
@@ -907,14 +930,14 @@
         page: "#ffffff", text: "#111111", dim: "#555555", line: "#111111",
         hull: "#f4f4f4", generic: "#ffffff", attack: "#eeeeee", move: "#dddddd",
         shieldGen: "#e8e8e8", core: "#cfcfcf", lane: "#111111", fleet: "#f0f0f0",
-        progression: "#ffffff", breacher: "#e6e6e6", jammer: "#f8f8f8", sensors: "#e2e2e2",
+        progression: "#ffffff", breacher: "#e6e6e6", spawn: "#d6d6d6", jammer: "#f8f8f8", sensors: "#e2e2e2",
       };
     }
     return {
       page: "#fffaf0", text: "#151923", dim: "#5f6675", line: "#283246",
       hull: "#f2ead8", generic: "#f8f3e7", attack: "#ffd2c7", move: "#ffe2a8",
       shieldGen: "#c7eaff", core: "#e8c8ff", lane: "#c54530", fleet: "#d6f3ff",
-      progression: "#ddd2ff", breacher: "#f3c4f0", jammer: "#c9f5e4", sensors: "#ffd3ec",
+      progression: "#ddd2ff", breacher: "#f3c4f0", spawn: "#ffd3ec", jammer: "#c9f5e4", sensors: "#ffd3ec",
     };
   }
 

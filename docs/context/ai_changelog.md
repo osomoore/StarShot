@@ -2,6 +2,40 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-17 20:28:51 -05:00
+
+- Title: Boss designer zoom revert
+- Build ID: `36b18ffa09a3`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Removed the just-added StarBreach Boss Ship Designer zoom/pan layer, including its board state, SVG event handlers, controls markup, and CSS.
+  - Confirmed no boss-designer zoom/pan symbols remain.
+  - Verified with `node --check frontend/v2/static/bossdesigner.js` and `git diff --check` (CRLF warnings only).
+
+## 2026-07-17 20:23:29 -05:00
+
+- Title: Boss designer zoom correction
+- Build ID: `36b18ffa09a3`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Reverted the mobile lobby Captains on Deck/scoreboard layout change.
+  - Removed the misplaced StarDock zoom/pan controls and restored its v2 asset query strings.
+  - Added zoom in/out/fit controls plus wheel zoom and drag pan to the StarBreach Boss Ship Designer board used by both admin and player-facing designer screens.
+  - Verified with `node --check frontend/v2/static/bossdesigner.js`, `node --check frontend/v2/static/shipdesigner.js`, and `git diff --check` (CRLF warnings only).
+
+## 2026-07-17 20:10:52 -05:00
+
+- Title: Endgame and StarBreach fixes
+- Build ID: `36b18ffa09a3`
+- AI agent: Codex (GPT-5)
+- Summary:
+  - Final-round replays now treat phase/action reveals as visual events so the battle can play out before the battle report, and the v2 service no longer uses early give-orders completion for round-six scoring/objective results.
+  - StarBreach player movement now stops one tile short when an action would end on an enemy ship, with replay/log support and coverage; boss movement also stops before ending on a player.
+  - Boss Designer stack view now links spawn-fleet progression steps to the Docking Bay stack, and B&W boss print sheets give Docking Bays a grayscale fill.
+  - Mobile lobby moves the Captains on Deck panel above Set Sail, and StarDock gained zoom/pan controls.
+  - Bumped affected v2 asset query strings.
+  - Verified with `python -m unittest discover -s tests` (297 tests passing), `node --check` on `game.js`, `bossdesigner.js`, `shipdesigner.js`, and `tutorial.js`, plus `git diff --check` (CRLF warnings only).
+
 ## 2026-07-17 06:44:58 -05:00
 
 - Title: Compact mobile action cards

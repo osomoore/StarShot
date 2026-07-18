@@ -31,7 +31,9 @@
       icon: "➤", title: "Flying your ship",
       body: `Move cards turn <b>then</b> move — pick Ahead, Port, or Starboard when you place the card.
         The dashed <b>preview path</b> on the board shows exactly where you'll end each Action. Bonus:
-        distance flown this Action is added to your defense, so a moving ship is a hard target.`,
+        distance flown this Action is added to your defense, so a moving ship is a hard target.
+        <br><br><i>In StarBreach, ships can fly past enemies, but if an Action would end exactly on an enemy ship,
+        it stops one tile short instead.</i>`,
     },
     {
       icon: "☄", title: "Firing your cannons",

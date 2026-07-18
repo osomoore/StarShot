@@ -357,7 +357,11 @@ def advance_game(state: GameState, match: dict, deck_path: Path | None = None) -
                 # survivor play out an empty round. (Mid-round eliminations
                 # still resolve the full round, per the rules.)
                 result = is_game_over(state)
-                if result is not None and state.result is None:
+                if (
+                    result is not None
+                    and state.result is None
+                    and result.reason not in {"round_six_victory_points", "star_breach_victory", "star_breach_objective_failed"}
+                ):
                     state.result = result
                     state.phase = GamePhase.COMPLETE
                     state.event_log.append({"type": "phase_changed", "phase": state.phase})

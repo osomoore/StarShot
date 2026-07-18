@@ -340,9 +340,13 @@ def _resolve_action_phase(state: GameState) -> None:
                 ],
             }
         )
-        _resolve_stack_movement(state, player, action_number, stack)
+        movement_path = [(player.ship.q, player.ship.r)]
+        movement_path.extend(_resolve_stack_movement(state, player, action_number, stack))
         if _overdrive_copies_action(stack):
-            _resolve_stack_movement(state, player, action_number, stack, overdrive_copy=True)
+            movement_path.extend(
+                _resolve_stack_movement(state, player, action_number, stack, overdrive_copy=True)
+            )
+        _adjust_action_landing_by_expansion(state, player, action_number, movement_path)
         _resolve_stack_engineering(state, player, action_number, stack)
 
     _resolve_combat(state, action_number, revealed_stacks)
@@ -441,6 +445,49 @@ def _move_defense_distance_by_expansion(
                 )
             )
     return max(0, defense_distance)
+
+
+def _adjust_action_landing_by_expansion(
+    state: GameState,
+    player: PlayerState,
+    action_number: int,
+    movement_path: list[tuple[int, int]],
+) -> None:
+    if not movement_path:
+        return
+    for module in _active_expansion_modules(state):
+        adjust_landing = getattr(module, "adjust_player_action_landing", None)
+        if adjust_landing is None:
+            continue
+        before = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
+        result = adjust_landing(state, player, movement_path)
+        if not result:
+            continue
+        after = {"q": player.ship.q, "r": player.ship.r, "facing": player.ship.facing}
+        state.event_log.append(
+            {
+                "type": "movement_resolved",
+                "round": state.round_number,
+                "player_id": player.id,
+                "action_number": action_number,
+                "overdrive_copy": False,
+                "steps": [
+                    {
+                        "card_id": "star_breach_stop_short",
+                        "face": "front",
+                        "choice": "stop_short",
+                        "distance": 0,
+                        "before": before,
+                        "attempted": before,
+                        "after": after,
+                        "clamped": False,
+                        "star_breach_stop_short": True,
+                    }
+                ],
+                "movement_this_action": player.ship.movement_this_action,
+                "star_breach_stop_short": result,
+            }
+        )
 
 
 def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: ActionStack) -> bool:
@@ -580,8 +627,9 @@ def _resolve_stack_movement(
     action_number: int,
     stack: ActionStack,
     overdrive_copy: bool = False,
-) -> None:
+) -> list[tuple[int, int]]:
     movement_steps: list[dict] = []
+    movement_path: list[tuple[int, int]] = []
     passes = 2 if _overdrive_copies_cards(stack) and not overdrive_copy else 1
     for _ in range(passes):
         for selection in stack.cards:
@@ -629,6 +677,7 @@ def _resolve_stack_movement(
             attempted_q = player.ship.q
             attempted_r = player.ship.r
             warp_destination = move_effect.warp_destination
+            movement_facing = None
 
             if warp_destination:
                 attempted_q, attempted_r, attempted_facing = _resolve_warp_destination(state, player, warp_destination)
@@ -639,10 +688,12 @@ def _resolve_stack_movement(
                 pass
             elif move_effect.double_turn_right:
                 player.ship.facing = turn_right(turn_right(player.ship.facing))
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
             elif move_effect.double_turn_after_move:
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 if move_choice == "turn_left":
@@ -652,25 +703,30 @@ def _resolve_stack_movement(
                 player.ship.movement_this_action += defense_distance
             elif move_effect.u_turn_move:
                 player.ship.facing = u_turn(player.ship.facing)
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
             elif move_effect.side_slip_direction:
                 slip_facing = (player.ship.facing + (_SLIP_RIGHT_OFFSET if move_choice == "slip_right" else _SLIP_LEFT_OFFSET)) % 6
+                movement_facing = slip_facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, slip_facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
             elif move_choice == "forward":
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
             elif move_choice == "turn_left":
                 player.ship.facing = turn_left(player.ship.facing)
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
             elif move_choice == "turn_right":
                 player.ship.facing = turn_right(player.ship.facing)
+                movement_facing = player.ship.facing
                 attempted_q, attempted_r = move_forward(player.ship.q, player.ship.r, player.ship.facing, distance)
                 player.ship.q, player.ship.r = attempted_q, attempted_r
                 player.ship.movement_this_action += defense_distance
@@ -678,6 +734,10 @@ def _resolve_stack_movement(
                 raise RulesError(f"Unsupported move orientation: {move_choice}")
 
             player.ship.q, player.ship.r = clamp_to_board(player.ship.q, player.ship.r)
+            if movement_facing is not None:
+                for step_distance in range(1, distance + 1):
+                    step_q, step_r = move_forward(before["q"], before["r"], movement_facing, step_distance)
+                    movement_path.append(clamp_to_board(step_q, step_r))
 
             if move_effect.active_cooling:
                 player.discard.extend(player.overheat)
@@ -711,6 +771,7 @@ def _resolve_stack_movement(
                 "movement_this_action": player.ship.movement_this_action,
             }
         )
+    return movement_path
 
 
 def _resolve_stack_engineering(

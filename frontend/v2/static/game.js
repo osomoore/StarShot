@@ -444,7 +444,7 @@
   }
 
   function isVisualEvent(event) {
-    return ["movement_resolved", "volley_resolved", "vault_awarded", "round_advanced",
+    return ["phase_changed", "action_revealed", "movement_resolved", "volley_resolved", "vault_awarded", "round_advanced",
       "desperation_consequence", "player_forfeited", "starfall_revealed",
       "starfall_take_cover_damage", "captain_cleanup_movement",
       "boss_phase_started", "boss_phase_resolved", "enemy_volley_resolved",
@@ -454,7 +454,7 @@
 
   function shouldOfferEntryReplay(event) {
     if (!isVisualEvent(event)) return false;
-    return !["round_advanced", "starfall_revealed"].includes(event.type);
+    return !["phase_changed", "action_revealed", "round_advanced", "starfall_revealed"].includes(event.type);
   }
 
   function saveAnimCursor() {
@@ -977,6 +977,9 @@
       case "starfall_revealed": return { cls: "round", text: `Starfall: ${event.starfall} - ${event.text}` };
       case "movement_resolved": {
         const dist = (event.steps || []).reduce((total, step) => total + (step.distance || 0), 0);
+        if (event.star_breach_stop_short) {
+          return { cls: "", text: `${name(event.player_id)} stops one tile short of an enemy ship.` };
+        }
         return dist ? { cls: "", text: `${name(event.player_id)} sails ${dist} hex${dist > 1 ? "es" : ""}${event.overdrive_copy ? " (overdrive)" : ""}.` } : null;
       }
       case "volley_resolved": {

@@ -431,6 +431,32 @@ class StarBreachOutcomeTests(unittest.TestCase):
 
 
 class StarBreachRoleHelperTests(unittest.TestCase):
+    def test_player_action_stops_short_of_enemy_final_hex_but_can_pass_through(self):
+        state = _coop_state()
+        alice = state.players["alice"]
+        alice.ship.q, alice.ship.r, alice.ship.facing = 0, 0, 0
+        # Vault Runner doubles basic Move 2 to a 4-hex action. The hunter is
+        # on the exact landing hex, so Alice should stop at hex 3 instead.
+        craft = state.star_breach.fleet[0]
+        craft.q, craft.r = 4, 0
+        _set_hand(state, "alice", "controlled_move_2_a")
+        orders = OrdersSubmission(
+            stacks=(
+                ActionStack(1, SealMode.SEALED, (OrderCardSelection("controlled_move_2_a", orientation="forward"),)),
+                ActionStack(2, SealMode.SEALED),
+                ActionStack(3, SealMode.SEALED),
+            )
+        )
+        state = submit_orders(state, "alice", orders)
+        state = submit_orders(state, "bob", _empty_stacks())
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=0):
+            state = resolve_next_step(state)
+
+        self.assertEqual((state.players["alice"].ship.q, state.players["alice"].ship.r), (3, 0))
+        stop = [event for event in state.event_log if event.get("star_breach_stop_short")]
+        self.assertEqual(len(stop), 1)
+        self.assertEqual(stop[0]["star_breach_stop_short"]["attempted"], {"q": 4, "r": 0})
+
     def test_vault_runner_overdrive_is_not_penalty_exempt(self):
         state = _coop_state()
         alice = state.players["alice"]  # vault runner + fighting ace

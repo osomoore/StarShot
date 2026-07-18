@@ -152,6 +152,7 @@
 .bd-item-attack { border-left-color: #ff8d7a; }
 .bd-item-move { border-left-color: #ffd75e; }
 .bd-item-breacher { border-left-color: #d9a6ff; opacity: .9; }
+.bd-item-spawn { border-left-color: #ff7ad0; opacity: .9; }
 .bd-item-fleet { border-left-color: #59c8ff; opacity: .85; }
 .bd-stack-line { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .bd-stack-symbol, .bd-stack-symbols { color: var(--gold-bright); font-size: 14px; letter-spacing: 0; }

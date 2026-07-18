@@ -130,6 +130,14 @@ def move_defense_distance(
     return distance
 
 
+def adjust_player_action_landing(
+    state: GameState,
+    player: PlayerState,
+    movement_path: list[tuple[int, int]],
+) -> dict | None:
+    return _adjust_player_action_landing(state, player, movement_path)
+
+
 def validate_target(state: GameState, player: PlayerState, target: str) -> None:
     _validate_star_breach_target(state, player, target)
 
@@ -606,6 +614,42 @@ def _occupied_ship_hexes(state: GameState, *, ignore_craft_id: str | None = None
     return occupied
 
 
+def _player_enemy_hexes(state: GameState) -> set[tuple[int, int]]:
+    sb = state.star_breach
+    assert sb is not None
+    enemies = {
+        (craft.q, craft.r)
+        for craft in sb.fleet
+        if not craft.destroyed
+    }
+    if _boss_active(sb):
+        enemies.update(_boss_token_hexes(sb))
+    return enemies
+
+
+def _adjust_player_action_landing(
+    state: GameState,
+    player: PlayerState,
+    movement_path: list[tuple[int, int]],
+) -> dict | None:
+    """StarBreach ships may pass through enemies, but cannot end an action
+    exactly on an enemy ship."""
+    if state.star_breach is None or not movement_path:
+        return None
+    if (player.ship.q, player.ship.r) not in _player_enemy_hexes(state):
+        return None
+    stop_q, stop_r = movement_path[-2] if len(movement_path) >= 2 else movement_path[0]
+    if (stop_q, stop_r) == (player.ship.q, player.ship.r):
+        return None
+    attempted = {"q": player.ship.q, "r": player.ship.r}
+    player.ship.q, player.ship.r = stop_q, stop_r
+    return {
+        "reason": "enemy_occupied_final_hex",
+        "attempted": attempted,
+        "stopped_at": {"q": stop_q, "r": stop_r},
+    }
+
+
 def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
     """Move the boss token toward The Prey. The nose leads: facing becomes the
     direction of the last hex moved. The boss token can share a hex with
@@ -643,6 +687,14 @@ def _move_boss_toward_prey(state: GameState, steps: int) -> dict:
         if best_direction is None:
             break
         dq, dr = move_forward(0, 0, best_direction, 1)
+        next_hexes = sb_data.boss_board_hexes(sb.anchor_q + dq, sb.anchor_r + dr, best_direction)
+        player_hexes = {
+            (player.ship.q, player.ship.r)
+            for player in state.players.values()
+            if not player.eliminated and not player.ship.destroyed
+        }
+        if any(hex_ in player_hexes for hex_ in next_hexes):
+            break
         sb.anchor_q += dq
         sb.anchor_r += dr
         sb.facing = best_direction
