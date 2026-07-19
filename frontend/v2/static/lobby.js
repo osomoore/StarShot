@@ -561,11 +561,12 @@
       if (fled.length) {
         turnBadge += ` <span class="badge-fled">🏳 ${esc(fled.join(", "))} abandoned</span>`;
       }
-      row.innerHTML = `<div>
+      row.innerHTML = `<div class="match-info">
           <div class="match-name">${esc(match.name)} ${expansionBadges(match)} ${turnBadge}</div>
           <div class="match-meta">${esc(names)} · ${seatsTaken}/${match.seats} ships · ${match.status}${match.turn && match.turn.round_number ? ` · round ${match.turn.round_number}` : ""}</div>
         </div>`;
       const actions = document.createElement("div");
+      actions.className = "match-actions";
       if (joinable) {
         const join = document.createElement("button");
         join.className = "btn gold small";
@@ -925,15 +926,35 @@
     });
   }
 
+  function screenshotDataUrl(canvas) {
+    const maxLength = 2300000;
+    let dataUrl = "";
+    try { dataUrl = canvas.toDataURL("image/png"); } catch (error) { dataUrl = ""; }
+    if (dataUrl && dataUrl.length <= maxLength) return dataUrl;
+    try { dataUrl = canvas.toDataURL("image/jpeg", 0.76); } catch (error) { dataUrl = ""; }
+    if (dataUrl && dataUrl.length <= maxLength) return dataUrl;
+    let source = canvas;
+    for (const factor of [0.82, 0.68, 0.56]) {
+      const smaller = document.createElement("canvas");
+      smaller.width = Math.max(1, Math.round(canvas.width * factor));
+      smaller.height = Math.max(1, Math.round(canvas.height * factor));
+      const smallCtx = smaller.getContext("2d");
+      smallCtx.fillStyle = "#060a14";
+      smallCtx.fillRect(0, 0, smaller.width, smaller.height);
+      smallCtx.drawImage(source, 0, 0, smaller.width, smaller.height);
+      try { dataUrl = smaller.toDataURL("image/jpeg", 0.72); } catch (error) { dataUrl = ""; }
+      if (dataUrl && dataUrl.length <= maxLength) return dataUrl;
+      source = smaller;
+    }
+    return dataUrl || "";
+  }
+
   async function captureAppScreenshot() {
-    const overlay = document.getElementById("feedback-overlay");
-    const wasHidden = overlay?.classList.contains("hidden");
-    overlay?.classList.add("hidden");
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     try {
       const rawWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1));
       const rawHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
-      const scale = Math.min(1, 1200 / Math.max(rawWidth, rawHeight));
+      const scale = Math.min(1, 1000 / Math.max(rawWidth, rawHeight));
       const width = Math.max(1, Math.round(rawWidth * scale));
       const height = Math.max(1, Math.round(rawHeight * scale));
       const canvas = document.createElement("canvas");
@@ -943,18 +964,33 @@
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       ctx.fillStyle = "#060a14";
       ctx.fillRect(0, 0, rawWidth, rawHeight);
-      const bodyClone = document.body.cloneNode(true);
-      bodyClone.querySelector("#feedback-overlay")?.remove();
-      replaceCanvasesForScreenshot(bodyClone);
+      const htmlClone = document.documentElement.cloneNode(true);
+      htmlClone.querySelector("#feedback-overlay")?.remove();
+      htmlClone.querySelectorAll("script").forEach((script) => script.remove());
+      htmlClone.style.width = `${rawWidth}px`;
+      htmlClone.style.height = `${rawHeight}px`;
+      htmlClone.style.overflow = "hidden";
+      const clonedBody = htmlClone.querySelector("body");
+      if (clonedBody) {
+        clonedBody.style.width = `${rawWidth}px`;
+        clonedBody.style.height = `${rawHeight}px`;
+        clonedBody.style.overflow = "hidden";
+      }
+      replaceCanvasesForScreenshot(htmlClone);
       const cssText = feedbackScreenshotStyles();
-      const cssCdata = cssText.replace(/\]\]>/g, "]]]]><![CDATA[>");
-      const html = new XMLSerializer().serializeToString(bodyClone);
+      htmlClone.querySelectorAll("link[rel='stylesheet']").forEach((link) => link.remove());
+      let head = htmlClone.querySelector("head");
+      if (!head) {
+        head = document.createElement("head");
+        htmlClone.insertBefore(head, htmlClone.firstChild);
+      }
+      const style = document.createElement("style");
+      style.textContent = cssText;
+      head.appendChild(style);
+      const html = new XMLSerializer().serializeToString(htmlClone);
       const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${rawWidth}" height="${rawHeight}" viewBox="0 0 ${rawWidth} ${rawHeight}">
         <foreignObject x="0" y="0" width="${rawWidth}" height="${rawHeight}">
-          <div xmlns="http://www.w3.org/1999/xhtml" style="width:${rawWidth}px;height:${rawHeight}px;overflow:hidden;background:#070b16;">
-            <style><![CDATA[${cssCdata}]]></style>
-            ${html}
-          </div>
+          ${html}
         </foreignObject>
       </svg>`;
       const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
@@ -970,12 +1006,10 @@
       } finally {
         URL.revokeObjectURL(url);
       }
-      return canvas.toDataURL("image/png");
+      return screenshotDataUrl(canvas);
     } catch (error) {
       console.warn("[StarShot feedback screenshot]", error);
       return "";
-    } finally {
-      if (!wasHidden) overlay?.classList.remove("hidden");
     }
   }
 
