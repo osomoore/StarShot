@@ -2,6 +2,25 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 13:17:19 -05:00
+
+- Title: Leaderboard title targeting
+- Build ID: `32d3a4a`
+- AI agent: Codex
+- Summary:
+  - Gave the lobby leaderboard heading a stable `leaderboard-title` id and updated the rotation code to target it directly, so the AI board title updates to "Digital Scallywag Conquests" reliably after title changes.
+  - Bumped `lobby.js` from v40 to v41 in `index.html` so browsers load the corrected frontend code.
+  - Verified with `node --check frontend/v2/static/lobby.js` and `rg -n "leaderboard-title|lobby\\.js\\?v=41|Digital Scallywag Conquests" frontend/v2 backend/starshot/v2/store.py`.
+
+## 2026-07-19 13:15:12 -05:00
+
+- Title: About policy link color
+- Build ID: `32d3a4a`
+- AI agent: Codex
+- Summary:
+  - Scoped the About page links to white so the Terms of Service and Privacy Policy links in The Fine Print read clearly.
+  - Verified with `Select-String -Path frontend/v2/about.html -Pattern "about-wrap a" -Context 1,1`.
+
 ## 2026-07-19 13:09:34 -05:00
 
 - Title: Feedback retention & mobile scroll

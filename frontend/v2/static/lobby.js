@@ -809,8 +809,7 @@
   }
 
   function paintLeaderboardExtras(title, resetTimer = false) {
-    const heading = [...document.querySelectorAll(".lobby-side .panel-title")]
-      .find((node) => node.textContent.includes("Most Feared") || node.textContent.includes("Leaderboard"));
+    const heading = document.getElementById("leaderboard-title");
     if (heading) heading.textContent = title;
     let bar = document.getElementById("leaderboard-timer");
     if (!bar) {
