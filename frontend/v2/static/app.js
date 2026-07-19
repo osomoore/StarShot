@@ -3,7 +3,7 @@
   // Public identifiers (not secrets); must match the backend's GOOGLE_CLIENT_ID
   // and MICROSOFT_CLIENT_ID.
   const GOOGLE_CLIENT_ID = "767497052681-as1k10s8i67r1p498i0l8thv4eht0qft.apps.googleusercontent.com";
-  const MICROSOFT_CLIENT_ID = "8020ee54-185e-476a-9d7a-74c3d47a7a8";
+  const MICROSOFT_CLIENT_ID = "8020ec54-185e-476a-9d7a-74c3d47a7a8c";
   let authMode = "login";
   let lastDeviceDiagnosticsKey = "";
 
