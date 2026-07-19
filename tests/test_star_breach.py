@@ -334,12 +334,27 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
         # each fleet craft is its own source. Shield hits still count.
         self.assertEqual(state.star_breach.progress, 4)
 
-    def test_tank_proximity_jammer_redirects_and_reduces_dice(self):
+    def test_enemy_shield_hit_consumes_player_shield(self):
+        state = _coop_state()
+        state.players["alice"].ship.shields = 2
+        state.players["bob"].ship.q, state.players["bob"].ship.r = 0, -11
+        state.star_breach.destroyed_hexes.update({(-5, 1), (-5, 2)})  # leave only the base 0.5 boss shot
+        for craft in state.star_breach.fleet:
+            craft.destroyed = True
+        state = submit_orders(state, "alice", _empty_stacks())
+        state = submit_orders(state, "bob", _empty_stacks())
+        with patch("starshot.rules.engine._roll_d6_sum", return_value=30):
+            state = resolve_next_step(state)
+        shot = next(e for e in state.event_log if e["type"] == "enemy_volley_resolved")
+        self.assertTrue(shot["shielded"])
+        self.assertEqual(state.players["alice"].ship.shields, 1)
+
+    def test_tank_proximity_jammer_redirects_with_full_enemy_dice(self):
         state = _coop_state()
         # Tank (bob) guards within jammer range of the prey (alice); the craft's
         # attack would otherwise target alice, but bob steps in and takes the hit.
         state.players["bob"].ship.q, state.players["bob"].ship.r = (
-            state.players["alice"].ship.q, state.players["alice"].ship.r + 2,
+            state.players["alice"].ship.q, state.players["alice"].ship.r + 5,
         )
         state = submit_orders(state, "alice", _empty_stacks())
         state = submit_orders(state, "bob", _empty_stacks())
@@ -350,7 +365,7 @@ class StarBreachBossBehaviorTests(unittest.TestCase):
             if e["type"] == "enemy_volley_resolved" and e.get("craft_id") == "hk_green"
         )
         self.assertEqual(craft_shot["target_id"], "bob")
-        self.assertEqual(craft_shot["dice"], 1)
+        self.assertEqual(craft_shot["dice"], 2)
         self.assertEqual(craft_shot["aim_bonus"], 0)  # HK passives toned down
 
     def test_cannon_destruction_disables_attack_slot(self):

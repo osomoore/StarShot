@@ -2,6 +2,30 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 13:51:17 -05:00
+
+- Title: Mobile header row restored
+- Build ID: `bf922d2`
+- AI agent: Codex
+- Summary:
+  - Restored the mobile game topbar to its own full-width fixed row so the StarShot label, round banner, and Port button no longer overlay the space board.
+  - Kept the mobile fullscreen entry behavior intact, and moved the board/controls to start below the dedicated topbar row.
+  - Bumped `pirate.css` from v65 to v66 in `index.html`.
+  - Verified by inspecting the mobile CSS diff for `--mobile-game-topbar-space`, `.game-grid`, and `.board-wrap`.
+
+## 2026-07-19 13:47:21 -05:00
+
+- Title: StarBreach tank and mobile fixes
+- Build ID: `bf922d2`
+- AI agent: Codex
+- Summary:
+  - Confirmed and fixed stale Tank behavior: Proximity Jammer now redirects attacks against allies within 5 hexes, and enemy attacks against the Tank still roll the normal 2d6.
+  - Updated StarBreach Tank tutorial/role text and focused tests for the new range and dice behavior.
+  - Tightened replay shield handling so enemy shield hits consume displayed ship shields consistently during replay/UI updates.
+  - Made mobile game view fill the screen area, added mobile game history handling so browser back returns to the lobby/menu, preserved OS edge/bottom gestures, and added mobile fullscreen/PWA metadata for URL-bar-free play where the browser supports it.
+  - Bumped `pirate.css` to v65, `board.js` to v23, `lobby.js` to v42, `game.js` to v68, and `app.js` to v15 in `index.html`.
+  - Verified with `python -m unittest tests.test_star_breach tests.test_star_breach_features`, `node --check frontend/v2/static/game.js`, `node --check frontend/v2/static/board.js`, `node --check frontend/v2/static/app.js`, `node --check frontend/v2/static/lobby.js`, and `python -m json.tool frontend/v2/static/manifest.webmanifest`.
+
 ## 2026-07-19 13:25:20 -05:00
 
 - Title: StarBreach battle board readability

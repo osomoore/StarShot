@@ -35,7 +35,7 @@ INITIAL_SHIELD_HP = {"forward": 1, "port": 3, "rear": 3, "starboard": 3}
 HUNTER_KILLER_HP = 3
 HUNTER_KILLER_MOVE = 2
 HUNTER_KILLER_AIM = 0  # passives toned down for playtesting
-TANK_PROXIMITY_JAMMER_RANGE = 3
+TANK_PROXIMITY_JAMMER_RANGE = 5
 
 _AXIAL_DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
@@ -77,7 +77,7 @@ ROLES: tuple[StarBreachRole, ...] = (
     StarBreachRole(
         "tank",
         "Tank",
-        "Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 3 hexes of the Tank, the Tank steps in and takes the hit instead; enemy attacks against the Tank roll one fewer die.",
+        "Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 5 hexes of the Tank, the Tank steps in and takes the hit instead.",
     ),
     StarBreachRole(
         "engineer",

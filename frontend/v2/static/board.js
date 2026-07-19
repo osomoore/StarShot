@@ -440,6 +440,14 @@
   svg.addEventListener("wheel", (event) => { event.preventDefault(); setZoom(event.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
 
   let touchGesture = null;
+  const SYSTEM_GESTURE_EDGE = 28;
+  function isSystemGestureStart(point) {
+    const width = window.innerWidth || document.documentElement.clientWidth || 0;
+    const height = window.innerHeight || document.documentElement.clientHeight || 0;
+    return point.x <= SYSTEM_GESTURE_EDGE
+      || point.x >= width - SYSTEM_GESTURE_EDGE
+      || point.y >= height - SYSTEM_GESTURE_EDGE;
+  }
   const touchPoints = (event) => [...event.touches].map((touch) => ({ x: touch.clientX, y: touch.clientY }));
   const midpoint = (points) => ({
     x: points.reduce((total, point) => total + point.x, 0) / points.length,
@@ -451,6 +459,10 @@
     if (!isPhoneBoard()) return;
     const points = touchPoints(event);
     if (!points.length) return;
+    if (isSystemGestureStart(points[0])) {
+      touchGesture = null;
+      return;
+    }
     event.preventDefault();
     touchGesture = {
       points,

@@ -538,7 +538,7 @@ def _primary_enemy_target(state: GameState, distance_to: callable, scope: str) -
 
 def _enemy_pick_target(state: GameState, distance_to: callable, *, scope: str = "boss") -> PlayerState | None:
     """Enemy attack targeting: the AI program picks a primary target, then
-    the Tank's Proximity Jammer applies — if the target is within 3 hexes of
+    the Tank's Proximity Jammer applies — if the target is within range of
     the Tank, the Tank steps in and takes the hit instead."""
     sb = state.star_breach
     assert sb is not None
@@ -972,7 +972,7 @@ def _resolve_enemy_shot(
     distance: int,
     aim_bonus: int,
 ) -> dict:
-    dice = 1 if "tank" in target.roles else 2
+    dice = 2
     roll = _roll_d6_sum(state, dice)
     roll_total = roll + aim_bonus
     sb = state.star_breach

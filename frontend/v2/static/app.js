@@ -438,9 +438,10 @@
       await API.me();
       const gameParam = new URLSearchParams(location.search).get("game");
       if (gameParam) {
-        history.replaceState(null, "", location.pathname);
+        history.replaceState({ starshotScreen: "lobby" }, "", location.pathname);
         Game.enter(gameParam);
       } else {
+        history.replaceState({ starshotScreen: "lobby" }, "", location.pathname);
         Lobby.enter();
       }
     } catch (err) {

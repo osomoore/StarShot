@@ -69,6 +69,9 @@
   }
 
   async function enter() {
+    if (history.state?.starshotScreen !== "game") {
+      history.replaceState({ ...(history.state || {}), starshotScreen: "lobby", gameId: null }, "", location.pathname);
+    }
     App.showScreen("lobby");
     leaderboardRendered = false;
     renderAiPickers();
@@ -451,7 +454,7 @@
           <div><b>2.</b> One captain is <b>The Prey</b>. Win by ending Round 6 inside The Fang. If The Prey is destroyed, everyone loses.</div>
           <div><b>3.</b> Each captain has a role, with its own ability:</div>
           <div class="tutorial-role"><b>Vault Runner</b> — Move distances are doubled on basic movement (not boosted further by Overdrive, and movement gives no defense bonus). When they collect a Vault, every player draws one bonus card.</div>
-          <div class="tutorial-role"><b>Tank</b> — Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 3 hexes of the Tank, the Tank steps in and takes the hit instead; attacks against the Tank roll one fewer die.</div>
+          <div class="tutorial-role"><b>Tank</b> — Starts with one extra Shield Charge. Proximity Jammer: when an enemy attacks an ally within 5 hexes of the Tank, the Tank steps in and takes the hit instead.</div>
           <div class="tutorial-role"><b>Engineer</b> — Draws two extra cards. Attack orders can target allies as repairs instead: 1d6, a hit restores one HP; each ship can only be repaired once per action.</div>
           <div class="tutorial-role"><b>Fighting Ace</b> — Each attack gets one extra die against fleet craft, or shifts the Boss Damage Lane roll by ±1. No Overdrive penalty on Attack-only orders.</div>
           <div><b>4.</b> The boss acts between your actions. Hitting The Prey advances its Progress Track — destroy Cannons and Engines to slow it down.</div>

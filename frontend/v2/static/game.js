@@ -26,6 +26,7 @@
   let sideTab = "registry";
   const scenarioStatusSignatures = new Map();
   const scenarioStatusTimers = new Map();
+  let suppressNextGameHistory = false;
 
   const els = {};
   function grab() {
@@ -91,6 +92,17 @@
     syncMobileHud();
   }
 
+  async function requestMobileFullscreen() {
+    if (document.documentElement.dataset.device !== "phone") return;
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    } catch (error) {
+      // Some mobile browsers require a direct user gesture or only hide browser
+      // chrome when launched as an installed PWA.
+    }
+  }
+
   function ensureMobileHud() {
     if (!document.getElementById("mobile-game-hud")) {
       const hud = document.createElement("nav");
@@ -153,6 +165,23 @@
     targetResolver = null;
     setMobileSheet(null);
     hidePicker();
+    requestMobileFullscreen();
+  }
+
+  function pushGameHistoryState(id) {
+    if (!window.history?.pushState) return;
+    const state = history.state || {};
+    if (state.starshotScreen === "game" && state.gameId === id) return;
+    history.pushState({ ...state, starshotScreen: "game", gameId: id }, "", location.pathname);
+  }
+
+  function returnToLobbyFromGame() {
+    const leavingGame = !!gameId;
+    leave();
+    Lobby.enter();
+    if (leavingGame && history.state?.starshotScreen === "game") {
+      history.replaceState({ ...history.state, starshotScreen: "lobby", gameId: null }, "", location.pathname);
+    }
   }
 
   function compactActionCards() {
@@ -333,6 +362,9 @@
     animatedUpTo = parseInt(localStorage.getItem("ss_seen_" + id) || "-1", 10);
     App.showScreen("game");
     document.body.classList.add("mobile-game-active");
+    if (!suppressNextGameHistory) pushGameHistoryState(id);
+    suppressNextGameHistory = false;
+    requestMobileFullscreen();
     Board.build();
     Board.setShipClickHandler(handleShipClick);
     Board.setBossClickHandler(handleBossClick);
@@ -3497,7 +3529,7 @@
 
   function applyShipEvent(event) {
     if (!replayShipStates) return;
-    if (event.type === "volley_resolved" && event.shielded) {
+    if ((event.type === "volley_resolved" || event.type === "enemy_volley_resolved") && event.shielded) {
       const ship = replayShipStates[event.target_id];
       if (ship) ship.shields = Math.max(0, (ship.shields || 0) - 1);
     } else if (event.type === "starfall_take_cover_damage" || event.type === "starfall_revealed") {
@@ -4247,7 +4279,17 @@
       saveDraft();
       renderOrdersPanel();
     });
-    document.getElementById("btn-back-lobby").addEventListener("click", () => { leave(); Lobby.enter(); });
+    window.addEventListener("popstate", (event) => {
+      if (gameId) {
+        returnToLobbyFromGame();
+        return;
+      }
+      if (event.state?.starshotScreen === "game" && event.state.gameId) {
+        suppressNextGameHistory = true;
+        Game.enter(event.state.gameId);
+      }
+    });
+    document.getElementById("btn-back-lobby").addEventListener("click", returnToLobbyFromGame);
     document.getElementById("btn-replay-sofar").addEventListener("click", async () => {
       if (!view || animating) return;
       animating = true;
