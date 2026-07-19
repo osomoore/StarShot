@@ -457,6 +457,7 @@ class LeaderboardTests(unittest.TestCase):
             {"humans", "ai"},
         )
         ai_board = next(board for board in payload["boards"] if board["key"] == "ai")
+        self.assertEqual(ai_board["label"], "Digital Scallywag Conquests")
         self.assertEqual(ai_board["entries"][0]["username"], "leader_beta")
         self.assertEqual(ai_board["entries"][0]["score"], 3)
         self.assertEqual(ai_board["entries"][0]["games_played"], 3)

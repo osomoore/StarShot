@@ -544,7 +544,6 @@ class V2Store:
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM queue WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM presence WHERE user_id = ?", (user_id,))
-            conn.execute("DELETE FROM feedback WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM leaderboard_results WHERE user_id = ?", (user_id,))
             conn.execute(
                 "DELETE FROM challenges WHERE from_user_id = ? OR to_user_id = ?",
@@ -663,7 +662,7 @@ class V2Store:
     def leaderboard_bundle(self, limit: int = 10) -> dict:
         categories = [
             ("humans", "Flesh and Blood Victories"),
-            ("ai", "Digital Foe Victories"),
+            ("ai", "Digital Scallywag Conquests"),
         ]
         boards = [
             {

@@ -69,6 +69,8 @@ We retain account information while your account remains active.
 
 You may request deletion of your account, subject to legal obligations and backup retention.
 
+Feedback and bug reports may be retained after a guest session ends or an account is deleted so we can investigate problems and improve the Service. When this happens, the report is no longer shown under your username or account identity; it is associated only with an anonymized deleted-user record.
+
 Security
 
 We use reasonable administrative and technical measures to protect your information. However, no Internet transmission or storage system is completely secure.

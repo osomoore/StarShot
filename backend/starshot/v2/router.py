@@ -69,8 +69,8 @@ def _current_user(request: Request) -> dict:
 
 def _registered_user(request: Request) -> dict:
     """The signed-in user, rejecting temporary guest sessions. Every account
-    feature (profiles, designs, feedback, account management) goes through
-    here so guest restrictions are enforced server-side in one place."""
+    feature (profiles, designs, account management) goes through here so
+    guest restrictions are enforced server-side in one place."""
     user = _current_user(request)
     if user.get("is_guest"):
         raise HTTPException(status_code=403, detail=GUEST_FORBIDDEN_DETAIL)
@@ -691,7 +691,9 @@ class FeedbackRequest(BaseModel):
 
 @router.post("/feedback")
 def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
-    user = _registered_user(request)  # feedback persists on the account; guests can't
+    # Guests can report rough edges too. If that temporary identity is later
+    # destroyed, the feedback stays attached to the anonymized tombstone user.
+    user = _current_user(request)
     store = get_v2_store()
     game_log = ""
     screenshot_data_url = ""

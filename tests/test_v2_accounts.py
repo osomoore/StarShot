@@ -148,7 +148,28 @@ class GuestTests(unittest.TestCase):
         self.assertEqual(client.get("/api/v2/account").status_code, 403)
         self.assertEqual(client.get("/api/v2/account/export").status_code, 403)
         self.assertEqual(client.post("/api/v2/account/delete", json={"confirm": "DELETE"}).status_code, 403)
-        self.assertEqual(client.post("/api/v2/feedback", json={"rating": 5}).status_code, 403)
+
+    def test_guest_feedback_survives_logout_anonymized(self) -> None:
+        client, user = guest_client()
+        store = get_v2_store()
+        guest_id = store.get_user_by_name(user["username"])["id"]
+
+        feedback = client.post(
+            "/api/v2/feedback",
+            json={"rating": 5, "thoughts": "Guest bug report.", "is_bug_report": True},
+        )
+        self.assertEqual(feedback.status_code, 200, feedback.text)
+        self.assertEqual(feedback.json()["feedback_count"], 1)
+
+        self.assertEqual(client.post("/api/v2/auth/logout").status_code, 200)
+        tombstone = store.get_user(guest_id)
+        self.assertIsNotNone(tombstone["deleted_at"])
+        self.assertNotEqual(tombstone["username"], user["username"])
+
+        entries = store.feedback_for_user(guest_id)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["thoughts"], "Guest bug report.")
+        self.assertEqual(entries[0]["username"], tombstone["username"])
 
     def test_guest_results_never_reach_leaderboards(self) -> None:
         client, user = guest_client()
@@ -399,6 +420,14 @@ class AccountDeletionTests(unittest.TestCase):
         self._saved_ship(client)
         store = get_v2_store()
         store.record_result(user_id, "win")
+        store.create_feedback(
+            user_id=user_id,
+            rating=4,
+            liked="Useful",
+            disliked="",
+            thoughts="Keep this after deletion.",
+            is_bug_report=True,
+        )
         self.assertIn(
             "delete_dora",
             {entry["username"] for entry in store.leaderboard(limit=100)},
@@ -424,6 +453,10 @@ class AccountDeletionTests(unittest.TestCase):
         self.assertIsNotNone(tombstone["deleted_at"])
         self.assertIsNone(tombstone["google_sub"])
         self.assertEqual(tombstone["pass_hash"], "!deleted")
+        preserved_feedback = store.feedback_for_user(user_id)
+        self.assertEqual(len(preserved_feedback), 1)
+        self.assertEqual(preserved_feedback[0]["thoughts"], "Keep this after deletion.")
+        self.assertEqual(preserved_feedback[0]["username"], tombstone["username"])
         # The freed identity cannot be signed into again.
         with mock.patch(
             "starshot.v2.google_identity.verify_google_credential",

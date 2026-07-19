@@ -140,9 +140,11 @@ def policy_page_html(kind: str) -> str:
   .policy-wrap p {{ font-family: "Space Grotesk", sans-serif; font-size: 15px; line-height: 1.6; color: var(--ink-dim); margin: 0 0 10px; }}
   .policy-effective {{ font-style: italic; }}
   .policy-links {{ margin-top: 18px; font-family: "Space Grotesk", sans-serif; font-size: 14px; }}
+  body.policy-page {{ min-height: 100%; overflow: auto; }}
+  :root[data-device="phone"] body.policy-page {{ overflow: auto; }}
 </style>
 </head>
-<body>
+<body class="policy-page">
 <header class="topbar">
   <div class="brand"><span class="brand-skull">☠</span> StarShot <span class="brand-tag">{title.lower()}</span></div>
   <div class="topbar-right">

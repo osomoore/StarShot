@@ -42,6 +42,8 @@ You grant StarShot a worldwide, non-exclusive license to store, display, and use
 
 You are responsible for any content you submit.
 
+Feedback and bug reports may be preserved after a guest session ends or an account is deleted, but they will be detached from your public username and associated only with an anonymized deleted-user record.
+
 6. Intellectual Property
 
 The StarShot game, artwork, rules, software, logos, graphics, and original content are owned by StarShot or its licensors.

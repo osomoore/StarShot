@@ -2,6 +2,18 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 13:09:34 -05:00
+
+- Title: Feedback retention & mobile scroll
+- Build ID: `6edb297`
+- AI agent: Codex
+- Summary:
+  - Guest sessions can now submit feedback and bug reports; account/guest deletion preserves those rows while anonymizing the associated user tombstone.
+  - Added feedback and bug-report retention/anonymization language to the Privacy Policy and Terms of Service.
+  - Renamed the AI leaderboard board to "Digital Scallywag Conquests".
+  - Fixed document-style v2 pages so the About, Terms, and Privacy pages can scroll on mobile despite the game UI's overflow lock.
+  - Verified with `python -m unittest tests.test_v2_accounts tests.test_v2_api.LeaderboardTests tests.test_v2_api.FeedbackTests` (34 passing) and `python -m py_compile backend/starshot/v2/router.py backend/starshot/v2/store.py backend/starshot/v2/policies.py`.
+
 ## 2026-07-19 10:45:00 -05:00
 
 - Title: Guest onboarding & "Claim My Legend" (guest → permanent account)

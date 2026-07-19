@@ -13,9 +13,11 @@
   .about-wrap p { font-family: "IM Fell English", serif; font-size: 17px; line-height: 1.65; color: var(--ink-dim); margin: 0 0 14px; }
   .about-wrap p:last-child { margin-bottom: 0; }
   .about-wrap .signature { color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 22px; margin-top: 18px; }
+  body.about-page { min-height: 100%; overflow: auto; }
+  :root[data-device="phone"] body.about-page { overflow: auto; }
 </style>
 </head>
-<body>
+<body class="about-page">
 <canvas id="starfield"></canvas>
 
 <header class="topbar">
