@@ -38,16 +38,17 @@
     {
       icon: "☄", title: "Firing your cannons",
       body: `All attack cards in one stack combine into <b>one volley at one target</b>. To hit, roll
-        <b>2d6 + Aim ≥ distance + the target's movement this Action + their defense</b>. The preview
-        arrow shows your <b>predicted hit chance</b> before you commit. Two attack cards don't fire twice —
-        they stack bonuses like <b>Damage +1</b> or <b>Aim +1</b> into one bigger broadside.`,
+        2 dice and add any Aim bonus.  Your roll must beat the distance to your opponent, plus any movement
+        they've made earlier this Action. The preview arrow shows your <b>predicted hit chance</b> before you
+        commit. Two attack cards don't fire twice — they stack bonuses like <b>Damage +1</b> or <b>Aim +1</b>
+        into one bigger broadside.`,
     },
     {
       icon: "🛡", title: "Shields and the d12 damage lanes",
       body: `You start with <b>2 shield charges</b>. One charge blocks ALL damage for that entire Action
-        step — but each attacker still gains <b>1 VP</b>. Once shields are gone, every hit rolls a
-        <b>d12 damage lane</b>: the shot bores into your ship and destroys the first intact part in that
-        lane. Lose your <b>Command Bridge</b> or <b>both Life Supports</b> and you're space dust.
+        step — but each attacker still gains <b>1 Victory Point (VP)</b>. Once shields are gone, every
+        hit rolls a <b>damage lane</b>: the shot bores into your ship and destroys the first intact part
+        in that lane. Lose your <b>Command Bridge</b> or <b>both Life Supports</b> and you're space dust.
         <br><br><i>Click any ship in the Fleet Registry to study its board and lanes.</i>`,
     },
     {
@@ -67,8 +68,9 @@
     {
       icon: "⚔", title: "Ready to fly, Captain?",
       body: `<b>Player Duel</b> finds you a live opponent. <b>Digital Duel</b> throws you
-        straight into a fight with the Bloodthirsty. <b>Choose your battles</b> lets you battle up to three
-        Digital Scallywags — the Freebooter chases loot, the Bloodthirsty hunts one prey, the Cannoneer shoots whatever's close.
+        straight into a fight with the Bloodthirsty digital scallywag. <b>Choose your battles</b> lets you
+        battle up to three enemies, choose enemy AI's like the Freebooter (chases loot) or leave some seats
+        open for human foes.
         Win battles to climb the leaderboard. Fair winds and full broadsides!`,
     },
   ];
