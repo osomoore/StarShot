@@ -23,6 +23,7 @@
     register: (username, password) => post("/auth/register", { username, password }),
     login: (username, password) => post("/auth/login", { username, password }),
     googleLogin: (credential) => post("/auth/google", { credential }),
+    microsoftLogin: (credential) => post("/auth/microsoft", { credential }),
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
     setDisplayName: (displayName) => post("/profile/display-name", { display_name: displayName }),

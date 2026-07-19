@@ -159,7 +159,12 @@ _MIGRATIONS = (
     "ALTER TABLE users ADD COLUMN must_rename INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN google_sub TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)",
+    "ALTER TABLE users ADD COLUMN microsoft_sub TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_microsoft_sub ON users(microsoft_sub)",
 )
+
+# External sign-in providers and the users column holding each one's subject.
+_EXTERNAL_SUB_COLUMNS = {"google": "google_sub", "microsoft": "microsoft_sub"}
 
 # Effective public name: the chosen display name, or the username until one is set.
 _DISPLAY = "COALESCE(NULLIF(u.display_name, ''), u.username)"
@@ -218,24 +223,26 @@ class V2Store:
             ).fetchone()
             return dict(row) if row else None
 
-    def get_user_by_google_sub(self, google_sub: str) -> dict | None:
+    def get_user_by_external_sub(self, provider: str, sub: str) -> dict | None:
+        column = _EXTERNAL_SUB_COLUMNS[provider]
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM users WHERE google_sub = ?", (google_sub,)
+                f"SELECT * FROM users WHERE {column} = ?", (sub,)
             ).fetchone()
             return dict(row) if row else None
 
-    def create_google_user(
-        self, google_sub: str, username: str, display_name: str | None = None
+    def create_external_user(
+        self, provider: str, sub: str, username: str, display_name: str | None = None
     ) -> dict:
-        # Google-linked accounts have no usable password: the '!google'
+        # Externally-linked accounts have no usable password: the '!<provider>'
         # sentinel never parses as a pbkdf2 hash, so verify_password always
-        # fails and the only way in is a fresh verified Google token.
+        # fails and the only way in is a fresh verified provider token.
+        column = _EXTERNAL_SUB_COLUMNS[provider]
         with self._connect() as conn:
             cursor = conn.execute(
-                "INSERT INTO users (username, pass_hash, google_sub, display_name, created_at) "
-                "VALUES (?, '!google', ?, ?, ?)",
-                (username, google_sub, display_name, _now()),
+                f"INSERT INTO users (username, pass_hash, {column}, display_name, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (username, "!" + provider, sub, display_name, _now()),
             )
             return {"id": cursor.lastrowid, "username": username}
 

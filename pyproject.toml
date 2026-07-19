@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.35",
     # Google Sign-In ID-token verification (no client secret needed).
     "google-auth>=2.23",
+    # Microsoft Sign-In ID-token verification (no client secret needed).
+    "PyJWT[crypto]>=2.8",
     "requests>=2.31",
 ]
 

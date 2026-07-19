@@ -135,6 +135,77 @@ class GoogleAuthTests(unittest.TestCase):
         self.assertEqual(client.get("/api/v2/me").status_code, 401)
 
 
+class MicrosoftAuthTests(unittest.TestCase):
+    CLAIMS = {
+        "iss": "https://login.microsoftonline.com/tenant-1/v2.0",
+        "tid": "tenant-1",
+        "sub": "microsoft-sub-123",
+    }
+    TOKEN = {"credential": "x" * 40}
+
+    def test_microsoft_login_creates_then_reuses_account(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.microsoft_identity.verify_microsoft_credential", return_value=self.CLAIMS
+        ) as verify:
+            first = client.post("/api/v2/auth/microsoft", json=self.TOKEN)
+        self.assertEqual(first.status_code, 200, first.text)
+        verify.assert_called_once_with(self.TOKEN["credential"])
+        user = first.json()["user"]
+        self.assertTrue(user["username"].startswith("captain-"))
+        self.assertEqual(client.get("/api/v2/me").status_code, 200)
+
+        # The same sub on a fresh browser lands in the same account.
+        other = make_client()
+        with mock.patch(
+            "starshot.v2.microsoft_identity.verify_microsoft_credential", return_value=self.CLAIMS
+        ):
+            second = other.post("/api/v2/auth/microsoft", json=self.TOKEN)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["user"]["username"], user["username"])
+
+        # No password back door into a Microsoft-linked account.
+        bad = make_client().post(
+            "/api/v2/auth/login", json={"username": user["username"], "password": "!microsoft"}
+        )
+        self.assertEqual(bad.status_code, 401)
+
+    def test_microsoft_login_rejects_invalid_token(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.microsoft_identity.verify_microsoft_credential",
+            side_effect=ValueError("bad token"),
+        ):
+            response = client.post("/api/v2/auth/microsoft", json=self.TOKEN)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(client.get("/api/v2/me").status_code, 401)
+
+    def test_google_and_microsoft_accounts_stay_independent(self) -> None:
+        from unittest import mock
+
+        # The same sub value from each provider must map to separate accounts.
+        shared_sub = "shared-sub-999"
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            return_value={"iss": "https://accounts.google.com", "sub": shared_sub},
+        ):
+            google_user = (
+                make_client().post("/api/v2/auth/google", json=self.TOKEN).json()["user"]
+            )
+        with mock.patch(
+            "starshot.v2.microsoft_identity.verify_microsoft_credential",
+            return_value={**self.CLAIMS, "sub": shared_sub},
+        ):
+            microsoft_user = (
+                make_client().post("/api/v2/auth/microsoft", json=self.TOKEN).json()["user"]
+            )
+        self.assertNotEqual(google_user["username"], microsoft_user["username"])
+
+
 class FeedbackTests(unittest.TestCase):
     def admin_client(self) -> TestClient:
         client = make_client()

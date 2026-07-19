@@ -1,7 +1,9 @@
 /* App bootstrap: auth screen + screen router + toasts. */
 (function () {
-  // Public identifier (not a secret); must match the backend's GOOGLE_CLIENT_ID.
+  // Public identifiers (not secrets); must match the backend's GOOGLE_CLIENT_ID
+  // and MICROSOFT_CLIENT_ID.
   const GOOGLE_CLIENT_ID = "767497052681-as1k10s8i67r1p498i0l8thv4eht0qft.apps.googleusercontent.com";
+  const MICROSOFT_CLIENT_ID = "8020ee54-185e-476a-9d7a-74c3d47a7a8";
   let authMode = "login";
   let lastDeviceDiagnosticsKey = "";
 
@@ -139,6 +141,37 @@
     });
   }
 
+  function initMicrosoftSignIn() {
+    const button = document.getElementById("microsoft-signin");
+    if (!button || !window.msal?.PublicClientApplication) return;
+    const msalApp = new msal.PublicClientApplication({
+      auth: {
+        clientId: MICROSOFT_CLIENT_ID,
+        authority: "https://login.microsoftonline.com/common",
+        redirectUri: "https://david.cybrwzrds.com/v2/",
+      },
+      cache: { cacheLocation: "sessionStorage" },
+    });
+    const ready = msalApp.initialize();
+    button.addEventListener("click", async () => {
+      const errorBox = document.getElementById("auth-error");
+      errorBox.textContent = "";
+      try {
+        await ready;
+        const result = await msalApp.loginPopup({
+          scopes: ["openid", "profile", "email"],
+          prompt: "select_account",
+        });
+        await API.microsoftLogin(result.idToken);
+        Lobby.enter();
+      } catch (error) {
+        // A closed popup isn't an error worth shouting about.
+        if (error.errorCode === "user_cancelled") return;
+        errorBox.textContent = error.message;
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     applyDeviceMode("v2-dom-content-loaded");
     window.addEventListener("resize", () => applyDeviceMode("v2-resize"));
@@ -149,6 +182,10 @@
     // The GIS script loads async: it may already be here, or arrive later.
     if (window.google?.accounts?.id) initGoogleSignIn();
     else window.onGoogleLibraryLoad = initGoogleSignIn;
+
+    // MSAL loads async too, but has no load hook of its own.
+    if (window.msal?.PublicClientApplication) initMicrosoftSignIn();
+    else document.querySelector('script[src*="msal-browser"]')?.addEventListener("load", initMicrosoftSignIn);
 
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
     document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));

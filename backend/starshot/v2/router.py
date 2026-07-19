@@ -237,16 +237,41 @@ def login(credentials: Credentials, response: Response) -> dict:
     return {"user": _public_profile(user)}
 
 
-class GoogleCredential(BaseModel):
+class ExternalCredential(BaseModel):
     credential: str = Field(min_length=20, max_length=4096)
 
 
+def _external_login(provider: str, sub: str, response: Response) -> dict:
+    """Sign in with a verified external identity; the provider's sub claim is
+    the linked identity. First sign-in creates an account with a generated
+    username and a random piratey display name."""
+    from starshot.v2 import names
+
+    store = get_v2_store()
+    user = store.get_user_by_external_sub(provider, sub)
+    if user is None:
+        for _ in range(20):
+            try:
+                created = store.create_external_user(
+                    provider, sub, "captain-" + secrets.token_hex(4), names.random_pirate_name()
+                )
+                user = store.get_user(created["id"])
+                break
+            except sqlite3.IntegrityError:
+                # Either the random username collided (retry) or a parallel
+                # sign-in already linked this sub (use that account).
+                user = store.get_user_by_external_sub(provider, sub)
+                if user is not None:
+                    break
+        if user is None:
+            raise HTTPException(status_code=500, detail="Could not create yer account. Try again.")
+    _set_session(response, user["id"])
+    return {"user": _public_profile(user)}
+
+
 @router.post("/auth/google")
-def google_login(body: GoogleCredential, response: Response) -> dict:
-    """Sign in with a Google ID token; the verified sub claim is the linked
-    identity. First sign-in creates an account with a generated username and
-    a random piratey display name."""
-    from starshot.v2 import google_identity, names
+def google_login(body: ExternalCredential, response: Response) -> dict:
+    from starshot.v2 import google_identity
 
     try:
         claims = google_identity.verify_google_credential(body.credential)
@@ -254,27 +279,20 @@ def google_login(body: GoogleCredential, response: Response) -> dict:
         raise HTTPException(
             status_code=401, detail="Google sign-in could not be verified. Try again."
         )
-    google_sub = str(claims["sub"])
-    store = get_v2_store()
-    user = store.get_user_by_google_sub(google_sub)
-    if user is None:
-        for _ in range(20):
-            try:
-                created = store.create_google_user(
-                    google_sub, "captain-" + secrets.token_hex(4), names.random_pirate_name()
-                )
-                user = store.get_user(created["id"])
-                break
-            except sqlite3.IntegrityError:
-                # Either the random username collided (retry) or a parallel
-                # sign-in already linked this sub (use that account).
-                user = store.get_user_by_google_sub(google_sub)
-                if user is not None:
-                    break
-        if user is None:
-            raise HTTPException(status_code=500, detail="Could not create yer account. Try again.")
-    _set_session(response, user["id"])
-    return {"user": _public_profile(user)}
+    return _external_login("google", str(claims["sub"]), response)
+
+
+@router.post("/auth/microsoft")
+def microsoft_login(body: ExternalCredential, response: Response) -> dict:
+    from starshot.v2 import microsoft_identity
+
+    try:
+        claims = microsoft_identity.verify_microsoft_credential(body.credential)
+    except ValueError:
+        raise HTTPException(
+            status_code=401, detail="Microsoft sign-in could not be verified. Try again."
+        )
+    return _external_login("microsoft", str(claims["sub"]), response)
 
 
 @router.post("/auth/logout")
