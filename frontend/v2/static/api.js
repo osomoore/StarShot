@@ -46,6 +46,7 @@
     randomName: () => get("/profile/random-name"),
     leaderboard: () => get("/leaderboard"),
     submitFeedback: (body) => post("/feedback", body),
+    awardBadge: (badgeId) => post("/badges/award", { badge_id: badgeId }),
     clientEvent: (body) => fetch("/api/debug/client-event", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

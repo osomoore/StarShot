@@ -192,6 +192,12 @@ _MIGRATIONS = (
         action TEXT NOT NULL,
         created_at TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS badges (
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        badge_id TEXT NOT NULL,
+        earned_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, badge_id)
+    )""",
 )
 
 # External sign-in providers and the users column holding each one's subject.
@@ -788,6 +794,24 @@ class V2Store:
                 ),
             )
         return self.get_feedback(feedback_id)
+
+    # -- badges ---------------------------------------------------------
+
+    def award_badge(self, user_id: int, badge_id: str) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO badges (user_id, badge_id, earned_at) VALUES (?, ?, ?)",
+                (user_id, badge_id, _now()),
+            )
+            return cursor.rowcount > 0
+
+    def user_badges(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT badge_id, earned_at FROM badges WHERE user_id = ? ORDER BY earned_at",
+                (user_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_feedback(self, feedback_id: str) -> dict | None:
         with self._connect() as conn:

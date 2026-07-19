@@ -66,7 +66,8 @@
     },
     {
       icon: "⚔", title: "Ready to fly, Captain?",
-      body: `<b>Quick Duel</b> finds you a live opponent. <b>Choose your battles</b> lets you battle up to three
+      body: `<b>Player Duel</b> finds you a live opponent. <b>Digital Duel</b> throws you
+        straight into a fight with the Bloodthirsty. <b>Choose your battles</b> lets you battle up to three
         Digital Scallywags — the Freebooter chases loot, the Bloodthirsty hunts one prey, the Cannoneer shoots whatever's close.
         Win battles to climb the leaderboard. Fair winds and full broadsides!`,
     },

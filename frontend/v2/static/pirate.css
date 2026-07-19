@@ -237,6 +237,8 @@ h1, h2, .brand, .poster-title, .banner-text {
 .lobby-setup #btn-create-match {
   width: 100%;
 }
+.duel-row { display: flex; gap: 12px; width: 100%; }
+.lobby-setup .duel-row .btn.big { width: auto; flex: 1; }
 .lobby-setup #ai-pickers {
   display: grid;
   grid-template-columns: 1fr;
@@ -1527,6 +1529,10 @@ h1, h2, .brand, .poster-title, .banner-text {
   :root[data-device="phone"] .match-row {
     align-items: stretch;
     display: flex;
+    flex-direction: column;
+  }
+
+  :root[data-device="phone"] .duel-row {
     flex-direction: column;
   }
 

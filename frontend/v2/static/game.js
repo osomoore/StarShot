@@ -28,6 +28,7 @@
   const scenarioStatusTimers = new Map();
   const scenarioStatusDismissed = new Map();
   let suppressNextGameHistory = false;
+  let duelTutorialChaining = false;
 
   const els = {};
   function grab() {
@@ -351,10 +352,12 @@
 
   // ── entry / polling ────────────────────────────────────────────────────
   async function enter(id) {
+    DuelTutorial.consumeForGame(id);
     grab();
     applyMobileMode();
     gameId = id;
     view = null; match = null; lastVersion = -1; endgameShown = false;
+    duelTutorialChaining = false;
     draft = emptyDraft();
     armedSlot = null;
     // Persistent per-game cursor: how much of the battle this browser has
@@ -563,7 +566,11 @@
     renderLog();
     renderOrdersPanel();
     updateReportButton();
-    if (view.phase === "complete" && !endgameShown && !animating) showEndgame();
+    if (view.phase !== "complete" && !animating) DuelTutorial.maybeShowForRound(gameId, view);
+    if (view.phase === "complete" && !endgameShown && !animating && !duelTutorialChaining) {
+      duelTutorialChaining = true;
+      DuelTutorial.maybeShowAtEndgame(gameId, view, () => { duelTutorialChaining = false; showEndgame(); });
+    }
   }
 
   function renderStarfallStatus() {

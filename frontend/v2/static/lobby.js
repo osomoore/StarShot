@@ -41,6 +41,14 @@
   const feedbackBadge = (count) => Number(count || 0) > 0
     ? `<span class="feedback-badge" title="Feedback shared ${Number(count)} time${Number(count) === 1 ? "" : "s"}">★ ${Number(count)}</span>`
     : "";
+  const BADGE_META = {
+    crossed_the_seas: { icon: "🌊", name: "Crossed the Seas", description: "Completed your first duel." },
+  };
+  const earnedBadges = (badges) => (badges || []).map((entry) => {
+    const meta = BADGE_META[entry.badge_id];
+    if (!meta) return "";
+    return `<span class="feedback-badge" title="${esc(meta.name)} — ${esc(meta.description)}">${meta.icon} ${esc(meta.name)}</span>`;
+  }).join(" ");
   const EXPANSION_META = {
     star_command: { label: "SC", name: "StarCommand" },
     star_breach: { label: "SB", name: "StarBreach" },
@@ -126,6 +134,7 @@
       );
       if (active) {
         autoEntered.add(active.game_id);
+        DuelTutorial.markPending();
         leave();
         Game.enter(active.game_id);
         return;
@@ -752,7 +761,7 @@
       : "";
     document.getElementById("profile-card").innerHTML = `
       <b>☠ ${esc(shownName)}</b>${shownName !== user.username ? ` <i class="profile-username">(${esc(user.username)})</i>` : ""}${flaggedNote}<br>
-      ${feedbackBadge(user.feedback_count)}<br>
+      ${feedbackBadge(user.feedback_count)} ${earnedBadges(user.badges)}<br>
       Victories: <b>${user.wins}</b> · Defeats: <b>${user.losses}</b> · Draws: <b>${user.draws}</b><br>
       Battles fought: <b>${total}</b> · Win rate: <b>${rate}%</b><br>
       Sailing since: <b>${formatDate(user.created_at)}</b>`;
@@ -1256,8 +1265,18 @@
     document.getElementById("btn-quickmatch").addEventListener("click", async () => {
       try {
         const result = await API.queue("join");
-        if (result.matched) { leave(); Game.enter(result.game_id); }
+        if (result.matched) { DuelTutorial.markPending(); leave(); Game.enter(result.game_id); }
         else refresh();
+      } catch (error) { App.toast(error.message); }
+    });
+    document.getElementById("btn-duel-ai").addEventListener("click", async () => {
+      try {
+        DuelTutorial.markPending();
+        const result = await API.createMatch({
+          ai_types: ["hunter_killer"], ai_level: "deck_hand",
+          open_seats: 0, active_expansions: [],
+        });
+        if (result.game_id) { leave(); Game.enter(result.game_id); }
       } catch (error) { App.toast(error.message); }
     });
     document.getElementById("btn-queue-leave").addEventListener("click", async () => {
@@ -1309,7 +1328,10 @@
         else { App.toast("Raid posted — waiting for captains to join.", true); refresh(); }
       } catch (error) { App.toast(error.message); }
     });
-    document.getElementById("btn-tutorial").addEventListener("click", () => Tutorial.start());
+    document.getElementById("btn-tutorial").addEventListener("click", () => {
+      DuelTutorial.reset();
+      Tutorial.start();
+    });
     document.getElementById("btn-feedback-lobby").addEventListener("click", () => openFeedback());
     document.getElementById("btn-claim-legend")?.addEventListener("click", () => window.Account?.openClaimModal?.());
     const userMenu = document.getElementById("lobby-user-menu");

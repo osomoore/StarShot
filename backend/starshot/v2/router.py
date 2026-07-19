@@ -194,6 +194,7 @@ def _public_profile(user: dict) -> dict:
         "games_played": user["games_played"],
         "created_at": user["created_at"],
         "feedback_count": user.get("feedback_count", store.feedback_count(user["id"])),
+        "badges": store.user_badges(user["id"]),
     }
 
 
@@ -676,6 +677,25 @@ def player_profile(username: str) -> dict:
 def leaderboard() -> dict:
     store = get_v2_store()
     return {"leaderboard": store.leaderboard(), **store.leaderboard_bundle()}
+
+
+BADGES = {
+    "crossed_the_seas": {"name": "Crossed the Seas", "icon": "🌊", "description": "Completed your first duel."},
+}
+
+
+class AwardBadgeRequest(BaseModel):
+    badge_id: str
+
+
+@router.post("/badges/award")
+def award_badge(body: AwardBadgeRequest, request: Request) -> dict:
+    user = _current_user(request)
+    if body.badge_id not in BADGES:
+        raise HTTPException(status_code=400, detail="Unknown badge")
+    store = get_v2_store()
+    store.award_badge(user["id"], body.badge_id)
+    return {"ok": True, "badges": store.user_badges(user["id"])}
 
 
 class FeedbackRequest(BaseModel):
