@@ -70,6 +70,10 @@ from starshot.v2.admin import admin_router  # noqa: E402
 
 app.include_router(admin_router)
 
+from starshot.v2.account import account_router  # noqa: E402
+
+app.include_router(account_router)
+
 from starshot.v2.boss_designer_api import (  # noqa: E402
     boss_designer_router,
     boss_designs_public_router,
@@ -124,6 +128,23 @@ def v2_about_page() -> FileResponse:
     if not page.exists():
         raise HTTPException(status_code=404, detail="about page not built")
     return FileResponse(page, headers={"Cache-Control": "no-store"})
+
+
+# Terms of Service and Privacy Policy pages, rendered from the single-source
+# text files in docs/rules (see starshot.v2.policies).
+from fastapi.responses import HTMLResponse  # noqa: E402
+
+from starshot.v2 import policies as v2_policies  # noqa: E402
+
+
+@app.get("/v2/terms")
+def v2_terms_page() -> HTMLResponse:
+    return HTMLResponse(v2_policies.policy_page_html("terms"), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/v2/privacy")
+def v2_privacy_page() -> HTMLResponse:
+    return HTMLResponse(v2_policies.policy_page_html("privacy"), headers={"Cache-Control": "no-store"})
 
 
 class CreateGameRequest(BaseModel):

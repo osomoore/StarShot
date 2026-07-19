@@ -48,6 +48,25 @@ def valid_display_name(name: str) -> bool:
     return bool(DISPLAY_NAME_RE.match(name or ""))
 
 
+# Reserved system identities. Matched as whole normalized tokens, and the
+# high-impersonation-risk ones also as substrings so "XxAdminxX" or
+# "St4rShot Official" can't pose as staff or system messages.
+_RESERVED_TOKENS = {
+    "admin", "administrator", "moderator", "mod", "guest", "starshot",
+    "system", "server", "official", "staff", "gamemaster",
+}
+_RESERVED_SUBSTRINGS = ("admin", "moderator", "starshot")
+
+
+def is_reserved_name(name: str) -> bool:
+    """True for names that impersonate admins, system messages, or guests."""
+    tokens = _normalized_tokens(name)
+    if any(token in _RESERVED_TOKENS for token in tokens):
+        return True
+    collapsed = "".join(tokens)
+    return any(term in collapsed for term in _RESERVED_SUBSTRINGS)
+
+
 def _normalized_tokens(name: str) -> list[str]:
     lowered = (name or "").lower().translate(_LEET)
     return re.findall(r"[a-z]+", lowered)
@@ -108,6 +127,18 @@ _PUNS = (
     "Anchor Management",
     "Wreck-It Ralphina",
 )
+
+
+def random_guest_name(rng: random.Random | None = None) -> str:
+    """A system-assigned guest name; the 'Guest' prefix marks temporary
+    players everywhere their name appears (players can't take it themselves —
+    'guest' is a reserved token)."""
+    rng = rng or random.Random()
+    for _ in range(50):
+        name = f"Guest {rng.choice(_FIRST)} {rng.choice(_LAST)}"
+        if len(name) <= 24 and valid_display_name(name):
+            return name
+    return "Guest Salty Bones"
 
 
 def random_pirate_name(rng: random.Random | None = None) -> str:

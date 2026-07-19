@@ -822,6 +822,16 @@ def delete_design(design_id: str, owner_id: int | None = None) -> bool:
     return True
 
 
+def delete_owner_designs(owner_id: int) -> int:
+    """Remove a player's entire design library (account deletion)."""
+    import shutil
+
+    directory = _runtime_design_dir(owner_id)
+    count = len(list(directory.glob("*.json"))) if directory.exists() else 0
+    shutil.rmtree(directory, ignore_errors=True)
+    return count
+
+
 def unique_design_id(base_id: str, owner_id: int | None = None) -> str:
     """`base_id`, or `base_id_2`, `base_id_3`, ... — first id free in the
     target library."""

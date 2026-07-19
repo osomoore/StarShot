@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=61">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=62">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=12">
 <link rel="stylesheet" href="/v2/static/shipdesigner.css?v=3">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
@@ -19,21 +19,17 @@
 
 <!-- ═══════════════ AUTH ═══════════════ -->
 <section id="screen-auth" class="screen">
+  <button id="btn-admin-login" class="btn ghost small admin-corner" type="button" title="Admin login">⚓</button>
   <div class="auth-poster">
     <div class="poster-skull">☠</div>
     <h1 class="poster-title">StarShot</h1>
     <div class="poster-sub">VOID CORSAIRS WANTED</div>
     <p class="poster-flavor">Plunder vaults. Overdrive yer cannons.<br>Send rival captains into the black.</p>
-    <div class="auth-tabs">
-      <button id="tab-login" class="auth-tab active">Sign In</button>
-      <button id="tab-register" class="auth-tab">Enlist</button>
-    </div>
-    <form id="auth-form" autocomplete="off">
-      <input id="auth-username" type="text" placeholder="Pirate name" maxlength="20" autocomplete="username" required>
-      <input id="auth-password" type="password" placeholder="Secret word" maxlength="128" autocomplete="current-password" required>
-      <button id="auth-submit" type="submit" class="btn gold big">Board the Ship</button>
+    <form id="admin-login-form" class="admin-login-form hidden" autocomplete="off">
+      <input id="auth-username" type="text" placeholder="Admin name" maxlength="20" autocomplete="username">
+      <input id="auth-password" type="password" placeholder="Secret word" maxlength="128" autocomplete="current-password">
+      <button id="auth-submit" type="submit" class="btn gold">Admin Sign In</button>
     </form>
-    <div class="auth-divider">— or —</div>
     <div id="google-signin" class="google-signin"></div>
     <button id="microsoft-signin" type="button" class="microsoft-signin">
       <svg viewBox="0 0 21 21" width="18" height="18" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
@@ -43,9 +39,30 @@
       <svg viewBox="0 0 127.14 96.36" width="20" height="16" aria-hidden="true" fill="#fff"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
       Continue with Discord
     </button>
+    <div class="auth-divider">— or —</div>
+    <button id="guest-signin" type="button" class="btn ghost guest-signin">🌬 Just Sailin&rsquo; Through</button>
     <div id="auth-error" class="auth-error"></div>
+    <div class="auth-policy-links">
+      <a href="/v2/terms">Terms of Service</a> · <a href="/v2/privacy">Privacy Policy</a>
+    </div>
   </div>
   <footer class="build-footer" aria-live="polite">Build time loading...</footer>
+</section>
+
+<!-- ═══════════════ ACCOUNT ═══════════════ -->
+<section id="screen-account" class="screen hidden">
+  <header class="topbar">
+    <div class="brand"><span class="brand-skull">☠</span> StarShot <span class="brand-tag">account</span></div>
+    <div class="topbar-right">
+      <button id="btn-account-back" class="btn ghost small">← Port</button>
+    </div>
+  </header>
+  <div class="account-wrap">
+    <div class="panel">
+      <h2 class="panel-title">📜 Your Account</h2>
+      <div id="account-body"><div class="empty-note">Loading…</div></div>
+    </div>
+  </div>
 </section>
 
 <!-- ═══════════════ LOBBY ═══════════════ -->
@@ -58,6 +75,7 @@
         <span class="hamburger" aria-hidden="true">☰</span>
       </button>
       <div id="lobby-user-popup" class="user-popup hidden">
+        <button id="btn-account" class="btn ghost small" type="button">📜 My Account</button>
         <button id="btn-change-name" class="btn ghost small" type="button">✏ Change Name</button>
         <button id="btn-logout" class="btn ghost small" type="button">Abandon Ship</button>
       </div>
@@ -203,7 +221,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/v2/static/api.js?v=17"></script>
+<script src="/v2/static/api.js?v=18"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
 <script src="/v2/static/board.js?v=22"></script>
 <script src="/v2/static/shipview.js?v=10"></script>
@@ -212,9 +230,10 @@
 <script src="/v2/static/tutorial.js?v=9"></script>
 <script src="/v2/static/shipdesigner.js?v=10"></script>
 <script src="/v2/static/bossdesigner.js?v=27"></script>
-<script src="/v2/static/lobby.js?v=38"></script>
+<script src="/v2/static/lobby.js?v=39"></script>
 <script src="/v2/static/game.js?v=64"></script>
-<script src="/v2/static/app.js?v=12"></script>
+<script src="/v2/static/account.js?v=1"></script>
+<script src="/v2/static/app.js?v=13"></script>
 <script src="/v2/static/buildfooter.js?v=2"></script>
 </body>
 </html>

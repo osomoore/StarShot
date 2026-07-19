@@ -871,6 +871,12 @@
         } catch (error) { toast(error.message); }
       });
       actions.appendChild(ban);
+      const remove = document.createElement("button");
+      remove.className = "btn ghost small";
+      remove.textContent = "☠ Delete";
+      remove.title = "Permanently delete this account (non-admin only)";
+      remove.addEventListener("click", () => openDeleteAccountModal(account));
+      actions.appendChild(remove);
       tr.appendChild(actions);
       body.appendChild(tr);
     }
@@ -898,6 +904,51 @@
         illegalNode.appendChild(chip);
       }
     }
+  }
+
+  function openDeleteAccountModal(account) {
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    const providers = (account.providers || []).join(", ") || "none";
+    overlay.innerHTML = `
+      <div class="picker">
+        <h3>☠ Delete Account</h3>
+        <p class="admin-note"><b>This is destructive and cannot be undone.</b>
+          Deleting removes the account, its saved ships and bosses, preferences,
+          statistics, achievements, and leaderboard presence. Shared match
+          histories are anonymized, not destroyed.</p>
+        <p class="admin-note">Player name: <b>${esc(account.display_name)}</b> (${esc(account.username)})<br>
+          Connected providers: <b>${esc(providers)}</b>${account.is_guest ? "<br><b>Temporary guest account.</b>" : ""}</p>
+        <form id="admin-delete-form">
+          <label>Type <b>DELETE</b> to confirm
+            <input id="admin-delete-confirm" type="text" autocomplete="off" maxlength="20">
+          </label>
+          <div class="feedback-actions">
+            <button type="button" class="btn ghost" id="admin-delete-cancel">Cancel</button>
+            <button type="submit" class="btn crimson" id="admin-delete-submit" disabled>Delete Account</button>
+          </div>
+          <div id="admin-delete-status" class="admin-status"></div>
+        </form>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector("#admin-delete-confirm");
+    const submit = overlay.querySelector("#admin-delete-submit");
+    input.addEventListener("input", () => { submit.disabled = input.value.trim() !== "DELETE"; });
+    overlay.querySelector("#admin-delete-cancel").addEventListener("click", () => overlay.remove());
+    overlay.querySelector("#admin-delete-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (input.value.trim() !== "DELETE") return;
+      if (!confirm(`Final confirmation: permanently delete "${account.username}"?`)) return;
+      try {
+        const result = await post(`/admin/accounts/${account.id}/delete`, { confirm: "DELETE" });
+        accountsData.accounts = result.accounts || [];
+        overlay.remove();
+        renderAccounts();
+        toast("Account deleted and audit entry recorded.", true);
+      } catch (error) {
+        overlay.querySelector("#admin-delete-status").textContent = "✘ " + error.message;
+      }
+    });
   }
 
   async function setAccountFlags(userId, flags) {

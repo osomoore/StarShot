@@ -11,6 +11,9 @@ from pathlib import Path
 TMP = tempfile.TemporaryDirectory()
 os.environ["STARSHOT_V2_DB"] = str(Path(TMP.name) / "v2.sqlite3")
 os.environ.pop("STARSHOT_SITE_AUTH", None)
+# Login throttling (1 attempt / 5s) would serialize the suite; the throttle
+# itself is covered by an explicit test that re-enables it.
+os.environ["STARSHOT_LOGIN_THROTTLE_SECONDS"] = "0"
 
 # Isolate everything the admin console can write: run v2 games and the deck
 # editor against a scratch copy of core_0_3, and keywords in a scratch file.
@@ -45,48 +48,54 @@ def make_client() -> TestClient:
 
 
 def register(client: TestClient, name: str, password: str = "rangers") -> dict:
-    response = client.post("/api/v2/auth/register", json={"username": name, "password": password})
+    """Provision a signed-in test account. Ordinary username/password
+    registration no longer exists, so accounts are created as Google-linked
+    users (with a deterministic per-name subject) and logged in through the
+    real /auth/google endpoint with the verifier mocked."""
+    from unittest import mock
+
+    store = get_v2_store()
+    sub = f"test-sub-{name.lower()}"
+    if store.get_user_by_external_sub("google", sub) is None:
+        store.create_external_user("google", sub, name, display_name=name)
+    with mock.patch(
+        "starshot.v2.google_identity.verify_google_credential", return_value={"sub": sub}
+    ):
+        response = client.post("/api/v2/auth/google", json={"credential": "x" * 40})
     assert response.status_code == 200, response.text
     return response.json()
 
 
 class AuthTests(unittest.TestCase):
-    def test_register_login_logout(self) -> None:
+    def test_ordinary_registration_removed(self) -> None:
         client = make_client()
-        payload = register(client, "auth_alice")
-        self.assertEqual(payload["user"]["username"], "auth_alice")
+        response = client.post(
+            "/api/v2/auth/register", json={"username": "auth_alice", "password": "rangers"}
+        )
+        self.assertIn(response.status_code, (404, 405))
 
-        me = client.get("/api/v2/me")
-        self.assertEqual(me.status_code, 200)
+    def test_password_login_is_admin_only(self) -> None:
+        client = make_client()
+        register(client, "auth_pleb")
+        client.post("/api/v2/auth/logout")
+        response = client.post(
+            "/api/v2/auth/login", json={"username": "auth_pleb", "password": "rangers"}
+        )
+        self.assertEqual(response.status_code, 403)
 
-        self.assertEqual(client.post("/api/v2/auth/logout").status_code, 200)
-        self.assertEqual(client.get("/api/v2/me").status_code, 401)
-
+    def test_admin_login_and_logout_invalidate_session(self) -> None:
+        client = make_client()
         bad = client.post(
-            "/api/v2/auth/login", json={"username": "auth_alice", "password": "wrong"}
+            "/api/v2/auth/login", json={"username": "davidmoore", "password": "wrong"}
         )
         self.assertEqual(bad.status_code, 401)
-
         good = client.post(
-            "/api/v2/auth/login", json={"username": "auth_alice", "password": "rangers"}
+            "/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"}
         )
         self.assertEqual(good.status_code, 200)
         self.assertEqual(client.get("/api/v2/me").status_code, 200)
-
-    def test_duplicate_username_rejected(self) -> None:
-        client = make_client()
-        register(client, "auth_bob")
-        duplicate = client.post(
-            "/api/v2/auth/register", json={"username": "auth_bob", "password": "rangers"}
-        )
-        self.assertEqual(duplicate.status_code, 409)
-
-    def test_invalid_username_rejected(self) -> None:
-        client = make_client()
-        response = client.post(
-            "/api/v2/auth/register", json={"username": "bad name!", "password": "rangers"}
-        )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(client.post("/api/v2/auth/logout").status_code, 200)
+        self.assertEqual(client.get("/api/v2/me").status_code, 401)
 
 
 class GoogleAuthTests(unittest.TestCase):
@@ -120,7 +129,8 @@ class GoogleAuthTests(unittest.TestCase):
         bad = make_client().post(
             "/api/v2/auth/login", json={"username": user["username"], "password": "!google"}
         )
-        self.assertEqual(bad.status_code, 401)
+        # Password sign-in is admin-only now, so this is rejected outright.
+        self.assertEqual(bad.status_code, 403)
 
     def test_google_login_rejects_invalid_token(self) -> None:
         from unittest import mock
@@ -170,7 +180,8 @@ class MicrosoftAuthTests(unittest.TestCase):
         bad = make_client().post(
             "/api/v2/auth/login", json={"username": user["username"], "password": "!microsoft"}
         )
-        self.assertEqual(bad.status_code, 401)
+        # Password sign-in is admin-only now, so this is rejected outright.
+        self.assertEqual(bad.status_code, 403)
 
     def test_microsoft_login_rejects_invalid_token(self) -> None:
         from unittest import mock
@@ -247,7 +258,8 @@ class DiscordAuthTests(unittest.TestCase):
         bad = make_client().post(
             "/api/v2/auth/login", json={"username": user["username"], "password": "!discord"}
         )
-        self.assertEqual(bad.status_code, 401)
+        # Password sign-in is admin-only now, so this is rejected outright.
+        self.assertEqual(bad.status_code, 403)
 
     def test_discord_login_rejects_failed_exchange(self) -> None:
         from unittest import mock
@@ -1238,21 +1250,29 @@ class AdminTests(unittest.TestCase):
         self.assertIn("missing config.toml", rejected.json()["detail"])
 
     def test_change_password(self) -> None:
+        # Only the admin has a password these days; change it and back again.
         client = make_client()
-        register(client, "pw_changer", "oldpass")
+        login = client.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"})
+        self.assertEqual(login.status_code, 200, login.text)
         wrong = client.post(
             "/api/v2/auth/password", json={"current_password": "nope", "new_password": "newpass"}
         )
         self.assertEqual(wrong.status_code, 401)
         good = client.post(
-            "/api/v2/auth/password", json={"current_password": "oldpass", "new_password": "newpass"}
+            "/api/v2/auth/password", json={"current_password": "rangers", "new_password": "newpass"}
         )
         self.assertEqual(good.status_code, 200)
-        fresh = make_client()
-        self.assertEqual(
-            fresh.post("/api/v2/auth/login", json={"username": "pw_changer", "password": "newpass"}).status_code,
-            200,
-        )
+        try:
+            fresh = make_client()
+            self.assertEqual(
+                fresh.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "newpass"}).status_code,
+                200,
+            )
+        finally:
+            restore = client.post(
+                "/api/v2/auth/password", json={"current_password": "newpass", "new_password": "rangers"}
+            )
+            self.assertEqual(restore.status_code, 200)
 
 
 class DisplayNameTests(unittest.TestCase):

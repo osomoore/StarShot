@@ -167,6 +167,31 @@ _MIGRATIONS = (
     # provider identity to an account that already proved the same address.
     "ALTER TABLE users ADD COLUMN email TEXT",
     "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE)",
+    # Guest sessions, Terms/Privacy acceptance, onboarding, provider metadata,
+    # and account deletion (deleted accounts stay as anonymized tombstones so
+    # match history keeps valid foreign keys).
+    "ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN deleted_at TEXT",
+    "ALTER TABLE users ADD COLUMN terms_version TEXT",
+    "ALTER TABLE users ADD COLUMN privacy_version TEXT",
+    "ALTER TABLE users ADD COLUMN policies_accepted_at TEXT",
+    "ALTER TABLE users ADD COLUMN name_confirmed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN google_email TEXT",
+    "ALTER TABLE users ADD COLUMN google_linked_at TEXT",
+    "ALTER TABLE users ADD COLUMN microsoft_email TEXT",
+    "ALTER TABLE users ADD COLUMN microsoft_linked_at TEXT",
+    "ALTER TABLE users ADD COLUMN discord_email TEXT",
+    "ALTER TABLE users ADD COLUMN discord_linked_at TEXT",
+    # When this session last proved its identity (login or reauthentication);
+    # sensitive actions require this to be recent.
+    "ALTER TABLE sessions ADD COLUMN reauthed_at TEXT",
+    """CREATE TABLE IF NOT EXISTS admin_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_user_id INTEGER NOT NULL,
+        target_user_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""",
 )
 
 # External sign-in providers and the users column holding each one's subject.
@@ -179,8 +204,12 @@ _EXTERNAL_SUB_COLUMNS = {
 # Effective public name: the chosen display name, or the username until one is set.
 _DISPLAY = "COALESCE(NULLIF(u.display_name, ''), u.username)"
 _DISPLAY_BARE = _DISPLAY.replace("u.", "")
-# Visible on leaderboards: not admin-delisted and not carrying a flagged name.
-_LISTED = "u.leaderboard_ok = 1 AND u.name_flagged = 0"
+# Visible on leaderboards: not admin-delisted, not carrying a flagged name,
+# not a temporary guest, and not a deleted account's tombstone.
+_LISTED = (
+    "u.leaderboard_ok = 1 AND u.name_flagged = 0 "
+    "AND COALESCE(u.is_guest, 0) = 0 AND u.deleted_at IS NULL"
+)
 
 
 def _now() -> str:
@@ -250,7 +279,9 @@ class V2Store:
             return None
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM users WHERE email = ? COLLATE NOCASE ORDER BY id ASC LIMIT 1",
+                "SELECT * FROM users WHERE email = ? COLLATE NOCASE "
+                "AND deleted_at IS NULL AND COALESCE(is_guest, 0) = 0 "
+                "ORDER BY id ASC LIMIT 1",
                 (email,),
             ).fetchone()
             return dict(row) if row else None
@@ -264,14 +295,35 @@ class V2Store:
         column = _EXTERNAL_SUB_COLUMNS[provider]
         with self._connect() as conn:
             conn.execute(
-                f"UPDATE users SET {column} = ? WHERE id = ? AND {column} IS NULL",
-                (sub, user_id),
+                f"UPDATE users SET {column} = ?, {provider}_email = ?, {provider}_linked_at = ? "
+                f"WHERE id = ? AND {column} IS NULL",
+                (sub, email, _now(), user_id),
             )
             if email:
                 conn.execute(
                     "UPDATE users SET email = ? WHERE id = ? AND (email IS NULL OR email = '')",
                     (email, user_id),
                 )
+
+    def update_provider_email(self, user_id: int, provider: str, email: str | None) -> None:
+        """Keep the provider-supplied email current on each sign-in."""
+        if not email:
+            return
+        column = _EXTERNAL_SUB_COLUMNS[provider]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE users SET {provider}_email = ? WHERE id = ? AND {column} IS NOT NULL",
+                (email, user_id),
+            )
+
+    def unlink_provider(self, user_id: int, provider: str) -> None:
+        column = _EXTERNAL_SUB_COLUMNS[provider]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE users SET {column} = NULL, {provider}_email = NULL, "
+                f"{provider}_linked_at = NULL WHERE id = ?",
+                (user_id,),
+            )
 
     def create_external_user(
         self,
@@ -287,9 +339,21 @@ class V2Store:
         column = _EXTERNAL_SUB_COLUMNS[provider]
         with self._connect() as conn:
             cursor = conn.execute(
-                f"INSERT INTO users (username, pass_hash, {column}, display_name, email, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (username, "!" + provider, sub, display_name, email, _now()),
+                f"INSERT INTO users (username, pass_hash, {column}, {provider}_email, "
+                f"{provider}_linked_at, display_name, email, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (username, "!" + provider, sub, email, _now(), display_name, email, _now()),
+            )
+            return {"id": cursor.lastrowid, "username": username}
+
+    def create_guest_user(self, username: str, display_name: str) -> dict:
+        """A temporary guest: a users row (so match seats keep valid foreign
+        keys) flagged is_guest, with no password and no provider links."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO users (username, pass_hash, display_name, is_guest, "
+                "name_confirmed, created_at) VALUES (?, '!guest', ?, 1, 1, ?)",
+                (username, display_name, _now()),
             )
             return {"id": cursor.lastrowid, "username": username}
 
@@ -298,26 +362,49 @@ class V2Store:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
 
-    def create_session(self, token_hash: str, user_id: int) -> None:
-        expires = (datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)).isoformat()
+    def create_session(self, token_hash: str, user_id: int, ttl_days: int = SESSION_TTL_DAYS) -> None:
+        now = datetime.now(timezone.utc)
+        expires = (now + timedelta(days=ttl_days)).isoformat()
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                (token_hash, user_id, _now(), expires),
+                "INSERT INTO sessions (token_hash, user_id, created_at, expires_at, reauthed_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (token_hash, user_id, _now(), expires, _now()),
             )
 
     def get_session_user(self, token_hash: str) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
                 """SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-                   WHERE s.token_hash = ? AND s.expires_at > ?""",
+                   WHERE s.token_hash = ? AND s.expires_at > ? AND u.deleted_at IS NULL""",
                 (token_hash, _now()),
             ).fetchone()
             return dict(row) if row else None
 
+    def get_session(self, token_hash: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?",
+                (token_hash, _now()),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def refresh_session_auth(self, token_hash: str) -> None:
+        """Record that this session just re-proved its identity."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET reauthed_at = ? WHERE token_hash = ?",
+                (_now(), token_hash),
+            )
+
     def delete_session(self, token_hash: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def delete_sessions_for_user(self, user_id: int) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            return int(cursor.rowcount or 0)
 
     def update_password(self, user_id: int, pass_hash: str) -> None:
         with self._connect() as conn:
@@ -328,8 +415,17 @@ class V2Store:
     def set_display_name(self, user_id: int, display_name: str, flagged: bool) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE users SET display_name = ?, name_flagged = ?, must_rename = 0 WHERE id = ?",
+                "UPDATE users SET display_name = ?, name_flagged = ?, must_rename = 0, "
+                "name_confirmed = 1 WHERE id = ?",
                 (display_name, 1 if flagged else 0, user_id),
+            )
+
+    def set_policies_accepted(self, user_id: int, terms_version: str, privacy_version: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET terms_version = ?, privacy_version = ?, "
+                "policies_accepted_at = ? WHERE id = ?",
+                (terms_version, privacy_version, _now(), user_id),
             )
 
     def set_user_flags(
@@ -385,16 +481,94 @@ class V2Store:
             ).fetchone() is not None
 
     def list_accounts(self) -> list[dict]:
-        """Every account on the server, for the admin console."""
+        """Every live account on the server, for the admin console."""
         with self._connect() as conn:
             rows = conn.execute(
                 f"""SELECT u.id, u.username, {_DISPLAY} AS display_name,
                            u.wins, u.losses, u.draws, u.games_played, u.created_at,
                            u.name_flagged, u.matchmaking_ok, u.leaderboard_ok, u.must_rename,
+                           COALESCE(u.is_guest, 0) AS is_guest,
+                           (u.google_sub IS NOT NULL) AS has_google,
+                           (u.microsoft_sub IS NOT NULL) AS has_microsoft,
+                           (u.discord_sub IS NOT NULL) AS has_discord,
                            p.last_seen
                     FROM users u
                     LEFT JOIN presence p ON p.user_id = u.id
+                    WHERE u.deleted_at IS NULL
                     ORDER BY u.username COLLATE NOCASE""",
+            ).fetchall()
+            accounts = []
+            for row in rows:
+                account = dict(row)
+                account["providers"] = [
+                    provider
+                    for provider in ("google", "microsoft", "discord")
+                    if account.pop(f"has_{provider}")
+                ]
+                accounts.append(account)
+            return accounts
+
+    def leaderboard_results_for_user(self, user_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT category, wins, losses, draws, games_played, score, ship_losses "
+                "FROM leaderboard_results WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # -- account deletion & admin audit --------------------------------------
+
+    def delete_account(self, user_id: int) -> None:
+        """Erase an account's private data and sessions. The users row stays
+        as an anonymized tombstone so other players' match histories keep
+        valid references; every credential, provider link, policy record, and
+        stat is cleared and the account can never sign in again."""
+        anonymous = f"deleted-{uuid.uuid4().hex[:10]}"
+        with self._connect(immediate=True) as conn:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM queue WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM presence WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM feedback WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM leaderboard_results WHERE user_id = ?", (user_id,))
+            conn.execute(
+                "DELETE FROM challenges WHERE from_user_id = ? OR to_user_id = ?",
+                (user_id, user_id),
+            )
+            # Multiplayer records other players legitimately share: keep the
+            # seats but strip the identity.
+            conn.execute(
+                "UPDATE match_seats SET user_id = NULL, display_name = 'Departed Captain' "
+                "WHERE user_id = ?",
+                (user_id,),
+            )
+            conn.execute("UPDATE matches SET status = 'cancelled' WHERE host_user_id = ? AND status = 'open'", (user_id,))
+            conn.execute(
+                """UPDATE users SET
+                       username = ?, pass_hash = '!deleted', display_name = 'Departed Captain',
+                       email = NULL, google_sub = NULL, google_email = NULL, google_linked_at = NULL,
+                       microsoft_sub = NULL, microsoft_email = NULL, microsoft_linked_at = NULL,
+                       discord_sub = NULL, discord_email = NULL, discord_linked_at = NULL,
+                       terms_version = NULL, privacy_version = NULL, policies_accepted_at = NULL,
+                       wins = 0, losses = 0, draws = 0, games_played = 0,
+                       name_flagged = 0, must_rename = 0, name_confirmed = 0,
+                       matchmaking_ok = 0, leaderboard_ok = 0, deleted_at = ?
+                   WHERE id = ?""",
+                (anonymous, _now(), user_id),
+            )
+
+    def record_admin_audit(self, admin_user_id: int, target_user_id: int, action: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO admin_audit (admin_user_id, target_user_id, action, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (admin_user_id, target_user_id, action, _now()),
+            )
+
+    def list_admin_audit(self, limit: int = 200) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM admin_audit ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
             return [dict(row) for row in rows]
 
@@ -745,11 +919,13 @@ class V2Store:
         with self._connect() as conn:
             rows = conn.execute(
                 f"""SELECT u.id, u.username, {_DISPLAY} AS display_name,
+                          COALESCE(u.is_guest, 0) AS is_guest,
                           u.wins, u.losses, COUNT(f.id) AS feedback_count
                    FROM presence p
                    JOIN users u ON u.id = p.user_id
                    LEFT JOIN feedback f ON f.user_id = u.id
                    WHERE p.last_seen > ? AND u.matchmaking_ok = 1 AND u.name_flagged = 0
+                         AND u.deleted_at IS NULL
                    GROUP BY u.id
                    ORDER BY u.username COLLATE NOCASE""",
                 (cutoff,),

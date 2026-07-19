@@ -1991,3 +1991,84 @@ h1, h2, .brand, .poster-title, .banner-text {
 @media (max-width: 1080px) {
   .lobby-grid { grid-template-columns: 1fr; }
 }
+
+/* ── auth screen: admin corner, guest login, policy links ─────────────── */
+.admin-corner {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 5;
+  opacity: 0.6;
+}
+.admin-corner:hover { opacity: 1; }
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.guest-signin {
+  width: 280px;
+  max-width: 100%;
+  margin: 0 auto;
+  display: block;
+}
+.auth-policy-links {
+  margin-top: 16px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.auth-policy-links a { color: var(--gold-bright); }
+.guest-popup .guest-limits {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  color: var(--ink-dim);
+  margin: 0 0 12px;
+  padding-left: 22px;
+  text-align: left;
+}
+.guest-popup .guest-limits li { margin-bottom: 4px; }
+.guest-policy-links a { color: var(--gold-bright); }
+.guest-badge {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border: 1px solid var(--ink-dim);
+  border-radius: 8px;
+  color: var(--ink-dim);
+  vertical-align: middle;
+}
+
+/* ── onboarding + reauth modals ───────────────────────────────────────── */
+.onboarding-modal, .reauth-modal, .delete-modal { max-width: 460px; }
+.onboarding-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  text-align: left;
+}
+.onboarding-check input { margin-top: 3px; }
+.onboarding-check a { color: var(--gold-bright); }
+.reauth-modal .google-signin { margin: 10px auto; }
+.reauth-modal .btn { display: block; width: 100%; margin-bottom: 8px; }
+
+/* ── account screen ───────────────────────────────────────────────────── */
+.account-wrap { max-width: 760px; margin: 0 auto; padding: 24px 20px 60px; }
+.account-section { margin-bottom: 22px; }
+.account-line {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 15px;
+  color: var(--ink);
+  margin: 6px 0;
+}
+.account-line a { color: var(--gold-bright); }
+.account-line .muted, .account-section .muted { color: var(--ink-dim); font-size: 13px; }
+.account-providers { width: 100%; margin-bottom: 10px; }
+.account-link-buttons { margin-top: 4px; }
+.account-actions { justify-content: flex-start; }
+.account-deleted { text-align: center; padding: 30px 0; }

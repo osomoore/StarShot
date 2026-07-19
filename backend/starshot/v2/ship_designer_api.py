@@ -64,9 +64,11 @@ def _designer_meta() -> dict:
 
 
 def _current_user(request: Request) -> dict:
-    from starshot.v2.router import _current_user as current_user
+    """Signed-in, non-guest user: guests can't create or save persistent
+    ship designs (enforced here, not just hidden in the UI)."""
+    from starshot.v2.router import _registered_user
 
-    return current_user(request)
+    return _registered_user(request)
 
 
 def _design_or_404(design_id: str, owner_id: int | None) -> dict:
@@ -99,7 +101,9 @@ def list_playable_ship_designs(request: Request) -> dict:
     """Ships this user may fly: battle-ready global designs, plus their own
     battle-ready designs (ids prefixed `user:<uid>:`). The standard base
     ship is always available and is represented by an empty design id."""
-    user = _current_user(request)
+    from starshot.v2.router import _current_user as any_signed_in_user
+
+    user = any_signed_in_user(request)  # guests may fly global designs
     designs = [
         {"id": entry["id"], "name": entry["name"], "points": entry["points"]}
         for entry in ship_designs.list_designs()

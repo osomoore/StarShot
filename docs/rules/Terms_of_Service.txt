@@ -1,0 +1,81 @@
+Terms of Service
+
+Effective Date: July 19, 2026
+
+1. Acceptance
+
+By accessing or using StarShot ("the Service"), you agree to these Terms of Service. If you do not agree, do not use the Service.
+
+2. Eligibility
+
+You must be at least 13 years old (or the minimum legal age in your jurisdiction) to create an account.
+
+3. Accounts
+
+You are responsible for:
+
+Maintaining the security of your account.
+Any activity that occurs under your account.
+Providing accurate information when registering.
+
+You may not impersonate another person or attempt to access another user's account.
+
+4. Acceptable Use
+
+You agree not to:
+
+Cheat, exploit bugs, or intentionally disrupt gameplay.
+Attempt to gain unauthorized access to the Service.
+Upload malicious software.
+Harass or abuse other users.
+Use automated systems (bots) without permission.
+Reverse engineer or attack the Service.
+
+We may suspend or terminate accounts that violate these rules.
+
+5. User Content
+
+If you submit usernames, ship designs, chat messages, bug reports, or other content:
+
+You retain ownership of your content.
+You grant StarShot a worldwide, non-exclusive license to store, display, and use that content for operating and improving the Service.
+
+You are responsible for any content you submit.
+
+6. Intellectual Property
+
+The StarShot game, artwork, rules, software, logos, graphics, and original content are owned by StarShot or its licensors.
+
+These Terms do not grant ownership of any intellectual property.
+
+7. Availability
+
+The Service is provided "as is."
+
+We do not guarantee uninterrupted availability and may modify or discontinue features at any time.
+
+8. Accounts and Termination
+
+We may suspend or terminate accounts that:
+
+Violate these Terms.
+Attempt to harm the Service.
+Engage in fraudulent or abusive behavior.
+
+You may stop using the Service at any time.
+
+9. Disclaimer
+
+The Service is provided without warranties of any kind, including merchantability, fitness for a particular purpose, or non-infringement.
+
+10. Limitation of Liability
+
+To the maximum extent permitted by law, StarShot shall not be liable for indirect, incidental, consequential, or punitive damages arising from your use of the Service.
+
+11. Changes
+
+We may update these Terms from time to time. Continued use of the Service after changes become effective constitutes acceptance of the updated Terms.
+
+12. Contact
+
+Questions regarding these Terms may be sent to: StarShot.Support@google.com

@@ -1081,6 +1081,35 @@ def ban_account_name(user_id: int, request: Request) -> dict:
     }
 
 
+class AdminDeleteConfirmation(BaseModel):
+    confirm: str = Field(max_length=20)
+
+
+@admin_router.post("/accounts/{user_id}/delete")
+def admin_delete_account(user_id: int, body: AdminDeleteConfirmation, request: Request) -> dict:
+    """Delete a non-admin account (same cleanup as self-service deletion) and
+    record an audit entry. Admin accounts — including the acting admin and
+    therefore the final administrator — can never be deleted here."""
+    from starshot.v2.account import purge_account
+
+    admin = _admin_user(request)
+    if body.confirm.strip() != "DELETE":
+        raise HTTPException(status_code=400, detail="Type DELETE to confirm account deletion.")
+    store = get_v2_store()
+    target = store.get_user(user_id)
+    if target is None or target.get("deleted_at"):
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target["id"] == admin["id"]:
+        raise HTTPException(status_code=400, detail="Ye can't scuttle yer own flagship.")
+    if target["username"].lower() in admin_usernames():
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be deleted from here.")
+    purge_account(target["id"])
+    # Audit entry: internal ids, action, timestamp — never credentials,
+    # tokens, or exported user content.
+    store.record_admin_audit(admin["id"], target["id"], "delete_account")
+    return {"ok": True, "deleted": True, "accounts": store.list_accounts()}
+
+
 @admin_router.delete("/illegal-names/{name}")
 def remove_illegal_name(name: str, request: Request) -> dict:
     _admin_user(request)

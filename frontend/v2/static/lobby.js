@@ -134,7 +134,11 @@
       renderProfile(me.user);
       renderLeaderboardBundle(board);
       document.getElementById("lobby-user").textContent = me.user.display_name || me.user.username;
-      if (me.user.must_rename) openNameModal(true);
+      window.Account?.maybeOnboard?.(me);
+      if (me.user.must_rename && !me.user.is_guest) openNameModal(true);
+      // Guests have no account page or public name to manage.
+      document.getElementById("btn-account")?.classList.toggle("hidden", !!me.user.is_guest);
+      document.getElementById("btn-change-name")?.classList.toggle("hidden", !!me.user.is_guest);
       document.getElementById("lobby-admin-link").classList.toggle("hidden", !me.is_admin);
       document.querySelector(".topbar-admin-row")?.classList.toggle("hidden", !me.is_admin);
     } catch (err) { /* transient */ }
@@ -657,7 +661,7 @@
       const row = document.createElement("div");
       row.className = "player-row";
       row.innerHTML = `<span class="player-dot">●</span>
-        <span class="player-name">${esc(player.display_name || player.username)}</span>
+        <span class="player-name">${esc(player.display_name || player.username)}${player.is_guest ? ' <span class="guest-badge" title="Temporary guest — nothing persists">GUEST</span>' : ""}</span>
         ${feedbackBadge(player.feedback_count)}
         <span class="player-record">${player.wins}W / ${player.losses}L</span>`;
       const button = document.createElement("button");
@@ -1007,7 +1011,7 @@
   /* Display-name modal. Forced mode (admiral banned the name) can't be
      dismissed until a new name is saved. */
   let nameModalOpen = false;
-  function openNameModal(forced = false) {
+  function openNameModal(forced = false, onSaved = null) {
     if (nameModalOpen) return;
     nameModalOpen = true;
     const overlay = document.createElement("div");
@@ -1056,6 +1060,7 @@
         } else {
           App.toast(`Henceforth ye sail as ${result.user.display_name}!`, true);
         }
+        if (onSaved) onSaved(result.user);
         refresh().catch(() => {});
       } catch (error) { status.textContent = error.message; }
     });
@@ -1248,6 +1253,12 @@
       userPopup.classList.add("hidden");
       userMenu?.setAttribute("aria-expanded", "false");
     });
+    document.getElementById("btn-account")?.addEventListener("click", () => {
+      userPopup?.classList.add("hidden");
+      userMenu?.setAttribute("aria-expanded", "false");
+      leave();
+      Account.enter();
+    });
     document.getElementById("btn-change-name")?.addEventListener("click", () => {
       userPopup?.classList.add("hidden");
       userMenu?.setAttribute("aria-expanded", "false");
@@ -1263,5 +1274,5 @@
   });
 
   window.Feedback = { open: openFeedback };
-  window.Lobby = { enter, leave, showStarBreachTutorial, showStarCommandTutorial };
+  window.Lobby = { enter, leave, showStarBreachTutorial, showStarCommandTutorial, openNameModal };
 })();

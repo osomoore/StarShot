@@ -203,9 +203,11 @@ def publish_boss_design(design_id: str, request: Request) -> dict:
 
 
 def _my_user(request: Request) -> dict:
-    from starshot.v2.router import _current_user
+    """Signed-in, non-guest user: guests can't create or save persistent
+    boss designs (enforced here, not just hidden in the UI)."""
+    from starshot.v2.router import _registered_user
 
-    return _current_user(request)
+    return _registered_user(request)
 
 
 @my_boss_designs_router.get("")

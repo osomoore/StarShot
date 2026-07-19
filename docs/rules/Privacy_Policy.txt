@@ -1,0 +1,94 @@
+Privacy Policy
+
+Effective Date: July 19, 2026
+
+Overview
+
+This Privacy Policy explains what information StarShot collects and how it is used.
+
+Information We Collect
+
+Depending on how you use the Service, we may collect:
+
+Account Information
+Email address (if using email registration)
+Google account identifier
+Microsoft account identifier
+Discord account identifier
+Username
+
+We do not receive your passwords for third-party sign-in providers.
+
+Gameplay Information
+Ship designs
+Match results
+Statistics
+Achievements
+Preferences
+Technical Information
+IP address
+Browser type
+Device information
+Log files
+Error reports
+How We Use Information
+
+We use collected information to:
+
+Operate the Service
+Authenticate users
+Save game progress
+Improve gameplay
+Prevent fraud and abuse
+Diagnose technical issues
+Communicate important account or service information
+Cookies
+
+StarShot may use cookies or similar technologies to:
+
+Keep you signed in
+Remember preferences
+Maintain sessions
+Improve reliability
+Sharing Information
+
+We do not sell your personal information.
+
+We may share information:
+
+With service providers that help operate the Service.
+If required by law.
+To protect the security of the Service.
+Third-Party Authentication
+
+If you sign in using Google, Microsoft, or Discord, authentication is handled by those providers. Their privacy policies also apply.
+
+Data Retention
+
+We retain account information while your account remains active.
+
+You may request deletion of your account, subject to legal obligations and backup retention.
+
+Security
+
+We use reasonable administrative and technical measures to protect your information. However, no Internet transmission or storage system is completely secure.
+
+Children's Privacy
+
+The Service is not directed toward children under 13.
+
+Your Rights
+
+Depending on your location, you may have rights to:
+
+Access your data
+Correct inaccurate information
+Delete your account
+Request a copy of your information
+Changes
+
+We may update this Privacy Policy periodically. The effective date at the top of this page will be updated whenever changes are made.
+
+Contact
+
+For privacy questions: StarShot.Support@google.com

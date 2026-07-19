@@ -551,6 +551,10 @@ def _record_completion(store: V2Store, match: dict, state: GameState) -> None:
     for seat in human_seats(match):
         if seat["user_id"] is None or seat.get("stats_exempt"):
             continue
+        # Guests never accrue persistent stats or leaderboard entries.
+        seat_user = store.get_user(seat["user_id"])
+        if seat_user is None or seat_user.get("is_guest"):
+            continue
         if is_tie and seat["player_id"] in winner_ids:
             outcome = "draw"
         elif seat["player_id"] in winner_ids:

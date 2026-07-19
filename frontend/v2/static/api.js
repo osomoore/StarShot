@@ -18,16 +18,23 @@
 
   const get = (path) => call(path);
   const post = (path, body) => call(path, { method: "POST", body: JSON.stringify(body || {}) });
+  const del = (path) => call(path, { method: "DELETE" });
 
   window.API = {
-    register: (username, password) => post("/auth/register", { username, password }),
     login: (username, password) => post("/auth/login", { username, password }),
-    googleLogin: (credential) => post("/auth/google", { credential }),
-    microsoftLogin: (credential) => post("/auth/microsoft", { credential }),
-    discordLogin: (code, codeVerifier, redirectUri) =>
-      post("/auth/discord", { code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
+    guestLogin: () => post("/auth/guest"),
+    googleLogin: (credential, link) => post("/auth/google", { credential, link: !!link }),
+    microsoftLogin: (credential, link) => post("/auth/microsoft", { credential, link: !!link }),
+    discordLogin: (code, codeVerifier, redirectUri, link) =>
+      post("/auth/discord", { code, code_verifier: codeVerifier, redirect_uri: redirectUri, link: !!link }),
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
+    policies: () => get("/policies"),
+    account: () => get("/account"),
+    acceptPolicies: (termsVersion, privacyVersion) =>
+      post("/account/accept-policies", { terms_version: termsVersion, privacy_version: privacyVersion }),
+    unlinkProvider: (provider) => del(`/account/providers/${provider}`),
+    deleteAccount: () => post("/account/delete", { confirm: "DELETE" }),
     setDisplayName: (displayName) => post("/profile/display-name", { display_name: displayName }),
     randomName: () => get("/profile/random-name"),
     leaderboard: () => get("/leaderboard"),

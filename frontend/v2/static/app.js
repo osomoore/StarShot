@@ -10,7 +10,7 @@
   const DISCORD_REDIRECT_URI = "https://david.cybrwzrds.com/v2";
   const DISCORD_STATE_KEY = "discord_oauth_state";
   const DISCORD_VERIFIER_KEY = "discord_pkce_verifier";
-  let authMode = "login";
+  const DISCORD_LINK_KEY = "discord_oauth_link";
   let lastDeviceDiagnosticsKey = "";
 
   function mediaMatches(query) {
@@ -102,7 +102,7 @@
   }
 
   function showScreen(name) {
-    for (const screen of ["auth", "lobby", "game"]) {
+    for (const screen of ["auth", "lobby", "game", "account"]) {
       document.getElementById("screen-" + screen).classList.toggle("hidden", screen !== name);
     }
   }
@@ -117,34 +117,38 @@
     toastTimer = setTimeout(() => node.classList.add("hidden"), 3200);
   }
 
-  function setAuthMode(mode) {
-    authMode = mode;
-    document.getElementById("tab-login").classList.toggle("active", mode === "login");
-    document.getElementById("tab-register").classList.toggle("active", mode === "register");
-    document.getElementById("auth-submit").textContent = mode === "login" ? "Board the Ship" : "Sign the Articles";
-    document.getElementById("auth-password").autocomplete = mode === "login" ? "current-password" : "new-password";
-    document.getElementById("auth-error").textContent = "";
-  }
+  // The Google credential callback is swappable so the account page can reuse
+  // the same button for reauthentication and provider linking.
+  let googleCredentialHandler = async (credential) => {
+    const errorBox = document.getElementById("auth-error");
+    errorBox.textContent = "";
+    try {
+      await API.googleLogin(credential);
+      Lobby.enter();
+    } catch (error) {
+      errorBox.textContent = error.message;
+    }
+  };
 
   function initGoogleSignIn() {
     const container = document.getElementById("google-signin");
     if (!container || !window.google?.accounts?.id) return;
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      callback: async (response) => {
-        const errorBox = document.getElementById("auth-error");
-        errorBox.textContent = "";
-        try {
-          await API.googleLogin(response.credential);
-          Lobby.enter();
-        } catch (error) {
-          errorBox.textContent = error.message;
-        }
-      },
+      callback: (response) => googleCredentialHandler(response.credential),
     });
     google.accounts.id.renderButton(container, {
       theme: "filled_black", size: "large", shape: "pill", text: "signin_with", width: 280,
     });
+  }
+
+  function renderGoogleButton(container, onCredential) {
+    if (!window.google?.accounts?.id) return false;
+    googleCredentialHandler = onCredential;
+    google.accounts.id.renderButton(container, {
+      theme: "filled_black", size: "medium", shape: "pill", text: "signin_with", width: 240,
+    });
+    return true;
   }
 
   // Lazily create the MSAL app on first use. The library script loads async,
@@ -190,6 +194,22 @@
     });
   }
 
+  // Runs the Microsoft popup and returns an ID token (throws on failure,
+  // resolves null when the user closes the popup).
+  async function microsoftIdToken() {
+    const app = await getMsalApp();
+    try {
+      const result = await app.loginPopup({
+        scopes: ["openid", "profile", "email"],
+        prompt: "select_account",
+      });
+      return result.idToken;
+    } catch (error) {
+      if (error.errorCode === "user_cancelled") return null;
+      throw error;
+    }
+  }
+
   function initMicrosoftSignIn() {
     // Attach the handler unconditionally so the button is always live; MSAL is
     // fetched on demand inside the click, and load failures show as an error.
@@ -199,16 +219,11 @@
       const errorBox = document.getElementById("auth-error");
       errorBox.textContent = "";
       try {
-        const app = await getMsalApp();
-        const result = await app.loginPopup({
-          scopes: ["openid", "profile", "email"],
-          prompt: "select_account",
-        });
-        await API.microsoftLogin(result.idToken);
+        const idToken = await microsoftIdToken();
+        if (!idToken) return;
+        await API.microsoftLogin(idToken);
         Lobby.enter();
       } catch (error) {
-        // A closed popup isn't an error worth shouting about.
-        if (error.errorCode === "user_cancelled") return;
         errorBox.textContent = error.message;
       }
     });
@@ -238,6 +253,26 @@
     return base64UrlEncode(digest);
   }
 
+  async function startDiscordSignIn(link) {
+    const verifier = randomUrlToken(32);   // 43 chars — a valid PKCE verifier
+    const state = randomUrlToken(16);
+    const challenge = await pkceChallenge(verifier);
+    sessionStorage.setItem(DISCORD_VERIFIER_KEY, verifier);
+    sessionStorage.setItem(DISCORD_STATE_KEY, state);
+    if (link) sessionStorage.setItem(DISCORD_LINK_KEY, "1");
+    else sessionStorage.removeItem(DISCORD_LINK_KEY);
+    const params = new URLSearchParams({
+      client_id: DISCORD_CLIENT_ID,
+      response_type: "code",
+      redirect_uri: DISCORD_REDIRECT_URI,
+      scope: "identify email",
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+    });
+    window.location.assign("https://discord.com/oauth2/authorize?" + params.toString());
+  }
+
   function initDiscordSignIn() {
     const button = document.getElementById("discord-signin");
     if (!button) return;
@@ -245,21 +280,7 @@
       const errorBox = document.getElementById("auth-error");
       errorBox.textContent = "";
       try {
-        const verifier = randomUrlToken(32);   // 43 chars — a valid PKCE verifier
-        const state = randomUrlToken(16);
-        const challenge = await pkceChallenge(verifier);
-        sessionStorage.setItem(DISCORD_VERIFIER_KEY, verifier);
-        sessionStorage.setItem(DISCORD_STATE_KEY, state);
-        const params = new URLSearchParams({
-          client_id: DISCORD_CLIENT_ID,
-          response_type: "code",
-          redirect_uri: DISCORD_REDIRECT_URI,
-          scope: "identify email",
-          state,
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-        });
-        window.location.assign("https://discord.com/oauth2/authorize?" + params.toString());
+        await startDiscordSignIn(false);
       } catch (error) {
         errorBox.textContent = "Discord sign-in could not start. Try again.";
       }
@@ -275,12 +296,14 @@
     const providerError = params.get("error");
     const storedState = sessionStorage.getItem(DISCORD_STATE_KEY);
     const verifier = sessionStorage.getItem(DISCORD_VERIFIER_KEY);
+    const linking = sessionStorage.getItem(DISCORD_LINK_KEY) === "1";
     // Only act on a redirect we actually started (state + verifier stashed).
     if (!storedState || !verifier) return false;
     if (!code && !providerError) return false;
 
     sessionStorage.removeItem(DISCORD_STATE_KEY);
     sessionStorage.removeItem(DISCORD_VERIFIER_KEY);
+    sessionStorage.removeItem(DISCORD_LINK_KEY);
     history.replaceState(null, "", location.pathname);  // drop the OAuth params
     const errorBox = document.getElementById("auth-error");
     errorBox.textContent = "";
@@ -298,13 +321,61 @@
       return true;
     }
     try {
-      await API.discordLogin(code, verifier, DISCORD_REDIRECT_URI);
-      Lobby.enter();
+      await API.discordLogin(code, verifier, DISCORD_REDIRECT_URI, linking);
+      if (linking) {
+        Account.enter();
+      } else {
+        Lobby.enter();
+      }
     } catch (error) {
-      showScreen("auth");
-      errorBox.textContent = error.message;
+      if (linking) {
+        Account.enter();
+        toast(error.message);
+      } else {
+        showScreen("auth");
+        errorBox.textContent = error.message;
+      }
     }
     return true;
+  }
+
+  function openGuestPopup() {
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker guest-popup">
+        <h3>🌬 Just Sailin' Through?</h3>
+        <p class="feedback-copy">Guests sail light — a guest voyage lasts only this session, and guests cannot:</p>
+        <ul class="guest-limits">
+          <li>Appear on leaderboards</li>
+          <li>Save StarDock custom ships</li>
+          <li>Save StarBreach custom bosses</li>
+          <li>Save statistics, achievements, match history, or other account data</li>
+        </ul>
+        <p class="feedback-copy guest-policy-links">
+          <a href="/v2/terms" target="_blank" rel="noopener">Terms of Service</a> ·
+          <a href="/v2/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+        </p>
+        <div class="feedback-actions">
+          <button class="btn ghost" id="guest-cancel">Carve My Legend</button>
+          <button class="btn gold" id="guest-confirm">Pass like the Wind</button>
+        </div>
+        <div id="guest-error" class="auth-error"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("#guest-cancel").addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
+    overlay.querySelector("#guest-confirm").addEventListener("click", async () => {
+      const errorBox = overlay.querySelector("#guest-error");
+      errorBox.textContent = "";
+      try {
+        await API.guestLogin();
+        overlay.remove();
+        Lobby.enter();
+      } catch (error) {
+        errorBox.textContent = error.message;
+      }
+    });
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -324,23 +395,27 @@
     // Discord redirects the whole page, so its button just needs a click handler.
     initDiscordSignIn();
 
-    document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
-    document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));
-    document.getElementById("auth-form").addEventListener("submit", async (event) => {
+    // Special admin login: a small anchor button reveals the password form.
+    document.getElementById("btn-admin-login").addEventListener("click", () => {
+      document.getElementById("admin-login-form").classList.toggle("hidden");
+    });
+    document.getElementById("admin-login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
       const username = document.getElementById("auth-username").value.trim();
       const password = document.getElementById("auth-password").value;
       const errorBox = document.getElementById("auth-error");
       errorBox.textContent = "";
       try {
-        if (authMode === "login") await API.login(username, password);
-        else await API.register(username, password);
+        await API.login(username, password);
         document.getElementById("auth-password").value = "";
         Lobby.enter();
       } catch (error) {
         errorBox.textContent = error.message;
       }
     });
+
+    // Guest login: confirm what a guest gives up before setting sail.
+    document.getElementById("guest-signin").addEventListener("click", openGuestPopup);
 
     // A Discord redirect (?code=&state=) lands us back here — complete that
     // sign-in instead of the normal session boot.
@@ -361,5 +436,9 @@
     }
   });
 
-  window.App = { showScreen, toast, reportDeviceDiagnostics, applyDeviceMode };
+  window.App = {
+    showScreen, toast, reportDeviceDiagnostics, applyDeviceMode,
+    // Provider-auth plumbing reused by the account page (reauth + linking).
+    auth: { renderGoogleButton, microsoftIdToken, startDiscordSignIn, initGoogleSignIn },
+  };
 })();

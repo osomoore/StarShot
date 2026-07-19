@@ -48,6 +48,15 @@ FRONTEND_ROOT = ROOT / "frontend" / "v2"
 # --------------------------------------------------------------------------
 
 
+GUEST_SESSION_TTL_DAYS = 1
+RECENT_AUTH_SECONDS = 10 * 60
+
+GUEST_FORBIDDEN_DETAIL = (
+    "Guests be just sailin' through — sign in with Google, Microsoft, or "
+    "Discord to save yer legend."
+)
+
+
 def _current_user(request: Request) -> dict:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
@@ -58,13 +67,58 @@ def _current_user(request: Request) -> dict:
     return user
 
 
-def _set_session(response: Response, user_id: int) -> None:
+def _registered_user(request: Request) -> dict:
+    """The signed-in user, rejecting temporary guest sessions. Every account
+    feature (profiles, designs, feedback, account management) goes through
+    here so guest restrictions are enforced server-side in one place."""
+    user = _current_user(request)
+    if user.get("is_guest"):
+        raise HTTPException(status_code=403, detail=GUEST_FORBIDDEN_DETAIL)
+    return user
+
+
+def _require_recent_auth(request: Request) -> None:
+    """Sensitive actions (export, deletion, provider unlink) require that the
+    session proved its identity within the last few minutes."""
+    token = request.cookies.get(SESSION_COOKIE)
+    session = get_v2_store().get_session(security.session_token_hash(token)) if token else None
+    stamp = (session or {}).get("reauthed_at") or (session or {}).get("created_at")
+    if stamp:
+        try:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(stamp)).total_seconds()
+            if age <= RECENT_AUTH_SECONDS:
+                return
+        except ValueError:
+            pass
+    raise HTTPException(
+        status_code=403,
+        detail="Please sign in again to confirm it's you before this action.",
+        headers={"X-StarShot-Reauth": "required"},
+    )
+
+
+def _set_session(response: Response, user_id: int, request: Request | None = None, *, guest: bool = False) -> None:
+    store = get_v2_store()
+    if request is not None:
+        # Signing in again in the same browser (reauthentication): keep the
+        # existing session and just refresh its proof-of-identity time.
+        token = request.cookies.get(SESSION_COOKIE)
+        if token:
+            existing = store.get_session_user(security.session_token_hash(token))
+            if existing is not None and existing["id"] == user_id:
+                store.refresh_session_auth(security.session_token_hash(token))
+                return
     token = security.new_session_token()
-    get_v2_store().create_session(security.session_token_hash(token), user_id)
+    store.create_session(
+        security.session_token_hash(token),
+        user_id,
+        ttl_days=GUEST_SESSION_TTL_DAYS if guest else 30,
+    )
     response.set_cookie(
         SESSION_COOKIE,
         token,
-        max_age=SESSION_MAX_AGE,
+        # Guests get a browser-session cookie so the guest ends with the browser.
+        max_age=None if guest else SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
         path="/",
@@ -129,6 +183,7 @@ def _public_profile(user: dict) -> dict:
     return {
         "username": user["username"],
         "display_name": _display_name(user),
+        "is_guest": bool(user.get("is_guest", 0)),
         "name_flagged": bool(user.get("name_flagged", 0)),
         "must_rename": bool(user.get("must_rename", 0)),
         "matchmaking_ok": bool(user.get("matchmaking_ok", 1)),
@@ -211,40 +266,90 @@ def build_info() -> dict:
     }
 
 
-@router.post("/auth/register")
-def register(credentials: Credentials, response: Response) -> dict:
-    if not security.valid_username(credentials.username):
-        raise HTTPException(
-            status_code=400,
-            detail="Usernames are 3-20 characters: letters, digits, _ or -.",
-        )
-    store = get_v2_store()
-    try:
-        user = store.create_user(credentials.username, security.hash_password(credentials.password))
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=409, detail="That pirate name is already taken.")
-    _set_session(response, user["id"])
-    return {"user": _public_profile(store.get_user(user["id"]))}
-
-
+# Ordinary username/password registration and login are gone: players sign in
+# only through verified Google/Microsoft/Discord identities (or as a guest).
+# Password login remains solely for the special admin accounts.
 @router.post("/auth/login")
-def login(credentials: Credentials, response: Response) -> dict:
+def login(credentials: Credentials, request: Request, response: Response) -> dict:
+    from starshot.v2 import ratelimit
+    from starshot.v2.admin import admin_usernames, ensure_admin_seeded
+
+    ratelimit.throttle_login(f"login:{credentials.username.strip().lower()}")
+    ensure_admin_seeded()
+    if credentials.username.strip().lower() not in admin_usernames():
+        raise HTTPException(
+            status_code=403,
+            detail="Password sign-in is for the admiral only. Use Google, Microsoft, or Discord.",
+        )
     store = get_v2_store()
     user = store.get_user_by_name(credentials.username)
     if user is None or not security.verify_password(credentials.password, user["pass_hash"]):
         raise HTTPException(status_code=401, detail="Wrong name or password, matey.")
-    _set_session(response, user["id"])
+    _set_session(response, user["id"], request)
+    return {"user": _public_profile(user)}
+
+
+@router.post("/auth/guest")
+def guest_login(request: Request, response: Response) -> dict:
+    """'Just Sailin' Through': a temporary guest session — not a permanent
+    account. Guests can play, but nothing persists past the session."""
+    from starshot.v2 import names, ratelimit
+
+    ratelimit.throttle_guest_creation(ratelimit.client_ip(request))
+    store = get_v2_store()
+    user = None
+    for _ in range(20):
+        try:
+            created = store.create_guest_user(
+                "guest-" + secrets.token_hex(4), names.random_guest_name()
+            )
+            user = store.get_user(created["id"])
+            break
+        except sqlite3.IntegrityError:
+            continue  # random username collided; retry
+    if user is None:
+        raise HTTPException(status_code=500, detail="Could not start a guest voyage. Try again.")
+    _set_session(response, user["id"], guest=True)
     return {"user": _public_profile(user)}
 
 
 class ExternalCredential(BaseModel):
     credential: str = Field(min_length=20, max_length=4096)
+    # True when a signed-in user is attaching this provider to their existing
+    # account (from the account page) rather than signing in with it.
+    link: bool = False
+
+
+def _link_provider_to_current(provider: str, sub: str, email: str | None, request: Request) -> dict:
+    """Attach a freshly verified provider identity to the signed-in account.
+    One provider identity can never belong to two StarShot accounts."""
+    user = _registered_user(request)
+    store = get_v2_store()
+    existing = store.get_user_by_external_sub(provider, sub)
+    if existing is not None:
+        if existing["id"] == user["id"]:
+            return {"user": _public_profile(user), "linked": True}
+        raise HTTPException(
+            status_code=409,
+            detail="That sign-in identity already belongs to another StarShot account.",
+        )
+    if user.get(f"{provider}_sub"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"This account already has a {provider.title()} identity linked.",
+        )
+    store.link_external_sub(user["id"], provider, sub, email)
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        store.refresh_session_auth(security.session_token_hash(token))
+    return {"user": _public_profile(store.get_user(user["id"])), "linked": True}
 
 
 def _external_login(
     provider: str,
     sub: str,
     response: Response,
+    request: Request | None = None,
     *,
     email: str | None = None,
     email_verified: bool = False,
@@ -291,33 +396,43 @@ def _external_login(
                     break
         if user is None:
             raise HTTPException(status_code=500, detail="Could not create yer account. Try again.")
-    _set_session(response, user["id"])
+    store.update_provider_email(user["id"], provider, email)
+    _set_session(response, user["id"], request)
     return {"user": _public_profile(user)}
 
 
 @router.post("/auth/google")
-def google_login(body: ExternalCredential, response: Response) -> dict:
-    from starshot.v2 import google_identity
+def google_login(body: ExternalCredential, request: Request, response: Response) -> dict:
+    from starshot.v2 import google_identity, ratelimit
 
+    ratelimit.throttle_login(f"google:{ratelimit.client_ip(request)}")
     try:
         claims = google_identity.verify_google_credential(body.credential)
     except ValueError:
         raise HTTPException(
             status_code=401, detail="Google sign-in could not be verified. Try again."
         )
+    email = claims.get("email")
+    verified = bool(claims.get("email_verified"))
+    if body.link:
+        return _link_provider_to_current(
+            "google", str(claims["sub"]), email if verified else None, request
+        )
     return _external_login(
         "google",
         str(claims["sub"]),
         response,
-        email=claims.get("email"),
-        email_verified=bool(claims.get("email_verified")),
+        request,
+        email=email,
+        email_verified=verified,
     )
 
 
 @router.post("/auth/microsoft")
-def microsoft_login(body: ExternalCredential, response: Response) -> dict:
-    from starshot.v2 import microsoft_identity
+def microsoft_login(body: ExternalCredential, request: Request, response: Response) -> dict:
+    from starshot.v2 import microsoft_identity, ratelimit
 
+    ratelimit.throttle_login(f"microsoft:{ratelimit.client_ip(request)}")
     try:
         claims = microsoft_identity.verify_microsoft_credential(body.credential)
     except ValueError:
@@ -327,11 +442,15 @@ def microsoft_login(body: ExternalCredential, response: Response) -> dict:
     # Microsoft issues the token only after authenticating the account, so an
     # email/upn it carries belongs to that verified user.
     email = claims.get("email") or claims.get("preferred_username")
+    email = email if isinstance(email, str) and "@" in email else None
+    if body.link:
+        return _link_provider_to_current("microsoft", str(claims["sub"]), email, request)
     return _external_login(
         "microsoft",
         str(claims["sub"]),
         response,
-        email=email if isinstance(email, str) and "@" in email else None,
+        request,
+        email=email,
         email_verified=True,
     )
 
@@ -340,12 +459,14 @@ class DiscordAuthCode(BaseModel):
     code: str = Field(min_length=1, max_length=512)
     code_verifier: str = Field(min_length=43, max_length=128)
     redirect_uri: str = Field(min_length=1, max_length=512)
+    link: bool = False
 
 
 @router.post("/auth/discord")
-def discord_login(body: DiscordAuthCode, response: Response) -> dict:
-    from starshot.v2 import discord_identity
+def discord_login(body: DiscordAuthCode, request: Request, response: Response) -> dict:
+    from starshot.v2 import discord_identity, ratelimit
 
+    ratelimit.throttle_login(f"discord:{ratelimit.client_ip(request)}")
     try:
         user = discord_identity.exchange_discord_code(
             body.code, body.code_verifier, body.redirect_uri
@@ -354,10 +475,14 @@ def discord_login(body: DiscordAuthCode, response: Response) -> dict:
         raise HTTPException(
             status_code=401, detail="Discord sign-in could not be verified. Try again."
         )
+    email = user.get("email") if user.get("email_verified") else None
+    if body.link:
+        return _link_provider_to_current("discord", user["sub"], email, request)
     return _external_login(
         "discord",
         user["sub"],
         response,
+        request,
         email=user.get("email"),
         email_verified=bool(user.get("email_verified")),
     )
@@ -367,9 +492,33 @@ def discord_login(body: DiscordAuthCode, response: Response) -> dict:
 def logout(request: Request, response: Response) -> dict:
     token = request.cookies.get(SESSION_COOKIE)
     if token:
-        get_v2_store().delete_session(security.session_token_hash(token))
+        store = get_v2_store()
+        token_hash = security.session_token_hash(token)
+        user = store.get_session_user(token_hash)
+        store.delete_session(token_hash)
+        # A guest is a temporary session, not an account: leaving the ship
+        # scuttles the guest identity and any content tied to it.
+        if user is not None and user.get("is_guest"):
+            store.delete_account(user["id"])
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
+
+
+def onboarding_flags(user: dict) -> dict:
+    """What first-login (or re-acceptance) onboarding still owes us. Guests
+    never onboard: they accepted the guest notice and have no account."""
+    from starshot.v2 import policies
+
+    if user.get("is_guest"):
+        return {"needs_terms": False, "needs_display_name": False}
+    current = policies.current_versions()
+    return {
+        "needs_terms": (
+            user.get("terms_version") != current["terms_version"]
+            or user.get("privacy_version") != current["privacy_version"]
+        ),
+        "needs_display_name": not bool(user.get("name_confirmed")),
+    }
 
 
 @router.get("/me")
@@ -383,6 +532,23 @@ def me(request: Request) -> dict:
         "user": _public_profile(user),
         "matches": matches,
         "is_admin": user["username"].lower() in admin_usernames(),
+        **onboarding_flags(user),
+    }
+
+
+@router.get("/policies")
+def get_policies() -> dict:
+    """Current Terms of Service and Privacy Policy (single-source documents)."""
+    from starshot.v2 import policies
+
+    return {
+        kind: {
+            "title": policy["title"],
+            "version": policy["version"],
+            "effective_date": policy["effective_date"],
+            "text": policy["text"],
+        }
+        for kind, policy in ((k, policies.get_policy(k)) for k in ("terms", "privacy"))
     }
 
 
@@ -393,7 +559,7 @@ class PasswordChange(BaseModel):
 
 @router.post("/auth/password")
 def change_password(body: PasswordChange, request: Request) -> dict:
-    user = _current_user(request)
+    user = _registered_user(request)
     if not security.verify_password(body.current_password, user["pass_hash"]):
         raise HTTPException(status_code=401, detail="Current password is wrong.")
     get_v2_store().update_password(user["id"], security.hash_password(body.new_password))
@@ -415,13 +581,18 @@ FLAGGED_NAME_WARNING = (
 def set_display_name(body: DisplayNameChange, request: Request) -> dict:
     from starshot.v2 import names
 
-    user = _current_user(request)
+    user = _registered_user(request)  # guests never get a public profile name
     store = get_v2_store()
     proposed = " ".join(body.display_name.split())
     if not names.valid_display_name(proposed):
         raise HTTPException(
             status_code=400,
             detail="Display names are 3-24 characters: letters, digits, spaces, ' - _ or .",
+        )
+    if names.is_reserved_name(proposed):
+        raise HTTPException(
+            status_code=400,
+            detail="That name be reserved for the crown — no posing as admins, moderators, guests, or StarShot itself.",
         )
     if store.is_illegal_name(proposed):
         raise HTTPException(
@@ -478,7 +649,7 @@ class FeedbackRequest(BaseModel):
 
 @router.post("/feedback")
 def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
-    user = _current_user(request)
+    user = _registered_user(request)  # feedback persists on the account; guests can't
     store = get_v2_store()
     game_log = ""
     screenshot_data_url = ""
