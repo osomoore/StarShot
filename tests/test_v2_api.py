@@ -423,10 +423,12 @@ class FeedbackTests(unittest.TestCase):
                 "game_id": game_id,
                 "match_id": match_id,
                 "is_bug_report": True,
+                "screenshot_data_url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==",
             },
         )
         self.assertEqual(feedback.status_code, 200, feedback.text)
         self.assertIn("StarShot Debug Log", feedback.json()["feedback"]["game_log"])
+        self.assertTrue(feedback.json()["feedback"]["screenshot_data_url"].startswith("data:image/svg+xml;base64,"))
 
     def test_feedback_validates_rating(self) -> None:
         player = make_client()

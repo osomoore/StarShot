@@ -949,67 +949,101 @@
     return dataUrl || "";
   }
 
-  async function captureAppScreenshot() {
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  function encodeBase64Utf8(text) {
+    const bytes = new TextEncoder().encode(text);
+    const chunks = [];
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      chunks.push(String.fromCharCode(...bytes.subarray(index, index + 0x8000)));
+    }
+    return btoa(chunks.join(""));
+  }
+
+  function screenshotSvgDataUrl(markup, rawWidth, rawHeight) {
+    const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${rawWidth}" height="${rawHeight}" viewBox="0 0 ${rawWidth} ${rawHeight}">
+      <foreignObject x="0" y="0" width="${rawWidth}" height="${rawHeight}">${markup}</foreignObject>
+    </svg>`;
+    const dataUrl = `data:image/svg+xml;base64,${encodeBase64Utf8(svgText)}`;
+    return dataUrl.length <= 2300000 ? dataUrl : "";
+  }
+
+  function screenshotDocumentMarkup(rawWidth, rawHeight, includeFullCss = true) {
+    const bodyClone = document.body.cloneNode(true);
+    bodyClone.querySelector("#feedback-overlay")?.remove();
+    bodyClone.querySelectorAll("script").forEach((script) => script.remove());
+    replaceCanvasesForScreenshot(bodyClone);
+    const cssText = includeFullCss
+      ? feedbackScreenshotStyles()
+      : `
+        html,body{margin:0;width:${rawWidth}px;height:${rawHeight}px;overflow:hidden;background:#070b16;color:#e8e0cc;font-family:Arial,sans-serif}
+        *{box-sizing:border-box}
+        .hidden{display:none!important}
+        .screen{min-height:100vh}
+        .overlay{display:none!important}
+      `;
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+    wrapper.setAttribute("style", `margin:0;width:${rawWidth}px;height:${rawHeight}px;overflow:hidden;background:#070b16;color:#e8e0cc;`);
+    const style = document.createElement("style");
+    style.textContent = cssText;
+    wrapper.appendChild(style);
+    while (bodyClone.firstChild) wrapper.appendChild(bodyClone.firstChild);
+    return new XMLSerializer().serializeToString(wrapper);
+  }
+
+  function drawScreenshotFallback(ctx, rawWidth, rawHeight, error) {
+    const activeScreen = [...document.querySelectorAll(".screen")]
+      .find((screen) => !screen.classList.contains("hidden"));
+    const banner = document.getElementById("game-banner")?.textContent?.trim() || "";
+    const matchName = document.querySelector(".match-row.your-turn .match-name")?.textContent?.trim() || "";
+    ctx.save();
+    ctx.fillStyle = "#060a14";
+    ctx.fillRect(0, 0, rawWidth, rawHeight);
+    ctx.fillStyle = "#d4a748";
+    ctx.font = "700 22px Arial, sans-serif";
+    ctx.fillText("StarShot Bug Report Screenshot", 18, 34);
+    ctx.fillStyle = "#e8e0cc";
+    ctx.font = "14px Arial, sans-serif";
+    const lines = [
+      "The browser blocked DOM screenshot rendering, so this fallback image was attached instead.",
+      `Viewport: ${rawWidth} x ${rawHeight}`,
+      activeScreen ? `Active screen: ${activeScreen.id || activeScreen.className || "unknown"}` : "Active screen: unknown",
+      banner ? `Game banner: ${banner}` : "",
+      matchName ? `Your turn row: ${matchName}` : "",
+      error && error.message ? `Capture error: ${error.message}` : "",
+    ].filter(Boolean);
+    lines.forEach((line, index) => ctx.fillText(line.slice(0, 130), 18, 66 + index * 22));
+    ctx.restore();
+  }
+
+  function fallbackScreenshotDataUrl(rawWidth = 800, rawHeight = 480, error = null) {
     try {
-      const rawWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1));
-      const rawHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
-      const scale = Math.min(1, 1000 / Math.max(rawWidth, rawHeight));
-      const width = Math.max(1, Math.round(rawWidth * scale));
-      const height = Math.max(1, Math.round(rawHeight * scale));
+      const width = Math.max(320, Math.min(1000, Math.round(rawWidth || 800)));
+      const height = Math.max(220, Math.min(800, Math.round(rawHeight || 480)));
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      ctx.fillStyle = "#060a14";
-      ctx.fillRect(0, 0, rawWidth, rawHeight);
-      const htmlClone = document.documentElement.cloneNode(true);
-      htmlClone.querySelector("#feedback-overlay")?.remove();
-      htmlClone.querySelectorAll("script").forEach((script) => script.remove());
-      htmlClone.style.width = `${rawWidth}px`;
-      htmlClone.style.height = `${rawHeight}px`;
-      htmlClone.style.overflow = "hidden";
-      const clonedBody = htmlClone.querySelector("body");
-      if (clonedBody) {
-        clonedBody.style.width = `${rawWidth}px`;
-        clonedBody.style.height = `${rawHeight}px`;
-        clonedBody.style.overflow = "hidden";
-      }
-      replaceCanvasesForScreenshot(htmlClone);
-      const cssText = feedbackScreenshotStyles();
-      htmlClone.querySelectorAll("link[rel='stylesheet']").forEach((link) => link.remove());
-      let head = htmlClone.querySelector("head");
-      if (!head) {
-        head = document.createElement("head");
-        htmlClone.insertBefore(head, htmlClone.firstChild);
-      }
-      const style = document.createElement("style");
-      style.textContent = cssText;
-      head.appendChild(style);
-      const html = new XMLSerializer().serializeToString(htmlClone);
-      const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${rawWidth}" height="${rawHeight}" viewBox="0 0 ${rawWidth} ${rawHeight}">
-        <foreignObject x="0" y="0" width="${rawWidth}" height="${rawHeight}">
-          ${html}
-        </foreignObject>
-      </svg>`;
-      const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      try {
-        const image = await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = url;
-        });
-        ctx.drawImage(image, 0, 0, rawWidth, rawHeight);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      return screenshotDataUrl(canvas);
+      drawScreenshotFallback(ctx, width, height, error);
+      return screenshotDataUrl(canvas) || "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+    } catch (fallbackError) {
+      console.warn("[StarShot feedback screenshot fallback]", fallbackError);
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+    }
+  }
+
+  async function captureAppScreenshot() {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const rawWidth = Math.max(1, Math.round(window.innerWidth || document.documentElement.clientWidth || 1));
+    const rawHeight = Math.max(1, Math.round(window.innerHeight || document.documentElement.clientHeight || 1));
+    try {
+      const fullSvg = screenshotSvgDataUrl(screenshotDocumentMarkup(rawWidth, rawHeight, true), rawWidth, rawHeight);
+      if (fullSvg) return fullSvg;
+      const simpleSvg = screenshotSvgDataUrl(screenshotDocumentMarkup(rawWidth, rawHeight, false), rawWidth, rawHeight);
+      if (simpleSvg) return simpleSvg;
+      return fallbackScreenshotDataUrl(rawWidth, rawHeight, new Error("Screenshot SVG was too large to attach."));
     } catch (error) {
       console.warn("[StarShot feedback screenshot]", error);
-      return "";
+      return fallbackScreenshotDataUrl(rawWidth, rawHeight, error);
     }
   }
 

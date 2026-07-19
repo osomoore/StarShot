@@ -708,6 +708,7 @@ def submit_feedback(body: FeedbackRequest, request: Request) -> dict:
                 "data:image/png;base64,",
                 "data:image/jpeg;base64,",
                 "data:image/webp;base64,",
+                "data:image/svg+xml;base64,",
             )):
                 screenshot_data_url = body.screenshot_data_url
     feedback = store.create_feedback(

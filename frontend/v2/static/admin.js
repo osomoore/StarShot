@@ -779,6 +779,7 @@
   function screenshotExtension(dataUrl) {
     const match = /^data:image\/([a-z0-9.+-]+);base64,/i.exec(dataUrl || "");
     const type = (match && match[1] || "png").toLowerCase();
+    if (type === "svg+xml") return "svg";
     return type === "jpeg" ? "jpg" : type.replace(/[^a-z0-9]/g, "") || "png";
   }
   function screenshotBlock(entry) {

@@ -2,27 +2,19 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
-## 2026-07-19 16:04 -05:00
+## 2026-07-19 16:34 -05:00
 
-- Title: Raid action button space
-- Build ID: `f2b8bfb`
+- Title: Feedback and raid UI fixes
+- Build ID: `c3f2db8`
 - AI agent: Codex
 - Summary:
-  - Gave lobby match rows a dedicated desktop action column so Review, Give Orders, and icon buttons have guaranteed horizontal space.
-  - Allowed raid details and metadata to wrap in the flexible info column, while preserving stacked mobile match rows.
-  - Bumped `pirate.css` to v68 and `lobby.js` to v44 in `index.html`.
-  - Verified with `node --check frontend/v2/static/lobby.js` and `git diff --check -- frontend/v2/static/lobby.js frontend/v2/static/pirate.css frontend/v2/index.html`.
-
-## 2026-07-19 16:02 -05:00
-
-- Title: Mobile feedback screenshots
-- Build ID: `f2b8bfb`
-- AI agent: Codex
-- Summary:
-  - Changed bug-report screenshots to clone the full page and remove only the Feedback popup, so the mobile topbar/HUD/UI remain part of the capture.
-  - Added screenshot compression/downscaling under the backend payload limit and kept canvas content in the cloned page.
-  - Reserved a visible checkbox column for the StarBreach replay pause rollout on mobile, and bumped `pirate.css` to v67 and `lobby.js` to v43 in `index.html`.
-  - Verified with `node --check frontend/v2/static/lobby.js` and `git diff --check -- frontend/v2/static/lobby.js frontend/v2/static/pirate.css frontend/v2/index.html`.
+  - Gave desktop lobby match rows a dedicated action column so Review, Give Orders, and icon buttons keep enough horizontal space while raid details wrap in the flexible text column.
+  - Fixed the mobile StarBreach replay pause rollout so the Pause checkbox has an explicit visible column when the banner expands.
+  - Reworked bug-report screenshots to remove only the Feedback popup from the cloned UI and submit the serialized DOM snapshot directly as `data:image/svg+xml;base64,...`, avoiding canvas taint/export failures seen on desktop.
+  - Allowed SVG screenshot data through the feedback API, made admin downloads use `.svg`, and added API coverage that SVG screenshots are preserved for seated bug reports.
+  - Bumped `pirate.css` to v68, `lobby.js` to v48, and `admin.js` to v31.
+  - Open bug: desktop SVG bug-report screenshots now work, but mobile SVG screenshots can render with mixed-up layout/content; leaving that known issue for a future pass.
+  - Verified with `python -m unittest tests.test_v2_api.FeedbackTests`, `node --check frontend/v2/static/lobby.js`, `node --check frontend/v2/static/admin.js`, and `git diff --check -- backend/starshot/v2/router.py docs/context/ai_changelog.md frontend/v2/admin.html frontend/v2/index.html frontend/v2/static/admin.js frontend/v2/static/lobby.js tests/test_v2_api.py`.
 
 ## 2026-07-19 15:51:13 -05:00
 
