@@ -141,24 +141,60 @@
     });
   }
 
-  function initMicrosoftSignIn() {
-    const button = document.getElementById("microsoft-signin");
-    if (!button || !window.msal?.PublicClientApplication) return;
-    const msalApp = new msal.PublicClientApplication({
-      auth: {
-        clientId: MICROSOFT_CLIENT_ID,
-        authority: "https://login.microsoftonline.com/common",
-        redirectUri: "https://david.cybrwzrds.com/v2/",
-      },
-      cache: { cacheLocation: "sessionStorage" },
+  // Lazily create the MSAL app on first use. The library script loads async,
+  // so this waits for it to arrive rather than assuming it is already here.
+  let msalAppPromise = null;
+  function getMsalApp() {
+    if (!msalAppPromise) {
+      msalAppPromise = waitForGlobal(() => window.msal?.PublicClientApplication, 10000)
+        .then(async () => {
+          const app = new msal.PublicClientApplication({
+            auth: {
+              clientId: MICROSOFT_CLIENT_ID,
+              authority: "https://login.microsoftonline.com/common",
+              redirectUri: "https://david.cybrwzrds.com/v2/",
+            },
+            cache: { cacheLocation: "sessionStorage" },
+          });
+          await app.initialize();
+          return app;
+        })
+        .catch((error) => {
+          // Let the next click retry instead of caching the failure forever.
+          msalAppPromise = null;
+          throw error;
+        });
+    }
+    return msalAppPromise;
+  }
+
+  function waitForGlobal(test, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      if (test()) return resolve();
+      let waited = 0;
+      const timer = setInterval(() => {
+        if (test()) {
+          clearInterval(timer);
+          resolve();
+        } else if ((waited += 100) >= timeoutMs) {
+          clearInterval(timer);
+          reject(new Error("Microsoft sign-in could not load. Check yer connection and try again."));
+        }
+      }, 100);
     });
-    const ready = msalApp.initialize();
+  }
+
+  function initMicrosoftSignIn() {
+    // Attach the handler unconditionally so the button is always live; MSAL is
+    // fetched on demand inside the click, and load failures show as an error.
+    const button = document.getElementById("microsoft-signin");
+    if (!button) return;
     button.addEventListener("click", async () => {
       const errorBox = document.getElementById("auth-error");
       errorBox.textContent = "";
       try {
-        await ready;
-        const result = await msalApp.loginPopup({
+        const app = await getMsalApp();
+        const result = await app.loginPopup({
           scopes: ["openid", "profile", "email"],
           prompt: "select_account",
         });
@@ -183,9 +219,8 @@
     if (window.google?.accounts?.id) initGoogleSignIn();
     else window.onGoogleLibraryLoad = initGoogleSignIn;
 
-    // MSAL loads async too, but has no load hook of its own.
-    if (window.msal?.PublicClientApplication) initMicrosoftSignIn();
-    else document.querySelector('script[src*="msal-browser"]')?.addEventListener("load", initMicrosoftSignIn);
+    // The button attaches its own handler immediately and loads MSAL on click.
+    initMicrosoftSignIn();
 
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
     document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));
