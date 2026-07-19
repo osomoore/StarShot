@@ -5,7 +5,7 @@
       icon: "🏴‍☠", title: "Welcome aboard, Captain!",
       body: `StarShot is a battle of <b>void corsairs</b>. Plunder vaults, outfly rivals, and blast
         their ships to scrap. <b>Most Victory Points after 6 rounds wins</b> — or be the last ship
-        flying and take it all early.`,
+        flying and take it all early.  Pick "Digital Duel" to jump right in, or read the tutorial first.`,
     },
     {
       icon: "🗺", title: "How a round works",
@@ -70,7 +70,7 @@
       body: `<b>Player Duel</b> finds you a live opponent. <b>Digital Duel</b> throws you
         straight into a fight with the Bloodthirsty digital scallywag. <b>Choose your battles</b> lets you
         battle up to three enemies, choose enemy AI's like the Freebooter (chases loot) or leave some seats
-        open for human foes.
+        open for human foes.  Select "Digital Duel" to enter your first fight, or browse around.
         Win battles to climb the leaderboard. Fair winds and full broadsides!`,
     },
   ];
