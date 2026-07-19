@@ -24,6 +24,8 @@
     login: (username, password) => post("/auth/login", { username, password }),
     googleLogin: (credential) => post("/auth/google", { credential }),
     microsoftLogin: (credential) => post("/auth/microsoft", { credential }),
+    discordLogin: (code, codeVerifier, redirectUri) =>
+      post("/auth/discord", { code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
     setDisplayName: (displayName) => post("/profile/display-name", { display_name: displayName }),

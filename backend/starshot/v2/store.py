@@ -161,10 +161,20 @@ _MIGRATIONS = (
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)",
     "ALTER TABLE users ADD COLUMN microsoft_sub TEXT",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_microsoft_sub ON users(microsoft_sub)",
+    "ALTER TABLE users ADD COLUMN discord_sub TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_discord_sub ON users(discord_sub)",
+    # Verified email captured from external sign-ins; used to link a new
+    # provider identity to an account that already proved the same address.
+    "ALTER TABLE users ADD COLUMN email TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email COLLATE NOCASE)",
 )
 
 # External sign-in providers and the users column holding each one's subject.
-_EXTERNAL_SUB_COLUMNS = {"google": "google_sub", "microsoft": "microsoft_sub"}
+_EXTERNAL_SUB_COLUMNS = {
+    "google": "google_sub",
+    "microsoft": "microsoft_sub",
+    "discord": "discord_sub",
+}
 
 # Effective public name: the chosen display name, or the username until one is set.
 _DISPLAY = "COALESCE(NULLIF(u.display_name, ''), u.username)"
@@ -231,8 +241,45 @@ class V2Store:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_user_by_verified_email(self, email: str) -> dict | None:
+        """The account that owns a verified email, if any. Only external
+        sign-ins ever store an email, and only after the provider verified it,
+        so a hit here is safe to link a new provider identity to. Oldest
+        account wins if two somehow share the address."""
+        if not email:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE email = ? COLLATE NOCASE ORDER BY id ASC LIMIT 1",
+                (email,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def link_external_sub(
+        self, user_id: int, provider: str, sub: str, email: str | None = None
+    ) -> None:
+        """Attach a provider identity to an existing account. Only fills the
+        provider's slot when it is still empty (never clobbers a prior link),
+        and backfills the verified email if the account had none."""
+        column = _EXTERNAL_SUB_COLUMNS[provider]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE users SET {column} = ? WHERE id = ? AND {column} IS NULL",
+                (sub, user_id),
+            )
+            if email:
+                conn.execute(
+                    "UPDATE users SET email = ? WHERE id = ? AND (email IS NULL OR email = '')",
+                    (email, user_id),
+                )
+
     def create_external_user(
-        self, provider: str, sub: str, username: str, display_name: str | None = None
+        self,
+        provider: str,
+        sub: str,
+        username: str,
+        display_name: str | None = None,
+        email: str | None = None,
     ) -> dict:
         # Externally-linked accounts have no usable password: the '!<provider>'
         # sentinel never parses as a pbkdf2 hash, so verify_password always
@@ -240,9 +287,9 @@ class V2Store:
         column = _EXTERNAL_SUB_COLUMNS[provider]
         with self._connect() as conn:
             cursor = conn.execute(
-                f"INSERT INTO users (username, pass_hash, {column}, display_name, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (username, "!" + provider, sub, display_name, _now()),
+                f"INSERT INTO users (username, pass_hash, {column}, display_name, email, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (username, "!" + provider, sub, display_name, email, _now()),
             )
             return {"id": cursor.lastrowid, "username": username}
 

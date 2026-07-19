@@ -4,6 +4,12 @@
   // and MICROSOFT_CLIENT_ID.
   const GOOGLE_CLIENT_ID = "767497052681-as1k10s8i67r1p498i0l8thv4eht0qft.apps.googleusercontent.com";
   const MICROSOFT_CLIENT_ID = "8020ec54-185e-476a-9d7a-74c3d47a7a8c";
+  // Discord Public Client (PKCE, no secret). The redirect URI must match the
+  // value registered in the Discord developer portal exactly.
+  const DISCORD_CLIENT_ID = "1528360566857535590";
+  const DISCORD_REDIRECT_URI = "https://david.cybrwzrds.com/v2";
+  const DISCORD_STATE_KEY = "discord_oauth_state";
+  const DISCORD_VERIFIER_KEY = "discord_pkce_verifier";
   let authMode = "login";
   let lastDeviceDiagnosticsKey = "";
 
@@ -208,6 +214,99 @@
     });
   }
 
+  // ── Discord: OAuth2 Authorization Code + PKCE ──────────────────────────
+  // Unlike Google/Microsoft (which hand us an ID token in the page), Discord
+  // uses a full redirect: we send the browser to Discord with a PKCE challenge,
+  // Discord bounces back to DISCORD_REDIRECT_URI with a one-time ?code, and the
+  // backend redeems it. The verifier and state live in sessionStorage across
+  // the round trip.
+  function base64UrlEncode(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomUrlToken(byteLength) {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    return base64UrlEncode(bytes);
+  }
+
+  async function pkceChallenge(verifier) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    return base64UrlEncode(digest);
+  }
+
+  function initDiscordSignIn() {
+    const button = document.getElementById("discord-signin");
+    if (!button) return;
+    button.addEventListener("click", async () => {
+      const errorBox = document.getElementById("auth-error");
+      errorBox.textContent = "";
+      try {
+        const verifier = randomUrlToken(32);   // 43 chars — a valid PKCE verifier
+        const state = randomUrlToken(16);
+        const challenge = await pkceChallenge(verifier);
+        sessionStorage.setItem(DISCORD_VERIFIER_KEY, verifier);
+        sessionStorage.setItem(DISCORD_STATE_KEY, state);
+        const params = new URLSearchParams({
+          client_id: DISCORD_CLIENT_ID,
+          response_type: "code",
+          redirect_uri: DISCORD_REDIRECT_URI,
+          scope: "identify email",
+          state,
+          code_challenge: challenge,
+          code_challenge_method: "S256",
+        });
+        window.location.assign("https://discord.com/oauth2/authorize?" + params.toString());
+      } catch (error) {
+        errorBox.textContent = "Discord sign-in could not start. Try again.";
+      }
+    });
+  }
+
+  // Returns true when the current page load is a Discord redirect we handled
+  // (so the normal session boot is skipped).
+  async function handleDiscordCallback() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    const returnedState = params.get("state");
+    const providerError = params.get("error");
+    const storedState = sessionStorage.getItem(DISCORD_STATE_KEY);
+    const verifier = sessionStorage.getItem(DISCORD_VERIFIER_KEY);
+    // Only act on a redirect we actually started (state + verifier stashed).
+    if (!storedState || !verifier) return false;
+    if (!code && !providerError) return false;
+
+    sessionStorage.removeItem(DISCORD_STATE_KEY);
+    sessionStorage.removeItem(DISCORD_VERIFIER_KEY);
+    history.replaceState(null, "", location.pathname);  // drop the OAuth params
+    const errorBox = document.getElementById("auth-error");
+    errorBox.textContent = "";
+
+    if (providerError || !code) {
+      showScreen("auth");
+      if (providerError !== "access_denied") {
+        errorBox.textContent = "Discord sign-in was cancelled or failed. Try again.";
+      }
+      return true;
+    }
+    if (returnedState !== storedState) {
+      showScreen("auth");
+      errorBox.textContent = "Discord sign-in failed a security check. Try again.";
+      return true;
+    }
+    try {
+      await API.discordLogin(code, verifier, DISCORD_REDIRECT_URI);
+      Lobby.enter();
+    } catch (error) {
+      showScreen("auth");
+      errorBox.textContent = error.message;
+    }
+    return true;
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     applyDeviceMode("v2-dom-content-loaded");
     window.addEventListener("resize", () => applyDeviceMode("v2-resize"));
@@ -221,6 +320,9 @@
 
     // The button attaches its own handler immediately and loads MSAL on click.
     initMicrosoftSignIn();
+
+    // Discord redirects the whole page, so its button just needs a click handler.
+    initDiscordSignIn();
 
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
     document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));
@@ -239,6 +341,10 @@
         errorBox.textContent = error.message;
       }
     });
+
+    // A Discord redirect (?code=&state=) lands us back here — complete that
+    // sign-in instead of the normal session boot.
+    if (await handleDiscordCallback()) return;
 
     // Session check: deep-link straight into a game (?game=<id>) or the lobby.
     try {

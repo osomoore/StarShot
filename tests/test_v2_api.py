@@ -206,6 +206,124 @@ class MicrosoftAuthTests(unittest.TestCase):
         self.assertNotEqual(google_user["username"], microsoft_user["username"])
 
 
+class DiscordAuthTests(unittest.TestCase):
+    USER = {
+        "sub": "discord-sub-123",
+        "email": "cap@example.com",
+        "email_verified": True,
+        "username": "SaltyCap",
+        "avatar_url": None,
+    }
+    BODY = {
+        "code": "auth-code-abc",
+        "code_verifier": "v" * 43,
+        "redirect_uri": "https://david.cybrwzrds.com/v2",
+    }
+
+    def test_discord_login_creates_then_reuses_account(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.discord_identity.exchange_discord_code", return_value=self.USER
+        ) as exchange:
+            first = client.post("/api/v2/auth/discord", json=self.BODY)
+        self.assertEqual(first.status_code, 200, first.text)
+        exchange.assert_called_once_with(
+            self.BODY["code"], self.BODY["code_verifier"], self.BODY["redirect_uri"]
+        )
+        user = first.json()["user"]
+
+        # A second sign-in with the same Discord id reuses the same account.
+        other = make_client()
+        with mock.patch(
+            "starshot.v2.discord_identity.exchange_discord_code", return_value=self.USER
+        ):
+            second = other.post("/api/v2/auth/discord", json=self.BODY)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["user"]["username"], user["username"])
+
+        # No password back door into a Discord-linked account.
+        bad = make_client().post(
+            "/api/v2/auth/login", json={"username": user["username"], "password": "!discord"}
+        )
+        self.assertEqual(bad.status_code, 401)
+
+    def test_discord_login_rejects_failed_exchange(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.discord_identity.exchange_discord_code",
+            side_effect=ValueError("bad code"),
+        ):
+            response = client.post("/api/v2/auth/discord", json=self.BODY)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(client.get("/api/v2/me").status_code, 401)
+
+    def test_discord_links_to_existing_account_by_verified_email(self) -> None:
+        from unittest import mock
+
+        shared_email = "shared@example.com"
+        # First, a Google sign-in creates an account carrying the verified email.
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            return_value={
+                "iss": "https://accounts.google.com",
+                "sub": "google-email-link",
+                "email": shared_email,
+                "email_verified": True,
+            },
+        ):
+            google_user = (
+                make_client()
+                .post("/api/v2/auth/google", json={"credential": "x" * 40})
+                .json()["user"]
+            )
+
+        # A Discord sign-in with the same verified email links to that account.
+        with mock.patch(
+            "starshot.v2.discord_identity.exchange_discord_code",
+            return_value={**self.USER, "sub": "discord-email-link", "email": shared_email},
+        ):
+            discord_user = (
+                make_client().post("/api/v2/auth/discord", json=self.BODY).json()["user"]
+            )
+        self.assertEqual(discord_user["username"], google_user["username"])
+
+    def test_discord_unverified_email_does_not_link(self) -> None:
+        from unittest import mock
+
+        shared_email = "unverified@example.com"
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            return_value={
+                "iss": "https://accounts.google.com",
+                "sub": "google-noverify-link",
+                "email": shared_email,
+                "email_verified": True,
+            },
+        ):
+            google_user = (
+                make_client()
+                .post("/api/v2/auth/google", json={"credential": "x" * 40})
+                .json()["user"]
+            )
+        with mock.patch(
+            "starshot.v2.discord_identity.exchange_discord_code",
+            return_value={
+                **self.USER,
+                "sub": "discord-noverify-link",
+                "email": shared_email,
+                "email_verified": False,
+            },
+        ):
+            discord_user = (
+                make_client().post("/api/v2/auth/discord", json=self.BODY).json()["user"]
+            )
+        self.assertNotEqual(discord_user["username"], google_user["username"])
+
+
 class FeedbackTests(unittest.TestCase):
     def admin_client(self) -> TestClient:
         client = make_client()

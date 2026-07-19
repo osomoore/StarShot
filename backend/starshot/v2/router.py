@@ -241,19 +241,45 @@ class ExternalCredential(BaseModel):
     credential: str = Field(min_length=20, max_length=4096)
 
 
-def _external_login(provider: str, sub: str, response: Response) -> dict:
-    """Sign in with a verified external identity; the provider's sub claim is
-    the linked identity. First sign-in creates an account with a generated
-    username and a random piratey display name."""
+def _external_login(
+    provider: str,
+    sub: str,
+    response: Response,
+    *,
+    email: str | None = None,
+    email_verified: bool = False,
+) -> dict:
+    """Sign in with a verified external identity; the provider's sub is the
+    permanent linked identity. Google, Microsoft, and Discord all funnel through
+    here so account linking and session creation live in one place.
+
+    Resolution order:
+      1. An account already linked to this (provider, sub) — log in.
+      2. Otherwise, an account carrying the same *verified* email — link this
+         provider identity to it and log in.
+      3. Otherwise, create a new account with a generated username and a random
+         piratey display name.
+    """
     from starshot.v2 import names
 
     store = get_v2_store()
+    verified_email = email if (email and email_verified) else None
+
     user = store.get_user_by_external_sub(provider, sub)
+    if user is None and verified_email:
+        existing = store.get_user_by_verified_email(verified_email)
+        if existing is not None and not existing.get(f"{provider}_sub"):
+            store.link_external_sub(existing["id"], provider, sub, verified_email)
+            user = store.get_user_by_external_sub(provider, sub)
     if user is None:
         for _ in range(20):
             try:
                 created = store.create_external_user(
-                    provider, sub, "captain-" + secrets.token_hex(4), names.random_pirate_name()
+                    provider,
+                    sub,
+                    "captain-" + secrets.token_hex(4),
+                    names.random_pirate_name(),
+                    email=verified_email,
                 )
                 user = store.get_user(created["id"])
                 break
@@ -279,7 +305,13 @@ def google_login(body: ExternalCredential, response: Response) -> dict:
         raise HTTPException(
             status_code=401, detail="Google sign-in could not be verified. Try again."
         )
-    return _external_login("google", str(claims["sub"]), response)
+    return _external_login(
+        "google",
+        str(claims["sub"]),
+        response,
+        email=claims.get("email"),
+        email_verified=bool(claims.get("email_verified")),
+    )
 
 
 @router.post("/auth/microsoft")
@@ -292,7 +324,43 @@ def microsoft_login(body: ExternalCredential, response: Response) -> dict:
         raise HTTPException(
             status_code=401, detail="Microsoft sign-in could not be verified. Try again."
         )
-    return _external_login("microsoft", str(claims["sub"]), response)
+    # Microsoft issues the token only after authenticating the account, so an
+    # email/upn it carries belongs to that verified user.
+    email = claims.get("email") or claims.get("preferred_username")
+    return _external_login(
+        "microsoft",
+        str(claims["sub"]),
+        response,
+        email=email if isinstance(email, str) and "@" in email else None,
+        email_verified=True,
+    )
+
+
+class DiscordAuthCode(BaseModel):
+    code: str = Field(min_length=1, max_length=512)
+    code_verifier: str = Field(min_length=43, max_length=128)
+    redirect_uri: str = Field(min_length=1, max_length=512)
+
+
+@router.post("/auth/discord")
+def discord_login(body: DiscordAuthCode, response: Response) -> dict:
+    from starshot.v2 import discord_identity
+
+    try:
+        user = discord_identity.exchange_discord_code(
+            body.code, body.code_verifier, body.redirect_uri
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=401, detail="Discord sign-in could not be verified. Try again."
+        )
+    return _external_login(
+        "discord",
+        user["sub"],
+        response,
+        email=user.get("email"),
+        email_verified=bool(user.get("email_verified")),
+    )
 
 
 @router.post("/auth/logout")

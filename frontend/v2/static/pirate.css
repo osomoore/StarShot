@@ -139,6 +139,13 @@ h1, h2, .brand, .poster-title, .banner-text {
   font-size: 14px; font-family: inherit; cursor: pointer;
 }
 .microsoft-signin:hover { background: #f7f8f8; }
+.discord-signin {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 280px; min-height: 40px; margin-top: 10px; padding: 0 12px;
+  background: #5865f2; color: #fff; border: 1px solid #4752c4; border-radius: 20px;
+  font-size: 14px; font-family: inherit; cursor: pointer;
+}
+.discord-signin:hover { background: #4752c4; }
 
 /* ── topbar ──────────────────────────────── */
 .topbar {
