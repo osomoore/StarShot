@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import secrets
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -232,6 +233,46 @@ def login(credentials: Credentials, response: Response) -> dict:
     user = store.get_user_by_name(credentials.username)
     if user is None or not security.verify_password(credentials.password, user["pass_hash"]):
         raise HTTPException(status_code=401, detail="Wrong name or password, matey.")
+    _set_session(response, user["id"])
+    return {"user": _public_profile(user)}
+
+
+class GoogleCredential(BaseModel):
+    credential: str = Field(min_length=20, max_length=4096)
+
+
+@router.post("/auth/google")
+def google_login(body: GoogleCredential, response: Response) -> dict:
+    """Sign in with a Google ID token; the verified sub claim is the linked
+    identity. First sign-in creates an account with a generated username and
+    a random piratey display name."""
+    from starshot.v2 import google_identity, names
+
+    try:
+        claims = google_identity.verify_google_credential(body.credential)
+    except ValueError:
+        raise HTTPException(
+            status_code=401, detail="Google sign-in could not be verified. Try again."
+        )
+    google_sub = str(claims["sub"])
+    store = get_v2_store()
+    user = store.get_user_by_google_sub(google_sub)
+    if user is None:
+        for _ in range(20):
+            try:
+                created = store.create_google_user(
+                    google_sub, "captain-" + secrets.token_hex(4), names.random_pirate_name()
+                )
+                user = store.get_user(created["id"])
+                break
+            except sqlite3.IntegrityError:
+                # Either the random username collided (retry) or a parallel
+                # sign-in already linked this sub (use that account).
+                user = store.get_user_by_google_sub(google_sub)
+                if user is not None:
+                    break
+        if user is None:
+            raise HTTPException(status_code=500, detail="Could not create yer account. Try again.")
     _set_session(response, user["id"])
     return {"user": _public_profile(user)}
 

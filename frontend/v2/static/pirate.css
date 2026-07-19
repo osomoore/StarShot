@@ -130,6 +130,8 @@ h1, h2, .brand, .poster-title, .banner-text {
 }
 #auth-form input:focus { outline: none; border-color: var(--gold); }
 .auth-error { color: #ff9a8a; min-height: 20px; margin-top: 10px; font-size: 13px; }
+.auth-divider { color: var(--ink-dim); font-size: 12px; letter-spacing: .2em; margin: 14px 0 10px; }
+.google-signin { display: flex; justify-content: center; min-height: 44px; color-scheme: light; }
 
 /* ── topbar ──────────────────────────────── */
 .topbar {

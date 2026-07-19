@@ -2,6 +2,18 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-18 20:11:01 -05:00
+
+- Title: Google Sign-In (ID-token flow)
+- Build ID: `e0f6315`
+- AI agent: Claude Code
+- Summary:
+  - Added a "Sign in with Google" button to the v2 auth screen using Google Identity Services (GIS script loaded async in `index.html`; init + button render in `app.js`).
+  - New `POST /api/v2/auth/google` verifies the credential ID token with the official `google-auth` library (signature, expiration, issuer, and audience against the public `GOOGLE_CLIENT_ID` in `backend/starshot/v2/google_identity.py`, overridable via `STARSHOT_GOOGLE_CLIENT_ID`). No client secret is used.
+  - The verified `sub` claim is the linked identity: new `users.google_sub` column (+ unique index) via idempotent migration; first sign-in creates an account with a generated `captain-<hex>` username, a random pirate display name, and an unusable password sentinel; then the normal session cookie is issued.
+  - Added `google-auth`/`requests` to `pyproject.toml` (docker-compose pip-installs on deploy) and bumped `pirate.css`/`api.js`/`app.js` query strings.
+  - Verified with new `GoogleAuthTests` in `tests/test_v2_api.py` (mocked verifier: account create/reuse, invalid-token 401, no password back door) plus `node --check` on the changed JS.
+
 ## 2026-07-18 17:18:13 -05:00
 
 - Title: Lobby setup layout polish

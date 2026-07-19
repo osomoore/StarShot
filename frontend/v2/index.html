@@ -7,10 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=IM+Fell+English:ital@0;1&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/v2/static/pirate.css?v=58">
+<link rel="stylesheet" href="/v2/static/pirate.css?v=59">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=12">
 <link rel="stylesheet" href="/v2/static/shipdesigner.css?v=3">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☠</text></svg>">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <canvas id="starfield"></canvas>
@@ -31,6 +32,8 @@
       <input id="auth-password" type="password" placeholder="Secret word" maxlength="128" autocomplete="current-password" required>
       <button id="auth-submit" type="submit" class="btn gold big">Board the Ship</button>
     </form>
+    <div class="auth-divider">— or —</div>
+    <div id="google-signin" class="google-signin"></div>
     <div id="auth-error" class="auth-error"></div>
   </div>
   <footer class="build-footer" aria-live="polite">Build time loading...</footer>
@@ -191,7 +194,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/v2/static/api.js?v=14"></script>
+<script src="/v2/static/api.js?v=15"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
 <script src="/v2/static/board.js?v=22"></script>
 <script src="/v2/static/shipview.js?v=10"></script>
@@ -202,7 +205,7 @@
 <script src="/v2/static/bossdesigner.js?v=27"></script>
 <script src="/v2/static/lobby.js?v=38"></script>
 <script src="/v2/static/game.js?v=64"></script>
-<script src="/v2/static/app.js?v=8"></script>
+<script src="/v2/static/app.js?v=9"></script>
 <script src="/v2/static/buildfooter.js?v=2"></script>
 </body>
 </html>

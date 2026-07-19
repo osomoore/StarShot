@@ -6,6 +6,9 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.116",
     "uvicorn[standard]>=0.35",
+    # Google Sign-In ID-token verification (no client secret needed).
+    "google-auth>=2.23",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,7 @@
 /* App bootstrap: auth screen + screen router + toasts. */
 (function () {
+  // Public identifier (not a secret); must match the backend's GOOGLE_CLIENT_ID.
+  const GOOGLE_CLIENT_ID = "767497052681-as1k10s8i67r1p498i0l8thv4eht0qft.apps.googleusercontent.com";
   let authMode = "login";
   let lastDeviceDiagnosticsKey = "";
 
@@ -116,12 +118,37 @@
     document.getElementById("auth-error").textContent = "";
   }
 
+  function initGoogleSignIn() {
+    const container = document.getElementById("google-signin");
+    if (!container || !window.google?.accounts?.id) return;
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: async (response) => {
+        const errorBox = document.getElementById("auth-error");
+        errorBox.textContent = "";
+        try {
+          await API.googleLogin(response.credential);
+          Lobby.enter();
+        } catch (error) {
+          errorBox.textContent = error.message;
+        }
+      },
+    });
+    google.accounts.id.renderButton(container, {
+      theme: "filled_black", size: "large", shape: "pill", text: "signin_with", width: 280,
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     applyDeviceMode("v2-dom-content-loaded");
     window.addEventListener("resize", () => applyDeviceMode("v2-resize"));
     window.addEventListener("orientationchange", () => {
       setTimeout(() => applyDeviceMode("v2-orientationchange"), 150);
     });
+
+    // The GIS script loads async: it may already be here, or arrive later.
+    if (window.google?.accounts?.id) initGoogleSignIn();
+    else window.onGoogleLibraryLoad = initGoogleSignIn;
 
     document.getElementById("tab-login").addEventListener("click", () => setAuthMode("login"));
     document.getElementById("tab-register").addEventListener("click", () => setAuthMode("register"));

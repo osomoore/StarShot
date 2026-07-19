@@ -157,6 +157,8 @@ _MIGRATIONS = (
     "ALTER TABLE users ADD COLUMN matchmaking_ok INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN leaderboard_ok INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE users ADD COLUMN must_rename INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN google_sub TEXT",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)",
 )
 
 # Effective public name: the chosen display name, or the username until one is set.
@@ -215,6 +217,27 @@ class V2Store:
                 "SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)
             ).fetchone()
             return dict(row) if row else None
+
+    def get_user_by_google_sub(self, google_sub: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE google_sub = ?", (google_sub,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def create_google_user(
+        self, google_sub: str, username: str, display_name: str | None = None
+    ) -> dict:
+        # Google-linked accounts have no usable password: the '!google'
+        # sentinel never parses as a pbkdf2 hash, so verify_password always
+        # fails and the only way in is a fresh verified Google token.
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO users (username, pass_hash, google_sub, display_name, created_at) "
+                "VALUES (?, '!google', ?, ?, ?)",
+                (username, google_sub, display_name, _now()),
+            )
+            return {"id": cursor.lastrowid, "username": username}
 
     def get_user(self, user_id: int) -> dict | None:
         with self._connect() as conn:

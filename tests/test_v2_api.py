@@ -89,6 +89,52 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class GoogleAuthTests(unittest.TestCase):
+    CLAIMS = {"iss": "https://accounts.google.com", "sub": "google-sub-123"}
+    TOKEN = {"credential": "x" * 40}
+
+    def test_google_login_creates_then_reuses_account(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential", return_value=self.CLAIMS
+        ) as verify:
+            first = client.post("/api/v2/auth/google", json=self.TOKEN)
+        self.assertEqual(first.status_code, 200, first.text)
+        verify.assert_called_once_with(self.TOKEN["credential"])
+        user = first.json()["user"]
+        self.assertTrue(user["username"].startswith("captain-"))
+        self.assertEqual(client.get("/api/v2/me").status_code, 200)
+
+        # The same sub on a fresh browser lands in the same account.
+        other = make_client()
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential", return_value=self.CLAIMS
+        ):
+            second = other.post("/api/v2/auth/google", json=self.TOKEN)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["user"]["username"], user["username"])
+
+        # No password back door into a Google-linked account.
+        bad = make_client().post(
+            "/api/v2/auth/login", json={"username": user["username"], "password": "!google"}
+        )
+        self.assertEqual(bad.status_code, 401)
+
+    def test_google_login_rejects_invalid_token(self) -> None:
+        from unittest import mock
+
+        client = make_client()
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            side_effect=ValueError("bad token"),
+        ):
+            response = client.post("/api/v2/auth/google", json=self.TOKEN)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(client.get("/api/v2/me").status_code, 401)
+
+
 class FeedbackTests(unittest.TestCase):
     def admin_client(self) -> TestClient:
         client = make_client()
