@@ -4111,12 +4111,16 @@
         <button class="btn gold" id="btn-endgame-feedback">Feedback and Bugs</button>
       </div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        ${window.Lobby?.isGuest?.() ? '<button class="btn gold" id="btn-endgame-claim">🏴‍☠ Claim My Legend</button>' : ""}
         <button class="btn ghost" id="btn-endgame-view">👁 View Battlefield</button>
         <button class="btn crimson" id="btn-endgame-replay">▶ Replay the Battle</button>
         <button class="btn ghost" id="btn-endgame-help">❓ Help</button>
         <button class="btn gold big" id="btn-endgame-port">⚓ Return to Port</button>
       </div>`;
     overlay.appendChild(box);
+    document.getElementById("btn-endgame-claim")?.addEventListener("click", () => {
+      window.Account?.openClaimModal?.();
+    });
     document.getElementById("btn-endgame-port").addEventListener("click", () => {
       overlay.classList.add("hidden");
       leave();

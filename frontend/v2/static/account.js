@@ -11,11 +11,13 @@
   // Terms version changes.
   async function maybeOnboard(me) {
     if (onboardingOpen) return;
-    if (!me || me.user.is_guest) return;
+    if (!me) return;
     if (!me.needs_terms && !me.needs_display_name) return;
     onboardingOpen = true;
     let policies = { terms: { version: "" }, privacy: { version: "" } };
-    try { policies = await API.policies(); } catch (err) { /* versions shown best-effort */ }
+    if (me.needs_terms) {
+      try { policies = await API.policies(); } catch (err) { /* versions shown best-effort */ }
+    }
 
     const needsTerms = me.needs_terms;
     const needsName = me.needs_display_name;
@@ -72,6 +74,7 @@
         overlay.remove();
         onboardingOpen = false;
         App.toast("Welcome aboard, captain!", true);
+        window.Lobby?.refresh?.().catch(() => {});
       } catch (error) {
         status.textContent = error.message;
       }
@@ -133,7 +136,7 @@
         } catch (error) { status.textContent = error.message; }
       });
       overlay.querySelector("#reauth-discord").addEventListener("click", () => {
-        App.auth.startDiscordSignIn(false).catch(() => {
+        App.auth.startDiscordSignIn().catch(() => {
           status.textContent = "Discord sign-in could not start.";
         });
       });
@@ -263,11 +266,61 @@
     });
   }
 
+  // ── Claim My Legend ──────────────────────────────────────────────────
+  // Converts the current guest voyage into a permanent account. Callable
+  // from the lobby topbar and from the game-end (endgame) overlay — it
+  // must not navigate away from an in-progress game screen.
+  function openClaimModal() {
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="picker claim-modal">
+        <h3>🏴‍☠ Claim My Legend</h3>
+        <p class="feedback-copy">Sign in with Google, Microsoft, or Discord to turn this guest
+          voyage into a permanent account — you'll keep your name, and future battles will
+          save your stats, ships, bosses, and a spot on the leaderboards.</p>
+        <div id="claim-google" class="google-signin"></div>
+        <button id="claim-microsoft" type="button" class="microsoft-signin">Sign in with Microsoft</button>
+        <button id="claim-discord" type="button" class="discord-signin">Continue with Discord</button>
+        <div class="feedback-actions">
+          <button class="btn ghost" id="claim-cancel">Not Yet</button>
+        </div>
+        <div id="claim-status" class="auth-error"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const status = overlay.querySelector("#claim-status");
+    const close = () => { overlay.remove(); App.auth.initGoogleSignIn(); };
+    overlay.querySelector("#claim-cancel").addEventListener("click", close);
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+    const onClaimed = (result) => {
+      close();
+      App.toast(`Yer legend is claimed, ${result.user.display_name} — this voyage is permanent now!`, true);
+      window.Lobby?.refresh?.().catch(() => {});
+    };
+    App.auth.renderGoogleButton(overlay.querySelector("#claim-google"), async (credential) => {
+      try { onClaimed(await API.googleLogin(credential, { claim: true })); }
+      catch (error) { status.textContent = error.message; }
+    });
+    overlay.querySelector("#claim-microsoft").addEventListener("click", async () => {
+      status.textContent = "";
+      try {
+        const idToken = await App.auth.microsoftIdToken();
+        if (!idToken) return;
+        onClaimed(await API.microsoftLogin(idToken, { claim: true }));
+      } catch (error) { status.textContent = error.message; }
+    });
+    overlay.querySelector("#claim-discord").addEventListener("click", () => {
+      App.auth.startDiscordSignIn("claim").catch(() => {
+        status.textContent = "Discord sign-in could not start.";
+      });
+    });
+  }
+
   function linkProvider(provider) {
     const status = document.getElementById("account-status");
     status.textContent = "";
     if (provider === "discord") {
-      App.auth.startDiscordSignIn(true).catch(() => { status.textContent = "Discord link could not start."; });
+      App.auth.startDiscordSignIn("link").catch(() => { status.textContent = "Discord link could not start."; });
       return;
     }
     if (provider === "microsoft") {
@@ -275,7 +328,7 @@
         try {
           const idToken = await App.auth.microsoftIdToken();
           if (!idToken) return;
-          await API.microsoftLogin(idToken, true);
+          await API.microsoftLogin(idToken, { link: true });
           App.toast("Microsoft linked.", true);
           enter();
         } catch (error) { status.textContent = error.message; }
@@ -297,7 +350,7 @@
     overlay.querySelector("#link-google-cancel").addEventListener("click", close);
     App.auth.renderGoogleButton(overlay.querySelector("#link-google"), async (credential) => {
       try {
-        await API.googleLogin(credential, true);
+        await API.googleLogin(credential, { link: true });
         close();
         App.toast("Google linked.", true);
         enter();
@@ -385,5 +438,5 @@
     document.getElementById("btn-account-back")?.addEventListener("click", () => Lobby.enter());
   });
 
-  window.Account = { enter, maybeOnboard };
+  window.Account = { enter, maybeOnboard, openClaimModal };
 })();

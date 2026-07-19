@@ -10,7 +10,7 @@
   const DISCORD_REDIRECT_URI = "https://david.cybrwzrds.com/v2";
   const DISCORD_STATE_KEY = "discord_oauth_state";
   const DISCORD_VERIFIER_KEY = "discord_pkce_verifier";
-  const DISCORD_LINK_KEY = "discord_oauth_link";
+  const DISCORD_MODE_KEY = "discord_oauth_mode"; // "" | "link" | "claim"
   let lastDeviceDiagnosticsKey = "";
 
   function mediaMatches(query) {
@@ -253,14 +253,14 @@
     return base64UrlEncode(digest);
   }
 
-  async function startDiscordSignIn(link) {
+  async function startDiscordSignIn(mode) {
     const verifier = randomUrlToken(32);   // 43 chars — a valid PKCE verifier
     const state = randomUrlToken(16);
     const challenge = await pkceChallenge(verifier);
     sessionStorage.setItem(DISCORD_VERIFIER_KEY, verifier);
     sessionStorage.setItem(DISCORD_STATE_KEY, state);
-    if (link) sessionStorage.setItem(DISCORD_LINK_KEY, "1");
-    else sessionStorage.removeItem(DISCORD_LINK_KEY);
+    if (mode) sessionStorage.setItem(DISCORD_MODE_KEY, mode);
+    else sessionStorage.removeItem(DISCORD_MODE_KEY);
     const params = new URLSearchParams({
       client_id: DISCORD_CLIENT_ID,
       response_type: "code",
@@ -280,7 +280,7 @@
       const errorBox = document.getElementById("auth-error");
       errorBox.textContent = "";
       try {
-        await startDiscordSignIn(false);
+        await startDiscordSignIn();
       } catch (error) {
         errorBox.textContent = "Discord sign-in could not start. Try again.";
       }
@@ -296,40 +296,52 @@
     const providerError = params.get("error");
     const storedState = sessionStorage.getItem(DISCORD_STATE_KEY);
     const verifier = sessionStorage.getItem(DISCORD_VERIFIER_KEY);
-    const linking = sessionStorage.getItem(DISCORD_LINK_KEY) === "1";
+    const mode = sessionStorage.getItem(DISCORD_MODE_KEY) || "";
+    const linking = mode === "link";
+    const claiming = mode === "claim";
     // Only act on a redirect we actually started (state + verifier stashed).
     if (!storedState || !verifier) return false;
     if (!code && !providerError) return false;
 
     sessionStorage.removeItem(DISCORD_STATE_KEY);
     sessionStorage.removeItem(DISCORD_VERIFIER_KEY);
-    sessionStorage.removeItem(DISCORD_LINK_KEY);
+    sessionStorage.removeItem(DISCORD_MODE_KEY);
     history.replaceState(null, "", location.pathname);  // drop the OAuth params
     const errorBox = document.getElementById("auth-error");
     errorBox.textContent = "";
 
+    const failEarly = (message) => {
+      if (linking) { Account.enter(); toast(message); }
+      else if (claiming) { Lobby.enter(); toast(message); }
+      else { showScreen("auth"); errorBox.textContent = message; }
+    };
     if (providerError || !code) {
-      showScreen("auth");
-      if (providerError !== "access_denied") {
-        errorBox.textContent = "Discord sign-in was cancelled or failed. Try again.";
-      }
+      if (providerError !== "access_denied") failEarly("Discord sign-in was cancelled or failed. Try again.");
+      else if (linking || claiming) { linking ? Account.enter() : Lobby.enter(); }
+      else showScreen("auth");
       return true;
     }
     if (returnedState !== storedState) {
-      showScreen("auth");
-      errorBox.textContent = "Discord sign-in failed a security check. Try again.";
+      failEarly("Discord sign-in failed a security check. Try again.");
       return true;
     }
     try {
-      await API.discordLogin(code, verifier, DISCORD_REDIRECT_URI, linking);
+      const opts = linking ? { link: true } : claiming ? { claim: true } : {};
+      await API.discordLogin(code, verifier, DISCORD_REDIRECT_URI, opts);
       if (linking) {
         Account.enter();
+      } else if (claiming) {
+        Lobby.enter();
+        toast("Yer legend is claimed, captain — this voyage is permanent now!", true);
       } else {
         Lobby.enter();
       }
     } catch (error) {
       if (linking) {
         Account.enter();
+        toast(error.message);
+      } else if (claiming) {
+        Lobby.enter();
         toast(error.message);
       } else {
         showScreen("auth");

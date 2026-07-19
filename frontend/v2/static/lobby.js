@@ -139,6 +139,7 @@
       // Guests have no account page or public name to manage.
       document.getElementById("btn-account")?.classList.toggle("hidden", !!me.user.is_guest);
       document.getElementById("btn-change-name")?.classList.toggle("hidden", !!me.user.is_guest);
+      document.getElementById("btn-claim-legend")?.classList.toggle("hidden", !me.user.is_guest);
       document.getElementById("lobby-admin-link").classList.toggle("hidden", !me.is_admin);
       document.querySelector(".topbar-admin-row")?.classList.toggle("hidden", !me.is_admin);
     } catch (err) { /* transient */ }
@@ -1240,6 +1241,7 @@
     });
     document.getElementById("btn-tutorial").addEventListener("click", () => Tutorial.start());
     document.getElementById("btn-feedback-lobby").addEventListener("click", () => openFeedback());
+    document.getElementById("btn-claim-legend")?.addEventListener("click", () => window.Account?.openClaimModal?.());
     const userMenu = document.getElementById("lobby-user-menu");
     const userPopup = document.getElementById("lobby-user-popup");
     userMenu?.addEventListener("click", (event) => {
@@ -1273,6 +1275,13 @@
     });
   });
 
+  function isGuest() {
+    return !!(currentUser && currentUser.is_guest);
+  }
+
   window.Feedback = { open: openFeedback };
-  window.Lobby = { enter, leave, showStarBreachTutorial, showStarCommandTutorial, openNameModal };
+  window.Lobby = {
+    enter, leave, showStarBreachTutorial, showStarCommandTutorial, openNameModal,
+    refresh, isGuest,
+  };
 })();

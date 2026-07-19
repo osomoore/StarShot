@@ -318,6 +318,9 @@ class ExternalCredential(BaseModel):
     # True when a signed-in user is attaching this provider to their existing
     # account (from the account page) rather than signing in with it.
     link: bool = False
+    # True when a signed-in guest is "Claiming their Legend" — converting
+    # their temporary voyage into a permanent account via this provider.
+    claim: bool = False
 
 
 def _link_provider_to_current(provider: str, sub: str, email: str | None, request: Request) -> dict:
@@ -343,6 +346,32 @@ def _link_provider_to_current(provider: str, sub: str, email: str | None, reques
     if token:
         store.refresh_session_auth(security.session_token_hash(token))
     return {"user": _public_profile(store.get_user(user["id"])), "linked": True}
+
+
+def _claim_guest_account(provider: str, sub: str, email: str | None, request: Request) -> dict:
+    """'Claim My Legend': convert the current guest session into a permanent
+    account by attaching a verified provider identity. Keeps the same user
+    row (and any match seat it currently holds) rather than creating a new
+    account, so the voyage in progress isn't interrupted."""
+    user = _current_user(request)
+    if not user.get("is_guest"):
+        raise HTTPException(
+            status_code=400, detail="Only a guest voyage can be claimed as a permanent account."
+        )
+    store = get_v2_store()
+    if store.get_user_by_external_sub(provider, sub) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "That sign-in already has a permanent StarShot legend — log out "
+                "of this guest voyage and sign in with it directly instead."
+            ),
+        )
+    store.claim_guest_account(user["id"], provider, sub, email)
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        store.refresh_session_auth(security.session_token_hash(token))
+    return {"user": _public_profile(store.get_user(user["id"])), "claimed": True}
 
 
 def _external_login(
@@ -418,6 +447,10 @@ def google_login(body: ExternalCredential, request: Request, response: Response)
         return _link_provider_to_current(
             "google", str(claims["sub"]), email if verified else None, request
         )
+    if body.claim:
+        return _claim_guest_account(
+            "google", str(claims["sub"]), email if verified else None, request
+        )
     return _external_login(
         "google",
         str(claims["sub"]),
@@ -445,6 +478,8 @@ def microsoft_login(body: ExternalCredential, request: Request, response: Respon
     email = email if isinstance(email, str) and "@" in email else None
     if body.link:
         return _link_provider_to_current("microsoft", str(claims["sub"]), email, request)
+    if body.claim:
+        return _claim_guest_account("microsoft", str(claims["sub"]), email, request)
     return _external_login(
         "microsoft",
         str(claims["sub"]),
@@ -460,6 +495,7 @@ class DiscordAuthCode(BaseModel):
     code_verifier: str = Field(min_length=43, max_length=128)
     redirect_uri: str = Field(min_length=1, max_length=512)
     link: bool = False
+    claim: bool = False
 
 
 @router.post("/auth/discord")
@@ -478,6 +514,8 @@ def discord_login(body: DiscordAuthCode, request: Request, response: Response) -
     email = user.get("email") if user.get("email_verified") else None
     if body.link:
         return _link_provider_to_current("discord", user["sub"], email, request)
+    if body.claim:
+        return _claim_guest_account("discord", user["sub"], email, request)
     return _external_login(
         "discord",
         user["sub"],
@@ -506,11 +544,13 @@ def logout(request: Request, response: Response) -> dict:
 
 def onboarding_flags(user: dict) -> dict:
     """What first-login (or re-acceptance) onboarding still owes us. Guests
-    never onboard: they accepted the guest notice and have no account."""
+    skip Terms/Privacy (they accepted the guest notice instead, and have no
+    persistent account for a policy version to attach to) but still get
+    offered a chance to pick their own display name."""
     from starshot.v2 import policies
 
     if user.get("is_guest"):
-        return {"needs_terms": False, "needs_display_name": False}
+        return {"needs_terms": False, "needs_display_name": not bool(user.get("name_confirmed"))}
     current = policies.current_versions()
     return {
         "needs_terms": (
@@ -581,7 +621,9 @@ FLAGGED_NAME_WARNING = (
 def set_display_name(body: DisplayNameChange, request: Request) -> dict:
     from starshot.v2 import names
 
-    user = _registered_user(request)  # guests never get a public profile name
+    # Guests may set a display name too — needed for first-login onboarding
+    # and for the name to read sensibly if they later claim the account.
+    user = _current_user(request)
     store = get_v2_store()
     proposed = " ".join(body.display_name.split())
     if not names.valid_display_name(proposed):

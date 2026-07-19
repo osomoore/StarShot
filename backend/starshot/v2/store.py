@@ -348,14 +348,29 @@ class V2Store:
 
     def create_guest_user(self, username: str, display_name: str) -> dict:
         """A temporary guest: a users row (so match seats keep valid foreign
-        keys) flagged is_guest, with no password and no provider links."""
+        keys) flagged is_guest, with no password and no provider links. The
+        random display name is a placeholder — name_confirmed stays 0 so
+        onboarding still offers the guest a chance to pick their own."""
         with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO users (username, pass_hash, display_name, is_guest, "
-                "name_confirmed, created_at) VALUES (?, '!guest', ?, 1, 1, ?)",
+                "name_confirmed, created_at) VALUES (?, '!guest', ?, 1, 0, ?)",
                 (username, display_name, _now()),
             )
             return {"id": cursor.lastrowid, "username": username}
+
+    def claim_guest_account(self, user_id: int, provider: str, sub: str, email: str | None) -> None:
+        """Convert a temporary guest into a permanent account by attaching a
+        verified provider identity. The guest's row, id, and display name are
+        kept; only the guest flag and password sentinel change, so any
+        currently in-progress match keeps its seat intact."""
+        column = _EXTERNAL_SUB_COLUMNS[provider]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE users SET is_guest = 0, pass_hash = ?, {column} = ?, "
+                f"{provider}_email = ?, {provider}_linked_at = ? WHERE id = ?",
+                ("!" + provider, sub, email, _now(), user_id),
+            )
 
     def get_user(self, user_id: int) -> dict | None:
         with self._connect() as conn:

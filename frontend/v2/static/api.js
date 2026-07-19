@@ -23,10 +23,17 @@
   window.API = {
     login: (username, password) => post("/auth/login", { username, password }),
     guestLogin: () => post("/auth/guest"),
-    googleLogin: (credential, link) => post("/auth/google", { credential, link: !!link }),
-    microsoftLogin: (credential, link) => post("/auth/microsoft", { credential, link: !!link }),
-    discordLogin: (code, codeVerifier, redirectUri, link) =>
-      post("/auth/discord", { code, code_verifier: codeVerifier, redirect_uri: redirectUri, link: !!link }),
+    // opts: { link } to attach a provider to the signed-in account, or
+    // { claim } to convert a guest voyage into a permanent account with it.
+    googleLogin: (credential, opts = {}) =>
+      post("/auth/google", { credential, link: !!opts.link, claim: !!opts.claim }),
+    microsoftLogin: (credential, opts = {}) =>
+      post("/auth/microsoft", { credential, link: !!opts.link, claim: !!opts.claim }),
+    discordLogin: (code, codeVerifier, redirectUri, opts = {}) =>
+      post("/auth/discord", {
+        code, code_verifier: codeVerifier, redirect_uri: redirectUri,
+        link: !!opts.link, claim: !!opts.claim,
+      }),
     logout: () => post("/auth/logout"),
     me: () => get("/me"),
     policies: () => get("/policies"),

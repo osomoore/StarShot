@@ -2,6 +2,21 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 10:45:00 -05:00
+
+- Title: Guest onboarding & "Claim My Legend" (guest → permanent account)
+- Build ID: `403aebb`
+- AI agent: Claude Code
+- Summary:
+  - Guests now see a first-login display-name onboarding modal (skipping Terms/Privacy since they have no persistent account), with a 🎲 Random button and optional customization — the same modal registered users see for their name.
+  - Added `store.claim_guest_account()` to convert a temporary guest voyage into a permanent account by attaching a verified provider identity, preserving the guest's user row ID and display name so in-progress match seats aren't disrupted.
+  - New `_claim_guest_account()` handler wired into `/auth/google`, `/auth/microsoft`, `/auth/discord` via a `claim: bool` parameter (parallel to existing `link` parameter for account provider linking). Rejects if the caller isn't a guest (400) or the provider identity belongs to another account (409).
+  - Frontend: new `Account.openClaimModal()` showing the same three provider buttons. Two entry points: topbar "🏴‍☠ Claim My Legend" button (visible only to guests in the lobby) and same button in the game-end endgame overlay (doesn't navigate away from battle report). After claiming, `/me` reports `needs_terms: true` so the onboarding modal naturally follows up with Terms/Privacy acceptance.
+  - API client updated: provider logins now take `{link, claim}` options object instead of boolean flags; updated all three callers (`app.js`, `account.js`, `game.js`) and Discord OAuth mode tracking to use the new `DISCORD_MODE_KEY` ("link" | "claim" | "") instead of a boolean flag.
+  - Guests can still set a display name via `/profile/display-name` (previously blocked for guests, now allowed). Onboarding now skips Terms/Privacy for guests but still requires the name step.
+  - Added 8 new backend tests: guest name onboarding, successful claim (identity preserved, kept same user ID/name, remains guest=false, account access gained, Terms re-gated), claim-rejected-for-registered-users (400), claim-rejected-for-taken-identity (409), guest logoff still scuttles the guest (unchanged). All 29 account tests pass; full suite: 377 passed, 5 pre-existing order-dependent leaderboard-limit flakes (confirmed unrelated).
+  - Bumped `pirate.css` (v63), `app.js` (v14), `account.js` (v2), `api.js` (v19), `lobby.js` (v40), `game.js` (v65) query strings; added CSS for claim modal (reuses existing provider-button classes).
+
 ## 2026-07-18 20:11:01 -05:00
 
 - Title: Google Sign-In (ID-token flow)

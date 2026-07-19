@@ -2072,3 +2072,14 @@ h1, h2, .brand, .poster-title, .banner-text {
 .account-link-buttons { margin-top: 4px; }
 .account-actions { justify-content: flex-start; }
 .account-deleted { text-align: center; padding: 30px 0; }
+
+/* ── claim my legend (guest → permanent account) ──────────────────────── */
+.claim-modal { max-width: 440px; }
+.claim-modal .google-signin,
+.claim-modal .microsoft-signin,
+.claim-modal .discord-signin {
+  display: block;
+  width: 100%;
+  margin: 0 auto 8px;
+}
+#btn-claim-legend { margin-right: 8px; }

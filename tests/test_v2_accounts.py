@@ -123,6 +123,17 @@ class GuestTests(unittest.TestCase):
         self.assertTrue(me["user"]["is_guest"])
         self.assertFalse(me["needs_terms"])
 
+    def test_guest_onboarding_offers_a_display_name_once(self) -> None:
+        client, _user = guest_client()
+        me = client.get("/api/v2/me").json()
+        self.assertTrue(me["needs_display_name"])
+        named = client.post("/api/v2/profile/display-name", json={"display_name": "Salty Sam"})
+        self.assertEqual(named.status_code, 200, named.text)
+        self.assertTrue(named.json()["user"]["is_guest"])
+        me = client.get("/api/v2/me").json()
+        self.assertFalse(me["needs_display_name"])
+        self.assertEqual(me["user"]["display_name"], "Salty Sam")
+
     def test_guest_cannot_save_ship_or_boss(self) -> None:
         client, _user = guest_client()
         ship = client.put("/api/v2/my/ship-designs", json={"id": "guest_ship", "name": "Guest Ship"})
@@ -137,10 +148,6 @@ class GuestTests(unittest.TestCase):
         self.assertEqual(client.get("/api/v2/account").status_code, 403)
         self.assertEqual(client.get("/api/v2/account/export").status_code, 403)
         self.assertEqual(client.post("/api/v2/account/delete", json={"confirm": "DELETE"}).status_code, 403)
-        self.assertEqual(
-            client.post("/api/v2/profile/display-name", json={"display_name": "Sneaky Guest"}).status_code,
-            403,
-        )
         self.assertEqual(client.post("/api/v2/feedback", json={"rating": 5}).status_code, 403)
 
     def test_guest_results_never_reach_leaderboards(self) -> None:
@@ -166,6 +173,60 @@ class GuestTests(unittest.TestCase):
         tombstone = store.get_user(guest_id)
         self.assertIsNotNone(tombstone["deleted_at"])
         self.assertNotEqual(tombstone["username"], user["username"])
+
+    def test_claiming_converts_guest_into_permanent_account(self) -> None:
+        client, user = guest_client()
+        client.post("/api/v2/profile/display-name", json={"display_name": "Claimant"})
+        guest_id = user_id_by_username(user["username"])
+
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            return_value={"sub": "claim-sub-1", "email": "claimant@example.com", "email_verified": True},
+        ):
+            claimed = client.post(
+                "/api/v2/auth/google", json={"credential": "x" * 40, "claim": True}
+            )
+        self.assertEqual(claimed.status_code, 200, claimed.text)
+        claimed_user = claimed.json()["user"]
+        self.assertFalse(claimed_user["is_guest"])
+        self.assertEqual(claimed_user["display_name"], "Claimant")
+        self.assertEqual(user_id_by_username(claimed_user["username"]), guest_id)
+
+        # It's now a full account: /account works, and Terms are still owed
+        # (a guest never accepted them) while the display name carries over.
+        me = client.get("/api/v2/me").json()
+        self.assertFalse(me["needs_display_name"])
+        self.assertTrue(me["needs_terms"])
+        account = client.get("/api/v2/account").json()["account"]
+        self.assertEqual(account["providers"][0]["provider"], "google")
+
+    def test_only_a_guest_can_claim(self) -> None:
+        client = make_client()
+        register(client, "claim_registered")
+        with mock.patch(
+            "starshot.v2.microsoft_identity.verify_microsoft_credential",
+            return_value={"sub": "claim-sub-2"},
+        ):
+            response = client.post(
+                "/api/v2/auth/microsoft", json={"credential": "x" * 40, "claim": True}
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_cannot_claim_with_an_identity_already_in_use(self) -> None:
+        make_client()
+        owner = make_client()
+        register(owner, "claim_owner")  # owns google sub "test-sub-claim_owner"
+        guest, _user = guest_client()
+        with mock.patch(
+            "starshot.v2.google_identity.verify_google_credential",
+            return_value={"sub": "test-sub-claim_owner"},
+        ):
+            response = guest.post(
+                "/api/v2/auth/google", json={"credential": "x" * 40, "claim": True}
+            )
+        self.assertEqual(response.status_code, 409)
+        # The guest voyage survives the failed claim attempt.
+        self.assertTrue(guest.get("/api/v2/me").json()["user"]["is_guest"])
 
     def test_guest_creation_is_rate_limited(self) -> None:
         ratelimit.reset()
