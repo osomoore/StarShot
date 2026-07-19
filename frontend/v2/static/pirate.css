@@ -665,6 +665,7 @@ h1, h2, .brand, .poster-title, .banner-text {
 .captain-status { border-color: rgba(126,216,255,.55); }
 .scenario-status {
   box-sizing: border-box;
+  cursor: pointer;
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
   height: 34px;
@@ -711,6 +712,24 @@ h1, h2, .brand, .poster-title, .banner-text {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
+}
+.scenario-status.status-rolled-up,
+.scenario-status.status-rolled-up:hover,
+.scenario-status.status-rolled-up:focus-within {
+  height: 34px;
+  max-width: 34px;
+  padding: 5px;
+  width: 34px;
+}
+.scenario-status.status-rolled-up b,
+.scenario-status.status-rolled-up span,
+.scenario-status.status-rolled-up:hover b,
+.scenario-status.status-rolled-up:hover span,
+.scenario-status.status-rolled-up:focus-within b,
+.scenario-status.status-rolled-up:focus-within span {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-6px);
 }
 .starfall-status b,
 .captain-status b { display: block; color: var(--gold-bright); font-family: "Pirata One", serif; font-size: 18px; line-height: 1; }

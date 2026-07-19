@@ -26,6 +26,7 @@
   let sideTab = "registry";
   const scenarioStatusSignatures = new Map();
   const scenarioStatusTimers = new Map();
+  const scenarioStatusDismissed = new Map();
   let suppressNextGameHistory = false;
 
   const els = {};
@@ -651,10 +652,41 @@
 
   function setScenarioStatus(node, key, icon, html) {
     node.classList.add("scenario-status");
+    node.setAttribute("role", "button");
+    node.setAttribute("tabindex", "0");
+    node.title = "Tap to roll up.";
     node.dataset.icon = icon;
     node.innerHTML = html;
+    if (node.dataset.dismissWired !== "1") {
+      node.dataset.dismissWired = "1";
+      const dismiss = (event) => {
+        if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const prior = scenarioStatusTimers.get(key);
+        if (prior) clearTimeout(prior);
+        scenarioStatusTimers.delete(key);
+        if (node.classList.contains("status-rolled-up")) {
+          scenarioStatusDismissed.delete(key);
+          node.classList.remove("status-rolled-up");
+          node.classList.add("status-expanded");
+        } else {
+          scenarioStatusDismissed.set(key, node.innerHTML);
+          node.classList.remove("status-expanded");
+          node.classList.add("status-rolled-up");
+        }
+      };
+      node.addEventListener("click", dismiss);
+      node.addEventListener("keydown", dismiss);
+    }
     if (scenarioStatusSignatures.get(key) === html) return;
     scenarioStatusSignatures.set(key, html);
+    if (scenarioStatusDismissed.get(key) === html) {
+      node.classList.remove("status-expanded");
+      node.classList.add("status-rolled-up");
+      return;
+    }
+    node.classList.remove("status-rolled-up");
     node.classList.add("status-expanded");
     const prior = scenarioStatusTimers.get(key);
     if (prior) clearTimeout(prior);
@@ -667,6 +699,7 @@
   function clearScenarioStatus(key, node) {
     if (node) node.remove();
     scenarioStatusSignatures.delete(key);
+    scenarioStatusDismissed.delete(key);
     const prior = scenarioStatusTimers.get(key);
     if (prior) clearTimeout(prior);
     scenarioStatusTimers.delete(key);

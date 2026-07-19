@@ -2,6 +2,37 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 15:51:13 -05:00
+
+- Title: Mobile banner roll-up
+- Build ID: `cfbf4d2`
+- AI agent: Codex
+- Summary:
+  - Added an explicit `status-rolled-up` state for board scenario banners so mobile sticky hover cannot keep StarBreacher/StarCommand info expanded after tapping it.
+  - Made tapping the rolled-up icon toggle the banner open again, and bumped `game.js` from v70 to v71 in `index.html`.
+  - Verified with `node --check frontend/v2/static/game.js` and `rg -n 'status-rolled-up|game\\.js\\?v=71|scenarioStatusDismissed' frontend/v2/static/game.js frontend/v2/static/pirate.css frontend/v2/index.html`.
+
+## 2026-07-19 14:12:50 -05:00
+
+- Title: Info banners roll up
+- Build ID: `cfbf4d2`
+- AI agent: Codex
+- Summary:
+  - Changed board-overlay scenario banner dismissal to roll banners back to their icon-only chip instead of removing the chip entirely.
+  - Updated the banner title affordance to "Tap to roll up" and bumped `game.js` from v69 to v70 in `index.html`.
+  - Verified with `node --check frontend/v2/static/game.js` and `rg -n 'Tap to roll up|status-expanded|game\\.js\\?v=70|scenarioStatusDismissed' frontend/v2/static/game.js frontend/v2/index.html`.
+
+## 2026-07-19 13:53:12 -05:00
+
+- Title: Dismissible board info banners
+- Build ID: `cfbf4d2`
+- AI agent: Codex
+- Summary:
+  - Made board-overlay scenario info banners dismissible by tap/click or Enter/Space, including StarBreach, StarCommand captain, and Starfall banners.
+  - Remembered dismissal per current banner content so the same text stays hidden until it changes or clears.
+  - Added pointer affordance and bumped `game.js` from v68 to v69 in `index.html`.
+  - Verified with `node --check frontend/v2/static/game.js`.
+
 ## 2026-07-19 13:51:17 -05:00
 
 - Title: Mobile header row restored
