@@ -2,6 +2,17 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-19 13:25:20 -05:00
+
+- Title: StarBreach battle board readability
+- Build ID: `0503cd2`
+- AI agent: Codex
+- Summary:
+  - Split StarBreach numbered action stack titles into two SVG rows, with larger "Action" labels and larger 0.5/1.5/etc. numbers sized around the two-icon column width.
+  - Reserved mobile HUD space for the expanded boss battle board and let the board frame scroll on phones when vertical space is tight.
+  - Bumped `pirate.css` from v63 to v64 and `game.js` from v65 to v66 in `index.html`.
+  - Verified with `node --check frontend/v2/static/game.js`.
+
 ## 2026-07-19 13:17:19 -05:00
 
 - Title: Leaderboard title targeting

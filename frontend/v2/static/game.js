@@ -1728,15 +1728,15 @@
       const busBandW = Math.min(traceCount, laneMax) * laneSpacing + 8;
       firstColCenterX = busLeft + busBandW + gutter + stackW / 2;
       // Stack block vertically centered on the hull.
-      const blockH = 22 + maxRows * (chipH + chipGap);
+      const blockH = 32 + maxRows * (chipH + chipGap);
       const blockTop = (parts.minY + parts.maxY) / 2 - blockH / 2;
       labelY = blockTop + 12;
-      chipsTop = blockTop + 22;
+      chipsTop = blockTop + 32;
     } else {
       busTop = parts.maxY + 8;
       const busBandH = Math.min(traceCount, laneMax) * laneSpacing + 8;
       labelY = busTop + busBandH + 12;
-      chipsTop = labelY + 8;
+      chipsTop = labelY + 18;
       // Columns, one per phase, centered under the hull.
       const hullCenterX = (parts.minX + parts.maxX) / 2;
       firstColCenterX = hullCenterX - totalColsW / 2 + stackW / 2;
@@ -1807,8 +1807,15 @@
       };
       // Phase label — the stack name (the kind is carried by each chip now).
       const stackLabel = phase.key === "starbreach" ? "StarBreach" : `Action ${PHASE_SHORT[phase.key] || phase.key}`;
-      svg += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="11" font-family="Pirata One"
-        fill="${phaseColor}">${esc(stackLabel)}</text>`;
+      if (phase.key === "starbreach") {
+        svg += `<text x="${cx.toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="11" font-family="Pirata One"
+          fill="${phaseColor}">${esc(stackLabel)}</text>`;
+      } else {
+        svg += `<text x="${cx.toFixed(1)}" y="${(labelY - 5).toFixed(1)}" text-anchor="middle" font-size="14" font-family="Pirata One"
+          fill="${phaseColor}">Action</text>
+          <text x="${cx.toFixed(1)}" y="${(labelY + 11).toFixed(1)}" text-anchor="middle" font-size="17" font-weight="700" font-family="Pirata One"
+          fill="${phaseColor}">${esc(PHASE_SHORT[phase.key] || phase.key)}</text>`;
+      }
       // Display order mirrors resolution: active slots first with moves ahead
       // of attacks; not-yet-active slots sink to the bottom of the stack.
       const orderedSlots = (phase.slots || [])
