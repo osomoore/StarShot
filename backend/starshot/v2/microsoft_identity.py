@@ -13,7 +13,7 @@ import os
 
 MICROSOFT_CLIENT_ID = os.environ.get(
     "STARSHOT_MICROSOFT_CLIENT_ID",
-    "8020ee54-185e-476a-9d7a-74c3d47a7a8c",
+    "8020ec54-185e-476a-9d7a-74c3d47a7a8c",
 )
 
 # The /common authority accepts any Microsoft account, so tokens are issued by
