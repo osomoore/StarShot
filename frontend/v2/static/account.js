@@ -21,6 +21,16 @@
 
     const needsTerms = me.needs_terms;
     const needsName = me.needs_display_name;
+    // The name we prefill on first login can't be the system-assigned "Guest
+    // X Y" placeholder — "guest" is a reserved token, so submitting it
+    // unchanged always gets rejected. Suggest a fresh, valid pirate name instead.
+    let suggestedName = me.user.display_name || "";
+    if (needsName && me.user.is_guest) {
+      try {
+        const result = await API.randomName();
+        if (result.name) suggestedName = result.name;
+      } catch (err) { /* fall back to the guest's current name */ }
+    }
     const overlay = document.createElement("div");
     overlay.className = "overlay onboarding-overlay";
     overlay.innerHTML = `
@@ -41,7 +51,7 @@
           ${needsName ? `
           <label>Public player name — what other captains will see
             <input id="onboard-name" type="text" minlength="3" maxlength="24" required
-              value="${esc(me.user.display_name || "")}">
+              value="${esc(suggestedName)}">
           </label>
           <div class="feedback-actions">
             <button type="button" class="btn ghost" id="onboard-random">🎲 Random</button>

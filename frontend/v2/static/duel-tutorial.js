@@ -122,11 +122,17 @@
     popupOpen = false;
   }
 
-  function showStage(gameId, stage, onClosed) {
+  function showStage(gameId, stage, onClosed, view, you) {
     const slide = STAGES[stage];
     if (!slide) { onClosed(); return; }
     popupOpen = true;
     markStageShown(gameId, stage);
+    if (stage === 1) {
+      const ship = view && you && view.players && view.players[you] && view.players[you].ship;
+      if (ship && window.Board && typeof window.Board.focusOn === "function") {
+        window.Board.focusOn(ship.q || 0, ship.r || 0, 2);
+      }
+    }
     if (stage === 6 && window.API && typeof window.API.awardBadge === "function") {
       window.API.awardBadge("crossed_the_seas").catch(() => {});
     }
@@ -153,7 +159,7 @@
     });
   }
 
-  function maybeShowForRound(gameId, view) {
+  function maybeShowForRound(gameId, view, you) {
     if (popupOpen || !gameId || !view) return;
     if (!isDuelGame(gameId) || isDone()) return;
     const shown = shownStages(gameId);
@@ -162,7 +168,7 @@
       if (stage === 6) continue;
       if (shown.includes(stage)) continue;
       if (round >= STAGES[stage].minRound) {
-        showStage(gameId, stage, () => {});
+        showStage(gameId, stage, () => {}, view, you);
         return;
       }
     }

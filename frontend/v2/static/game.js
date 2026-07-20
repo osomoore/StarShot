@@ -566,7 +566,7 @@
     renderLog();
     renderOrdersPanel();
     updateReportButton();
-    if (view.phase !== "complete" && !animating) DuelTutorial.maybeShowForRound(gameId, view);
+    if (view.phase !== "complete" && !animating) DuelTutorial.maybeShowForRound(gameId, view, you);
     if (view.phase === "complete" && !endgameShown && !animating && !duelTutorialChaining) {
       duelTutorialChaining = true;
       DuelTutorial.maybeShowAtEndgame(gameId, view, () => { duelTutorialChaining = false; showEndgame(); });

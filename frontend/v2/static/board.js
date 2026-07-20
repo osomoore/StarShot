@@ -412,6 +412,15 @@
   }
   function resetView() { zoom = 1; panX = 0; panY = 0; applyViewBox(); }
 
+  /* Center the view on a hex at the given zoom (2 ≈ half the board's extent
+     on screen — used to open a fresh duel focused on the player's ship). */
+  function focusOn(q, r, zoomLevel = 2) {
+    const [x, y] = axialToXY(q, r);
+    panX = x; panY = y;
+    zoom = Math.min(3.2, Math.max(0.55, zoomLevel));
+    applyViewBox();
+  }
+
   function isPhoneBoard() {
     return document.documentElement.dataset.device === "phone";
   }
@@ -578,6 +587,7 @@
     renderPreview,
     clearPreview: () => renderPreview([]),
     resetView,
+    focusOn,
     colorOf: (playerId) => seatColorByPlayer[playerId] || "#d4a748",
     shortName,
     setNameMap: (map) => { nameMap = map || {}; },
