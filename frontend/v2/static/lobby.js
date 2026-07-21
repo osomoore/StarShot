@@ -25,13 +25,9 @@
     ["fighting_ace", "Fighting Ace"],
   ];
   let bossDesignsLoaded = false;
-  let shipDesignsLoaded = false;
-  let shipDesignSelection = (() => {
-    try { return localStorage.getItem("ss_preferred_ship") || ""; } catch (err) { return ""; }
-  })();
+  let myShipLoaded = false;
   let starCommandActive = false;
   let starBreachActive = false;
-  let starDockActive = false;
   const activeExpansions = () => [
     ...(starCommandActive ? ["star_command"] : []),
     ...(starBreachActive ? ["star_breach"] : []),
@@ -85,6 +81,7 @@
     renderAiPickers();
     renderExpansionToggle();
     ensureAdvancedFeaturesToggle();
+    updateMyShipCard(true);
     await refresh();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(refresh, 3000);
@@ -263,8 +260,6 @@
     syncChoiceButtons("ai-level");
     const total = 1 + crew.length + openSeats;
     const minShips = starBreachActive ? 1 : 2;
-    ensureShipPicker();
-    updateShipPicker();
     updateStarBreachPreyPicker();
     updateStarBreachBossPicker();
     const button = document.getElementById("btn-create-match");
@@ -283,65 +278,78 @@
       breachToggle.checked = starBreachActive;
       breachToggle.closest(".expansion-toggle")?.classList.toggle("active", starBreachActive);
     }
-    const dockToggle = document.getElementById("exp-stardock");
-    if (dockToggle) {
-      dockToggle.checked = starDockActive;
-      dockToggle.closest(".expansion-toggle")?.classList.toggle("active", starDockActive);
-    }
     document.getElementById("star-breach-detail")?.classList.toggle("hidden", !starBreachActive);
-    document.getElementById("stardock-detail")?.classList.toggle("hidden", !starDockActive);
   }
 
-  /* "Your Ship" picker: the ship this captain flies in every raid they
-     create or join. Battle-ready designs from /api/v2/ship-designs, plus the
-     standard base ship. The choice persists in localStorage. */
-  function ensureShipPicker() {
-    if (document.getElementById("ship-pick")) return;
-    const controls = document.getElementById("stardock-detail");
-    if (!controls) return;
-    const label = document.createElement("label");
-    label.className = "open-seats-label ship-pick-label";
-    label.innerHTML = `Your Ship:
-      <select id="ship-pick"><option value="">Standard ship</option></select>
-      <button type="button" class="btn ghost small builder-icon-btn" id="btn-my-ships" title="Build Player Ships" aria-label="Build Player Ships">🛠</button>`;
-    controls.appendChild(label);
-    label.querySelector("select").addEventListener("change", (event) => {
-      shipDesignSelection = event.target.value || "";
-      try { localStorage.setItem("ss_preferred_ship", shipDesignSelection); } catch (err) { /* private mode */ }
-    });
-    label.querySelector("#btn-my-ships").addEventListener("click", (event) => {
-      event.preventDefault();
-      window.ShipDesigner?.openPlayerDesigner();
-    });
-    document.addEventListener("shipdesigner-closed", () => {
-      shipDesignsLoaded = false; // refresh the picker after designing
-      updateShipPicker();
-    });
+  /* Your Ship card on the landing page: shows the ship this captain flies in
+     every raid — its hex layout and name — plus a dropdown to pick from their
+     owned ships. Clicking the ship opens it in the StarDock editor. */
+  let myShip = null;
+
+  function shipViewFromPreview(preview) {
+    // Adapt a compiled layout spec to the ShipView ship shape.
+    return {
+      component_layout: preview.components || [],
+      damage_lanes: preview.damage_lanes || {},
+      max_shields: preview.max_shields,
+      shields: preview.max_shields,
+      destroyed_components: [],
+    };
   }
 
-  async function updateShipPicker() {
-    const select = document.getElementById("ship-pick");
-    if (!select || shipDesignsLoaded) return;
-    document.getElementById("stardock-detail")?.classList.toggle("hidden", !starDockActive);
-    if (!starDockActive) return;
-    shipDesignsLoaded = true;
+  function renderMyShipCard() {
+    const card = document.getElementById("my-ship-card");
+    if (!card || !myShip) return;
+    const selected = myShip.selected || {};
+    const canEdit = !!myShip.can_edit;
+    const hex = window.ShipView?.miniShipSVG?.(shipViewFromPreview(selected.preview || {}), 150) || "";
+    const options = myShip.options || [];
+    const dropdown = (canEdit && options.length)
+      ? `<select id="my-ship-select" class="my-ship-select" aria-label="Choose your ship">${
+          options.map((opt) => `<option value="${esc(opt.ref)}"${opt.ref === selected.ref ? " selected" : ""}>${esc(opt.name)}</option>`).join("")
+        }</select>`
+      : "";
+    card.innerHTML = `
+      <div class="my-ship-head">
+        <span class="my-ship-eyebrow">⚓ Your Ship</span>
+        ${canEdit ? '<span class="my-ship-editlink">Tap to edit in StarDock →</span>' : ''}
+      </div>
+      <div class="my-ship-body">
+        <button type="button" class="my-ship-hex" id="my-ship-open" title="${canEdit ? "Open in StarDock" : "Sign in to build your own ship"}">${hex}</button>
+        <div class="my-ship-meta">
+          <div class="my-ship-name">${esc(selected.name || "Your Ship")}</div>
+          ${dropdown}
+          ${myShip.is_guest ? '<div class="my-ship-guestnote">Guest ships sail only this voyage — claim your legend to keep them.</div>' : ''}
+        </div>
+      </div>`;
+    const open = card.querySelector("#my-ship-open");
+    if (open) {
+      open.addEventListener("click", () => {
+        if (!canEdit) { App.toast("Sign in to build and fly your own ships.", true); return; }
+        const ref = selected.ref || "";
+        // ref is "" (base ship) or "user:<uid>:<id>"; the editor wants the bare id.
+        const designId = ref && ref.startsWith("user:") ? ref.split(":", 3)[2] : "";
+        window.ShipDesigner?.openPlayerDesigner(designId ? { editDesignId: designId } : {});
+      });
+    }
+    const select = card.querySelector("#my-ship-select");
+    if (select) {
+      select.addEventListener("change", async (event) => {
+        try {
+          myShip = await API.setMyShip(event.target.value || "");
+          renderMyShipCard();
+        } catch (error) { App.toast(error.message); myShipLoaded = false; }
+      });
+    }
+  }
+
+  async function updateMyShipCard(force) {
+    if (myShipLoaded && !force) { renderMyShipCard(); return; }
+    myShipLoaded = true;
     try {
-      const data = await API.shipDesigns();
-      const current = shipDesignSelection;
-      select.innerHTML = '<option value="">Standard ship</option>';
-      for (const entry of data.designs || []) {
-        const option = document.createElement("option");
-        option.value = entry.id;
-        option.textContent = `${entry.name} (${entry.points} pts)`;
-        select.appendChild(option);
-      }
-      if ([...select.options].some((option) => option.value === current)) {
-        select.value = current;
-      } else {
-        select.value = "";
-        shipDesignSelection = "";
-      }
-    } catch (err) { shipDesignsLoaded = false; /* transient; retry next refresh */ }
+      myShip = await API.myShip();
+      renderMyShipCard();
+    } catch (err) { myShipLoaded = false; /* transient; retry next refresh */ }
   }
 
   function ensureStarBreachPreyPicker() {
@@ -589,7 +597,7 @@
           try {
             const joinBody = {};
             if (role) joinBody.star_breach_role = role;
-            if (shipDesignSelection) joinBody.ship_design_id = shipDesignSelection;
+            // The ship is the captain's persistent selected ship (server-side).
             const result = await API.joinMatch(match.id, Object.keys(joinBody).length ? joinBody : undefined);
             if (result.game_id) { leave(); Game.enter(result.game_id); }
             else refresh();
@@ -1301,14 +1309,6 @@
         if (starBreachActive) maybeShowStarBreachTutorial();
       });
     }
-    const dockToggle = document.getElementById("exp-stardock");
-    if (dockToggle) {
-      dockToggle.addEventListener("change", (event) => {
-        starDockActive = !!event.target.checked;
-        renderExpansionToggle();
-        updateCrewUI();
-      });
-    }
     document.getElementById("btn-create-match").addEventListener("click", async () => {
       const openSeats = parseInt(document.getElementById("open-seats").value, 10) || 0;
       try {
@@ -1320,7 +1320,6 @@
           star_breach_prey_player_id: starBreachActive ? starBreachPreySelection : null,
           star_breach_role: starBreachActive ? (starBreachRoleSelection || null) : null,
           star_breach_boss_design_id: starBreachActive ? (starBreachBossSelection || null) : null,
-          ship_design_id: starDockActive ? (shipDesignSelection || null) : null,
         });
         crew = [];
         updateCrewUI();
@@ -1328,6 +1327,8 @@
         else { App.toast("Raid posted — waiting for captains to join.", true); refresh(); }
       } catch (error) { App.toast(error.message); }
     });
+    // Refresh the Your Ship card after editing/selecting in StarDock.
+    document.addEventListener("shipdesigner-closed", () => updateMyShipCard(true));
     document.getElementById("btn-tutorial").addEventListener("click", () => {
       DuelTutorial.reset();
       Tutorial.start();

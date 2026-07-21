@@ -227,6 +227,33 @@ h1, h2, .brand, .poster-title, .banner-text {
 .panel-title { color: var(--gold-bright); font-size: 26px; margin-bottom: 12px; }
 .panel-sub { color: var(--gold); font-size: 15px; letter-spacing: .06em; text-transform: uppercase; margin: 18px 0 8px; }
 
+/* Your Ship card on the landing page (center column, above Raids). */
+.my-ship-card {
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(30,44,80,.55), rgba(11,17,33,.55));
+  padding: 12px 14px;
+  margin-bottom: 18px;
+}
+.my-ship-card:empty { display: none; }
+.my-ship-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.my-ship-eyebrow { color: var(--gold); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+.my-ship-editlink { color: var(--gold-bright); font-size: 12px; opacity: .8; }
+.my-ship-body { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+.my-ship-hex {
+  flex: 0 0 auto; background: none; border: 1px solid transparent; border-radius: 10px;
+  padding: 4px; cursor: pointer; line-height: 0; transition: border-color .15s, transform .15s;
+}
+.my-ship-hex:hover { border-color: var(--gold); transform: translateY(-1px); }
+.my-ship-hex .mini-ship { display: block; }
+.my-ship-meta { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.my-ship-name { color: var(--gold-bright); font-size: 22px; font-family: "Pirata One", serif; }
+.my-ship-select {
+  background: rgba(8,13,26,.85); color: var(--ink, #e8e0cc);
+  border: 1px solid var(--panel-edge); border-radius: 6px; padding: 5px 8px; font-size: 14px; max-width: 240px;
+}
+.my-ship-guestnote { color: var(--ink-dim, #9aa6bd); font-size: 12px; font-style: italic; }
+
 .sail-row { display: flex; align-items: center; gap: 16px; }
 .lobby-setup .sail-row,
 .lobby-setup .crew-controls {

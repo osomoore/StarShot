@@ -31,7 +31,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from starshot.api.app import app  # noqa: E402
 from starshot.v2 import boss_designs  # noqa: E402
+from starshot.v2 import ship_designs  # noqa: E402
 from starshot.v2.store import get_v2_store  # noqa: E402
+
+# Isolate runtime ship-design writes (starter-ship provisioning, player saves)
+# to a scratch dir so tests never touch the repo's .starshot content. The
+# bundled DESIGNS_DIR stays pointed at resources/ so the global Lightning Bug
+# Alpha remains cloneable.
+ship_designs.RUNTIME_DESIGNS_DIR = Path(TMP.name) / "ship_designs"
 from tests.test_boss_designer import make_design  # noqa: E402
 
 EMPTY_ORDERS = {
@@ -591,6 +598,137 @@ class AiMatchTests(unittest.TestCase):
             tempdir.cleanup()
 
 
+class SelectedShipTests(unittest.TestCase):
+    def _total_deck(self, player: dict) -> int:
+        return player["deck_count"] + len(player.get("hand", [])) + len(player.get("discard", []))
+
+    def test_first_visit_provisions_and_selects_starter_ship(self) -> None:
+        client = make_client()
+        register(client, "ship_ada")
+        data = client.get("/api/v2/my/ship").json()
+        self.assertTrue(data["can_edit"])
+        self.assertEqual(data["selected"]["name"], "Lightning Bug Alpha")
+        uid = get_v2_store().get_user_by_name("ship_ada")["id"]
+        self.assertEqual(data["selected"]["ref"], f"user:{uid}:lightningbug")
+        # The starter copy is owned and offered; the base ship is retired.
+        refs = {opt["ref"] for opt in data["options"]}
+        self.assertNotIn("", refs)  # no base ship option
+        self.assertEqual(refs, {f"user:{uid}:lightningbug"})
+
+    def test_provisioning_is_idempotent(self) -> None:
+        client = make_client()
+        register(client, "ship_ida")
+        client.get("/api/v2/my/ship")
+        client.get("/api/v2/my/ship")
+        owned = client.get("/api/v2/my/ship-designs").json()["designs"]
+        self.assertEqual([d["id"] for d in owned], ["lightningbug"])
+
+    def test_base_ship_is_retired(self) -> None:
+        client = make_client()
+        register(client, "ship_bob")
+        # Selecting the retired base ship (empty id) is rejected.
+        rejected = client.put("/api/v2/my/ship", json={"ship_design_id": ""})
+        self.assertEqual(rejected.status_code, 400, rejected.text)
+
+    def test_select_persists_across_reads(self) -> None:
+        client = make_client()
+        register(client, "ship_bud")
+        uid = get_v2_store().get_user_by_name("ship_bud")["id"]
+        # Clone a second ship, then switch to it and confirm it sticks.
+        client.get("/api/v2/my/ship")
+        design = client.get(f"/api/v2/my/ship-designs/lightningbug").json()["design"]
+        design["id"] = "second_ship"
+        design["name"] = "Second Ship"
+        client.put("/api/v2/my/ship-designs", json=design)
+        chosen = client.put("/api/v2/my/ship", json={"ship_design_id": f"user:{uid}:second_ship"})
+        self.assertEqual(chosen.status_code, 200, chosen.text)
+        self.assertEqual(client.get("/api/v2/my/ship").json()["selected"]["ref"], f"user:{uid}:second_ship")
+
+    def test_cannot_select_another_captains_ship(self) -> None:
+        client = make_client()
+        register(client, "ship_carol")
+        # Another captain's owned ref is rejected.
+        rejected = client.put("/api/v2/my/ship", json={"ship_design_id": "user:999999:lightningbug"})
+        self.assertEqual(rejected.status_code, 403, rejected.text)
+        # A ship that does not exist is a 400.
+        missing = client.put("/api/v2/my/ship", json={"ship_design_id": "no_such_global_ship"})
+        self.assertEqual(missing.status_code, 400, missing.text)
+
+    def test_created_match_flies_selected_ship(self) -> None:
+        client = make_client()
+        register(client, "ship_dave")
+        client.get("/api/v2/my/ship")  # provision
+        game = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 0}).json()
+        view = client.get(f"/api/v2/games/{game['game_id']}/view").json()
+        me = view["state"]["players"]["ship_dave"]
+        self.assertEqual((me.get("ship") or {}).get("layout", {}).get("layout_id"), "design_lightningbug")
+        self.assertEqual(self._total_deck(me), 10)  # the ship's component-derived deck
+
+    def test_guest_flies_and_builds_a_starter_ship(self) -> None:
+        client = make_client()
+        client.post("/api/v2/auth/guest")
+        body = client.get("/api/v2/my/ship").json()
+        # Guests get an editable Firefly starter, not the retired base ship.
+        self.assertTrue(body["can_edit"])
+        self.assertTrue(body["is_guest"])
+        self.assertEqual(body["selected"]["name"], "Lightning Bug Alpha")
+        self.assertEqual([opt["name"] for opt in body["options"]], ["Lightning Bug Alpha"])
+        # A guest can build a new ship of their own.
+        saved = client.put("/api/v2/my/ship-designs", json={"id": "guest_ship", "name": "Guest Ship", "tiles": [], "lanes": {}})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        # And flies their selected ship into battle (its component-derived deck).
+        game = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 0}).json()
+        view = client.get(f"/api/v2/games/{game['game_id']}/view").json()
+        me = next(p for pid, p in view["state"]["players"].items() if pid.startswith("guest-"))
+        self.assertEqual((me.get("ship") or {}).get("layout", {}).get("layout_id"), "design_lightningbug")
+
+    def test_guest_ships_are_purged_on_logout(self) -> None:
+        from starshot.v2 import ship_designs as sd
+        client = make_client()
+        guest = client.post("/api/v2/auth/guest").json()["user"]
+        uid = get_v2_store().get_user_by_name(guest["username"])["id"]
+        client.put("/api/v2/my/ship-designs", json={"id": "guest_ship", "name": "Guest Ship", "tiles": [], "lanes": {}})
+        self.assertTrue(sd.list_designs(uid))
+        client.post("/api/v2/auth/logout")
+        self.assertEqual(sd.list_designs(uid), [])
+
+    def test_delete_last_ship_restores_default(self) -> None:
+        client = make_client()
+        register(client, "ship_last")
+        # Provision the starter and get it.
+        ship1 = client.get("/api/v2/my/ship").json()
+        ref1 = ship1["selected"]["ref"]
+        # Extract the bare id (the actual design id to delete).
+        uid = get_v2_store().get_user_by_name("ship_last")["id"]
+        from starshot.v2.service import parse_ship_design_ref
+        _, bare_id = parse_ship_design_ref(ref1)
+        # Delete the only ship.
+        response = client.delete(f"/api/v2/my/ship-designs/{bare_id}").json()
+        # Should indicate the default was restored.
+        self.assertTrue(response["restored_default"])
+        self.assertTrue(response["default_ship"]["name"])
+        # Player still has a ship to fly.
+        ship2 = client.get("/api/v2/my/ship").json()
+        self.assertNotEqual(ship2["selected"]["ref"], "")
+        self.assertTrue(any(opt["ref"] for opt in ship2["options"]))
+
+    def test_admin_default_starting_ship_applies_to_new_accounts(self) -> None:
+        admin = make_client()
+        admin.post("/api/v2/auth/login", json={"username": "davidmoore", "password": "rangers"})
+        try:
+            saved = admin.post("/api/v2/admin/settings", json={"default_starting_ship_design_id": "vanguard"})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            from starshot.v2.settings import invalidate_cache
+            invalidate_cache()
+            newbie = make_client()
+            register(newbie, "ship_erin")
+            self.assertEqual(newbie.get("/api/v2/my/ship").json()["selected"]["name"], "Vanguard")
+        finally:
+            admin.post("/api/v2/admin/settings", json={"default_starting_ship_design_id": ""})
+            from starshot.v2.settings import invalidate_cache
+            invalidate_cache()
+
+
 class SecurityTests(unittest.TestCase):
     def test_outsiders_cannot_view_or_act(self) -> None:
         client_a = make_client()
@@ -1120,27 +1258,26 @@ class AdminTests(unittest.TestCase):
         with_flibber = base["cards"] + [
             {"name": "Flibber Drive", "copies": 1, "side_a_type": "Basic", "side_a_1": "Flibber 3"}
         ]
+        # Adding the keyword makes previously-unparseable card text saveable:
+        # the deck editor validates the new "Flibber 3" face through the keyword.
+        # (Ships supply their own component-derived decks in play, so this is
+        # verified at the deck-editor boundary rather than in a live game.)
         accepted = client.put(
             "/api/v2/admin/deck", json={"which": "base", "header": base["header"], "cards": with_flibber}
         )
         self.assertEqual(accepted.status_code, 200, accepted.text)
+        # Without the keyword the same text is rejected: remove it, retry, restore.
+        client.delete("/api/v2/admin/keywords/Flibber%20X")
+        rejected = client.put(
+            "/api/v2/admin/deck", json={"which": "base", "header": base["header"], "cards": with_flibber}
+        )
+        self.assertEqual(rejected.status_code, 400, rejected.text)
 
-        # A game created now includes the flibber card with doubled movement.
-        game = client.post("/api/v2/matches", json={"ai_types": ["blaster"], "open_seats": 0}).json()
-        view = client.get(f"/api/v2/games/{game['game_id']}/view").json()
-        me = view["state"]["players"]["davidmoore"]
-        all_cards = me["hand"] + me["discard"]
-        flibbers = [card for card in all_cards if card["name"] == "Flibber Drive"]
-        deck_has = me["deck_count"] + len(all_cards)
-        self.assertGreaterEqual(deck_has, 11)  # 10 base + flibber somewhere
-
-        # Restore the original deck and remove the keyword.
+        # Restore the original deck (the keyword was already removed above).
         restored = client.put(
             "/api/v2/admin/deck", json={"which": "base", "header": base["header"], "cards": base["cards"]}
         )
         self.assertEqual(restored.status_code, 200)
-        removed = client.delete("/api/v2/admin/keywords/Flibber%20X")
-        self.assertEqual(removed.status_code, 200)
 
     def test_project_zip_download(self) -> None:
         client = self.admin_client()

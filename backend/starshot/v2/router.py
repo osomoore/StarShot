@@ -537,9 +537,13 @@ def logout(request: Request, response: Response) -> dict:
         user = store.get_session_user(token_hash)
         store.delete_session(token_hash)
         # A guest is a temporary session, not an account: leaving the ship
-        # scuttles the guest identity and any content tied to it.
+        # scuttles the guest identity and any content tied to it — including
+        # any ships/bosses they built this voyage (purge_account deletes the
+        # design files, not just the account row).
         if user is not None and user.get("is_guest"):
-            store.delete_account(user["id"])
+            from starshot.v2.account import purge_account
+
+            purge_account(user["id"])
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
 
@@ -839,8 +843,10 @@ def respond_challenge(challenge_id: str, body: ChallengeResponse, request: Reque
         status="open",
         active_expansions=challenge.get("active_expansions") or [],
     )
-    store.add_seat(match_id, 0, challenger["username"], _display_name(challenger), user_id=challenger["id"])
-    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"])
+    store.add_seat(match_id, 0, challenger["username"], _display_name(challenger), user_id=challenger["id"],
+                   ship_design_id=_seat_ship_ref(challenger))
+    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"],
+                   ship_design_id=_seat_ship_ref(user))
     game_id = start_match_game(store, store.get_match(match_id))
     store.set_challenge_status(challenge_id, "accepted", game_id=game_id)
     return {"accepted": True, "match_id": match_id, "game_id": game_id}
@@ -881,8 +887,10 @@ def quick_match(body: QueueRequest, request: Request) -> dict:
         seats=2,
         status="open",
     )
-    store.add_seat(match_id, 0, opponent["username"], _display_name(opponent), user_id=opponent_id)
-    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"])
+    store.add_seat(match_id, 0, opponent["username"], _display_name(opponent), user_id=opponent_id,
+                   ship_design_id=_seat_ship_ref(opponent))
+    store.add_seat(match_id, 1, user["username"], _display_name(user), user_id=user["id"],
+                   ship_design_id=_seat_ship_ref(user))
     match = store.get_match(match_id)
     game_id = start_match_game(store, match)
     return {"queued": False, "matched": True, "match_id": match_id, "game_id": game_id}
@@ -911,11 +919,14 @@ def _validated_star_breach_role(role: str | None) -> str | None:
 
 
 def _validated_ship_design_id(ship_design_id: str | None, user: dict) -> str | None:
-    """A seat's ship pick: empty = base ship; otherwise a battle-ready global
-    design or one of the picker's own designs (`user:<uid>:<id>`)."""
-    if not ship_design_id:
-        return None
+    """A seat's ship pick. When no explicit pick is passed we default to the
+    player's persistent selected ship (the one shown on the landing page).
+    An explicit pick must be a battle-ready global design or one of the
+    picker's own designs (`user:<uid>:<id>`)."""
     from starshot.v2.service import _load_playable_ship_design, parse_ship_design_ref
+
+    if not ship_design_id:
+        return _seat_ship_ref(user)
 
     try:
         owner_id, _bare = parse_ship_design_ref(ship_design_id)
@@ -925,6 +936,22 @@ def _validated_ship_design_id(ship_design_id: str | None, user: dict) -> str | N
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ship_design_id
+
+
+def _seat_ship_ref(user: dict) -> str | None:
+    """The persistent selected ship a human seat should fly, provisioning a
+    starter ship on first use. Falls back to the base ship if the selection is
+    no longer battle-ready. Returns None for the stock base ship."""
+    from starshot.v2.service import _load_playable_ship_design, selected_ship_ref
+
+    ref = selected_ship_ref(get_v2_store(), user["id"])
+    if not ref:
+        return None
+    try:
+        _load_playable_ship_design(ref)
+    except ValueError:
+        return None  # stale selection → base ship
+    return ref
 
 
 def _resolve_requested_prey_id(body: CreateMatchRequest, host_username: str) -> str | None:

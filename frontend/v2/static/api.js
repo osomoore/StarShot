@@ -18,6 +18,7 @@
 
   const get = (path) => call(path);
   const post = (path, body) => call(path, { method: "POST", body: JSON.stringify(body || {}) });
+  const put = (path, body) => call(path, { method: "PUT", body: JSON.stringify(body || {}) });
   const del = (path) => call(path, { method: "DELETE" });
 
   window.API = {
@@ -59,6 +60,8 @@
     createMatch: (body) => post("/matches", body),
     bossDesigns: () => get("/boss-designs"),
     shipDesigns: () => get("/ship-designs"),
+    myShip: () => get("/my/ship"),
+    setMyShip: (shipDesignId) => put("/my/ship", { ship_design_id: shipDesignId || "" }),
     joinMatch: (id, body) => post(`/matches/${id}/join`, body),
     leaveMatch: (id) => post(`/matches/${id}/leave`),
     startMatch: (id) => post(`/matches/${id}/start`),

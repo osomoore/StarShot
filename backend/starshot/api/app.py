@@ -88,6 +88,7 @@ app.include_router(player_library_admin_router)
 
 from starshot.v2.ship_designer_api import (  # noqa: E402
     my_ship_designs_router,
+    my_ship_router,
     player_ship_library_admin_router,
     ship_designer_admin_router,
     ship_designs_public_router,
@@ -96,6 +97,7 @@ from starshot.v2.ship_designer_api import (  # noqa: E402
 app.include_router(ship_designer_admin_router)
 app.include_router(ship_designs_public_router)
 app.include_router(my_ship_designs_router)
+app.include_router(my_ship_router)
 app.include_router(player_ship_library_admin_router)
 
 from starshot.v2.campaign import campaign_admin_router, campaign_router  # noqa: E402

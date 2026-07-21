@@ -134,13 +134,15 @@ class GuestTests(unittest.TestCase):
         self.assertFalse(me["needs_display_name"])
         self.assertEqual(me["user"]["display_name"], "Salty Sam")
 
-    def test_guest_cannot_save_ship_or_boss(self) -> None:
+    def test_guest_can_build_ships_but_not_bosses(self) -> None:
         client, _user = guest_client()
+        # Guests fly and build their own ships (discarded when the voyage ends).
         ship = client.put("/api/v2/my/ship-designs", json={"id": "guest_ship", "name": "Guest Ship"})
-        self.assertEqual(ship.status_code, 403)
+        self.assertEqual(ship.status_code, 200, ship.text)
+        self.assertEqual(client.get("/api/v2/my/ship-designs").status_code, 200)
+        # Boss building stays for registered captains only.
         boss = client.put("/api/v2/my/boss-designs", json={"id": "guest_boss", "name": "Guest Boss"})
         self.assertEqual(boss.status_code, 403)
-        self.assertEqual(client.get("/api/v2/my/ship-designs").status_code, 403)
         self.assertEqual(client.get("/api/v2/my/boss-designs").status_code, 403)
 
     def test_guest_cannot_use_account_or_profile_apis(self) -> None:

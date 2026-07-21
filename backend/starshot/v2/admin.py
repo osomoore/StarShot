@@ -773,10 +773,11 @@ def test_keyword(body: KeywordTest, request: Request) -> dict:
 
 @admin_router.get("/settings")
 def get_settings(request: Request) -> dict:
-    from starshot.v2 import boss_designs
+    from starshot.v2 import boss_designs, ship_designs
     from starshot.v2.settings import (
         allowed_starbreach_boss_design_ids,
         default_starbreach_boss_design_id,
+        default_starting_ship_design_id,
         maintenance_message,
         site_auth_enabled,
         stardock_config,
@@ -788,6 +789,10 @@ def get_settings(request: Request) -> dict:
         for entry in boss_designs.list_designs()
         if entry["valid"]
     ]
+    global_ships = [
+        {"id": entry["id"], "name": entry["name"], "valid": entry["valid"]}
+        for entry in ship_designs.list_designs()
+    ]
     return {
         "site_auth": site_auth_enabled(),
         "maintenance": maintenance_message(),
@@ -797,7 +802,11 @@ def get_settings(request: Request) -> dict:
             "default_boss_design_id": default_starbreach_boss_design_id(),
             "allowed_boss_design_ids": sorted(allowed_starbreach_boss_design_ids()),
         },
-        "stardock": stardock_config(),
+        "stardock": {
+            **stardock_config(),
+            "ship_designs": global_ships,
+            "default_starting_ship_design_id": default_starting_ship_design_id(),
+        },
     }
 
 
@@ -815,14 +824,16 @@ class SettingsUpdate(BaseModel):
     stardock_secondary_lane_min_severed: int | None = Field(default=None, ge=0, le=12)
     stardock_upgrade_defense_bonus: int | None = Field(default=None, ge=0, le=10)
     stardock_upgrade_aim_bonus: int | None = Field(default=None, ge=0, le=10)
+    default_starting_ship_design_id: str | None = Field(default=None, max_length=80)
 
 
 @admin_router.post("/settings")
 def update_settings(body: SettingsUpdate, request: Request) -> dict:
-    from starshot.v2 import boss_designs
+    from starshot.v2 import boss_designs, ship_designs
     from starshot.v2.settings import (
         ALLOWED_STARBREACH_BOSSES_KEY,
         DEFAULT_STARBREACH_BOSS_KEY,
+        DEFAULT_STARTING_SHIP_KEY,
         MAINTENANCE_KEY,
         SITE_AUTH_KEY,
         STARDOCK_CONFIG_KEYS,
@@ -862,6 +873,13 @@ def update_settings(body: SettingsUpdate, request: Request) -> dict:
         if default_boss and allowed_now and default_boss not in allowed_now:
             raise HTTPException(status_code=400, detail="Default StarBreach boss must be in the allowed list.")
         store.set_setting(DEFAULT_STARBREACH_BOSS_KEY, default_boss)
+    if body.default_starting_ship_design_id is not None:
+        starting_ship = body.default_starting_ship_design_id.strip()
+        if starting_ship:
+            valid_ship_ids = {entry["id"] for entry in ship_designs.list_designs()}
+            if starting_ship not in valid_ship_ids:
+                raise HTTPException(status_code=400, detail=f"Unknown global ship design: {starting_ship}")
+        store.set_setting(DEFAULT_STARTING_SHIP_KEY, starting_ship)
     if (
         body.allow_mixed_card_type_stacks is not None
         or body.overdrive_style is not None

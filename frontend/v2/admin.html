@@ -285,6 +285,12 @@
             Allow Overdrive Desperation
           </label>
           <h3 class="panel-sub">StarDock (player ship designer)</h3>
+          <label class="setting-row" style="flex-direction:column;align-items:flex-start">
+            Default player starting ship (new captains get a copy of this global ship)
+            <select id="setting-stardock-starting-ship">
+              <option value="">Lightning Bug Alpha (built-in default)</option>
+            </select>
+          </label>
           <label class="setting-row">
             Total tiles per ship (15 base; extras become Structure)
             <input type="number" id="setting-stardock-max-tiles" min="15" max="60" step="1" class="setting-number">
@@ -342,7 +348,7 @@
 
 <script src="/v2/static/api.js?v=8"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=34"></script>
+<script src="/v2/static/admin.js?v=35"></script>
 <script src="/v2/static/bossdesigner.js?v=26"></script>
 <script src="/v2/static/shipdesigner.js?v=5"></script>
 </body>

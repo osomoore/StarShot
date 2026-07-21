@@ -453,6 +453,55 @@ def parse_ship_design_ref(design_id: str) -> tuple[int | None, str]:
     return None, design_id
 
 
+def ensure_starter_ship(store: V2Store, user_id: int) -> str:
+    """Provision a player's starting ship exactly once and return their
+    selected ship ref.
+
+    On first call for an account we clone the admin-default global ship design
+    into the player's personal library and record it as their selected ship.
+    Subsequent calls just return the stored ref. `""` is a valid stored ref
+    meaning the stock base ship.
+    """
+    existing = store.get_selected_ship_ref(user_id)
+    # A truthy stored ref is a real ship. The empty string is the retired base
+    # ship (or a legacy selection): re-provision so every captain flies a real
+    # ship/deck, never the deprecated base hull.
+    if existing:
+        return existing
+
+    from starshot.v2 import ship_designs
+    from starshot.v2.settings import default_starting_ship_design_id
+
+    store.initialize_stardock(user_id)
+    ref = ""
+    default_id = default_starting_ship_design_id()
+    # A returning player may already own a copy (e.g. from a prior first visit
+    # under the old designer, which cloned to the same id). Reuse it rather
+    # than creating a duplicate.
+    owned = ship_designs.load_design(default_id, user_id)
+    if owned is not None:
+        ref = f"user:{user_id}:{default_id}"
+    else:
+        source = ship_designs.load_design(default_id)
+        if source is not None:
+            # Give the player their own editable copy (keeping the source id
+            # when free) so edits never touch the shared global design.
+            source["id"] = ship_designs.unique_design_id(source["id"], user_id)
+            try:
+                saved, _problems = ship_designs.save_design(source, user_id)
+                ref = f"user:{user_id}:{saved['id']}"
+            except ship_designs.ShipDesignError:
+                ref = default_id  # fall back to flying the global design directly
+    store.set_selected_ship_ref(user_id, ref)
+    return ref
+
+
+def selected_ship_ref(store: V2Store, user_id: int) -> str:
+    """The player's persistent selected ship ref, provisioning a starter ship
+    on first use. Returns `""` for the stock base ship."""
+    return ensure_starter_ship(store, user_id)
+
+
 def _load_playable_ship_design(design_id: str | None) -> dict | None:
     """Resolve a ship design id chosen at a match seat. Only battle-ready
     (problem-free) designs may enter a game; empty = the standard base ship."""

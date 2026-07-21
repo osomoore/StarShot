@@ -1170,6 +1170,14 @@
       const input = document.getElementById(elementId);
       if (input && stardock[key] != null) input.value = stardock[key];
     }
+    const shipSelect = document.getElementById("setting-stardock-starting-ship");
+    if (shipSelect) {
+      const ships = stardock.ship_designs || [];
+      shipSelect.innerHTML = '<option value="">Lightning Bug Alpha (built-in default)</option>' + ships.map((ship) =>
+        `<option value="${esc(ship.id)}"${ship.valid ? "" : " disabled"}>${esc(ship.name)} (${esc(ship.id)})${ship.valid ? "" : " — not battle-ready"}</option>`
+      ).join("");
+      shipSelect.value = stardock.default_starting_ship_design_id || "";
+    }
   }
 
   function starDockSettingsBody() {
@@ -1178,6 +1186,8 @@
       const input = document.getElementById(elementId);
       if (input && input.value !== "") body["stardock_" + key] = parseInt(input.value, 10);
     }
+    const shipSelect = document.getElementById("setting-stardock-starting-ship");
+    if (shipSelect) body.default_starting_ship_design_id = shipSelect.value;
     return body;
   }
 

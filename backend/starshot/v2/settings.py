@@ -17,6 +17,10 @@ MAINTENANCE_KEY = "maintenance"        # non-empty string = under construction m
 ACTIVE_DECK_KEY = "active_deck_set_path"
 DEFAULT_STARBREACH_BOSS_KEY = "default_starbreach_boss_design_id"
 ALLOWED_STARBREACH_BOSSES_KEY = "allowed_starbreach_boss_design_ids"
+DEFAULT_STARTING_SHIP_KEY = "default_starting_ship_design_id"
+
+# The global ship design new players receive as their starting ship.
+DEFAULT_STARTING_SHIP_FALLBACK = "lightningbug"
 
 # StarDock (player ship designer) admin-configurable rule numbers. Stored as
 # individual settings named f"stardock_{key}"; missing/invalid values fall
@@ -66,6 +70,11 @@ def active_deck_setting() -> str | None:
 
 def default_starbreach_boss_design_id() -> str:
     return _get(DEFAULT_STARBREACH_BOSS_KEY) or ""
+
+
+def default_starting_ship_design_id() -> str:
+    """The global ship design id new players receive as their starting ship."""
+    return _get(DEFAULT_STARTING_SHIP_KEY) or DEFAULT_STARTING_SHIP_FALLBACK
 
 
 def allowed_starbreach_boss_design_ids() -> set[str]:

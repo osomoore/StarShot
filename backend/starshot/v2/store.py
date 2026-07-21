@@ -218,6 +218,10 @@ _MIGRATIONS = (
         user_id INTEGER PRIMARY KEY REFERENCES users(id),
         initialized_at TEXT NOT NULL
     )""",
+    # The player's persistent selected ship (the one they fly in every raid).
+    # Stored as a playable ship ref: "user:<uid>:<id>" for an owned design,
+    # a bare global design id, or "" for the stock base ship.
+    "ALTER TABLE campaign_stardock ADD COLUMN selected_ship_design_id TEXT",
 )
 
 # External sign-in providers and the users column holding each one's subject.
@@ -878,6 +882,29 @@ class V2Store:
                 (user_id, _now()),
             )
             return cursor.rowcount > 0
+
+    def get_selected_ship_ref(self, user_id: int) -> str | None:
+        """The player's persistent selected ship ref, or None if never set.
+
+        None means "not yet provisioned" — the caller should run starter
+        provisioning. "" is a real value meaning the stock base ship.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT selected_ship_design_id FROM campaign_stardock WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return None if row is None else row["selected_ship_design_id"]
+
+    def set_selected_ship_ref(self, user_id: int, ref: str) -> None:
+        """Persist the player's selected ship ref (upserting the row)."""
+        with self._connect(immediate=True) as conn:
+            conn.execute(
+                "INSERT INTO campaign_stardock (user_id, initialized_at, selected_ship_design_id) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET selected_ship_design_id = excluded.selected_ship_design_id",
+                (user_id, _now(), ref),
+            )
 
     def user_badges(self, user_id: int) -> list[dict]:
         with self._connect() as conn:

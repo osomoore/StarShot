@@ -360,8 +360,8 @@
         <p class="feedback-copy">Guests sail light — a guest voyage lasts only this session, and guests cannot:</p>
         <ul class="guest-limits">
           <li>Appear on leaderboards</li>
-          <li>Save StarDock custom ships</li>
-          <li>Save StarBreach custom bosses</li>
+          <li>Keep custom ships you build past this voyage</li>
+          <li>Build or keep StarBreach custom bosses</li>
           <li>Save statistics, achievements, match history, or other account data</li>
         </ul>
         <p class="feedback-copy guest-policy-links">

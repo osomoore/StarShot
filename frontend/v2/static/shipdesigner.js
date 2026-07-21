@@ -670,7 +670,10 @@
       root().querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
         if (!window.confirm("Delete this ship design? This cannot be undone.")) return;
         try {
-          await call("/" + encodeURIComponent(button.dataset.delete), { method: "DELETE" });
+          const response = await call("/" + encodeURIComponent(button.dataset.delete), { method: "DELETE" });
+          if (response.restored_default) {
+            window.alert(`At least you'll always have the ${response.default_ship.name}`);
+          }
           await refreshList();
           renderLibrary();
           setStatus("Design deleted.", true);
@@ -1498,22 +1501,27 @@
         renderProblems(data.problems || []);
         setStatus(data.problems && data.problems.length
           ? "Saved (not battle-ready yet — see the notes below)."
-          : "Saved — battle-ready! Pick it as Your Ship in the lobby.", true);
+          : "Saved — battle-ready! Choose it from Your Ship on the main deck.", true);
       } catch (err) { setStatus(err.message, false); }
     }
 
     // ── boot ─────────────────────────────────────────────────────────────
-    async function boot() {
-      if (design) return; // keep an open editor
+    async function boot(opts = {}) {
+      if (design) {
+        // An editor is already open. If asked to jump to a different design,
+        // switch to it; otherwise keep what's showing.
+        if (opts.editDesignId && opts.editDesignId !== design.id && !dirty) {
+          await openDesign(opts.editDesignId);
+        }
+        return;
+      }
       try {
         await refreshList();
         renderLibrary();
-        if (!isAdmin && META.first_visit && designs.some((entry) => entry.id === META.initial_design_id)) {
-          const data = await call("/" + encodeURIComponent(META.initial_design_id));
-          design = data.design;
-          design.lanes = design.lanes || {};
-          dirty = false;
-          renderEditor(data.problems);
+        if (!isAdmin && opts.editDesignId && designs.some((entry) => entry.id === opts.editDesignId)) {
+          await openDesign(opts.editDesignId);
+        } else if (!isAdmin && META.first_visit && designs.some((entry) => entry.id === META.initial_design_id)) {
+          await openDesign(META.initial_design_id);
         }
         booted = true;
       } catch (err) {
@@ -1521,12 +1529,21 @@
       }
     }
 
+    // Load a specific design straight into the editor (from the landing card).
+    async function openDesign(designId) {
+      const data = await call("/" + encodeURIComponent(designId));
+      design = data.design;
+      design.lanes = design.lanes || {};
+      dirty = false;
+      renderEditor(data.problems);
+    }
+
     return { boot };
   }
 
   // ── main app: full-screen "My Ships" overlay, opened from the lobby ─────
   let playerDesigner = null;
-  function openPlayerDesigner() {
+  function openPlayerDesigner(opts = {}) {
     let overlay = document.getElementById("player-shipdesigner-overlay");
     if (!overlay) {
       overlay = document.createElement("div");
@@ -1555,7 +1572,7 @@
         isAdmin: false,
       });
     }
-    playerDesigner.boot();
+    playerDesigner.boot(opts);
     maybeShowHowto();
   }
 
@@ -1568,7 +1585,7 @@
         <h3>🚀 StarDock <span class="badge-alpha">ALPHA</span> — how it works</h3>
         <p class="tutorial-alpha-note">StarDock is still in Alpha — rules and balance may shift as it's tested. Bug reports and feedback are very welcome.</p>
         <div class="tutorial-steps">
-          <div><b>Starter ship.</b> Your first visit loads a personal copy of <b>LightningBug</b>. Save it as-is, reshape it, or use it as the starting point for another design.</div>
+          <div><b>Starter ship.</b> Every captain starts with a personal copy of <b>Lightning Bug Alpha</b> — shown on the main deck as Your Ship. Save it as-is, reshape it, or use it as the starting point for another design.</div>
           <div><b>1.</b> Place <b>15 contiguous tiles</b>: 1 Core, 2 Life Supports, 1 Bone Room, 1 Docking Bay,
             and exactly <b>10 Engine/Cannon components</b>.</div>
           <div><b>2.</b> Those 10 components are your <b>starting deck</b>, bought with <b>15 Core Component points</b>:
@@ -1579,7 +1596,7 @@
             use <b>🎲 Auto-place lanes</b> to cycle legal arrangements (mirrored on symmetric ships), or tick
             <b>Advanced</b> to place them by hand.</div>
           <div><b>4.</b> Pick <b>1 special upgrade</b>: +1 shield, +1 card draw, flat Defense, flat Aim, or +2 Core points.</div>
-          <div><b>5.</b> Save a battle-ready design, then choose it as <b>Your Ship</b> when creating or joining a raid.</div>
+          <div><b>5.</b> Save a battle-ready design, then pick it from <b>Your Ship</b> on the main deck — you'll fly it in every raid.</div>
           <div><b>Campaign components.</b> Winning on VP or destroying an opposing ship can unlock a component and matching card. Earned parts appear in their own palette and may be used in any ship you design.</div>
         </div>
         <button class="btn gold picker-cancel" id="sd-howto-ok">Got it</button>

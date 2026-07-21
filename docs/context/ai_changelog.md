@@ -2,6 +2,22 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-20 21:17 -05:00
+
+- Title: Selected ship on the main deck + guest build + delete safety net
+- Build ID: `1d37ee4`
+- AI agent: Claude (Opus 4.8)
+- Summary:
+  - Made each player's ship a first-class, always-on concept. Every captain now has one persistent, server-saved selected ship, provisioned on first use as a personal copy of the global "Lightning Bug Alpha" (renamed from "LightningBug"). Stored in a new `campaign_stardock.selected_ship_design_id` column.
+  - Added `GET`/`PUT /api/v2/my/ship` (selected ship + hex preview + owned-ship dropdown options). Provisioning (`service.ensure_starter_ship`) is idempotent and reuses an existing owned copy instead of duplicating.
+  - Every human seat now flies the captain's selected ship and its component-derived starting deck in all raid paths (create, join, duel, quickmatch, challenge). Removed the opt-in StarDock expansion toggle and the redundant crew-builder "Your Ship" picker.
+  - **Retired the stock base ship** as a selectable/flyable option: everyone (guests included) flies a real ship/deck starting from the admin-default Lightning Bug Alpha. The base ship is gone from the dropdown, `PUT /api/v2/my/ship` rejects the empty selection, and a legacy empty selection re-provisions the starter. (The engine still uses the base hull only as a last-resort fallback for broken data.)
+  - **Guests can build and fly ships** (ships only — boss building stays registered-only): the ship-designer API now admits guests with full `can_edit: true`, a "sails only this voyage" note on the card, and `DELETE /my/ship-designs` routes through `purge_account` on guest logout so their creations are deleted. The guest-notice copy updated accordingly.
+  - **Delete-last-ship safety net**: if a player deletes their final ship, the system automatically restores the default starter with an alert *"At least you'll always have the Lightning Bug Alpha."* Ensures captains never lose access to a playable ship from the lobby.
+  - Landing page: new "Your Ship" card in the center column above Raids (under Set Sail on mobile) showing the hex layout + name, a dropdown to switch owned ships, and click-through into the StarDock editor for that design.
+  - Admin: new "Default player starting ship" setting (`default_starting_ship_design_id`) — designate any global ship as the new-player starter; affects only newly provisioned accounts.
+  - Isolated runtime ship-design writes in the API test module to a scratch dir (prevents tests from polluting `.starshot`). Added SelectedShip tests + delete-safety test (1 new test, 401-test suite runs with same 5 pre-existing fixture failures + 1 error, zero net regressions). Verified end-to-end: registered and guest captains see the Your Ship card, switch ships, click through to the StarDock editor, and deletion of the last ship triggers the auto-restore popup.
+
 ## 2026-07-20 05:07 -05:00
 
 - Title: Finite StarDock palette

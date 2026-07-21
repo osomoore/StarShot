@@ -1,6 +1,6 @@
 {
   "id": "lightningbug",
-  "name": "LightningBug",
+  "name": "Lightning Bug Alpha",
   "description": "The LightningBug class ship is lighter and faster than the standard Scavenge class. It sacrifices two primary-lane components for a third shield charge and carries more engines than cannons.",
   "tiles": [
     {"q": 0, "r": 0, "type": "core"},

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 
 from starshot.rules.player_ships import (
     BASE_DRAW,
@@ -38,6 +39,7 @@ ship_designer_admin_router = APIRouter(prefix="/api/v2/admin/ship-designs", tags
 player_ship_library_admin_router = APIRouter(prefix="/api/v2/admin/player-ship-designs", tags=["v2-admin"])
 ship_designs_public_router = APIRouter(prefix="/api/v2/ship-designs", tags=["v2"])
 my_ship_designs_router = APIRouter(prefix="/api/v2/my/ship-designs", tags=["v2"])
+my_ship_router = APIRouter(prefix="/api/v2/my/ship", tags=["v2"])
 
 
 def _designer_meta() -> dict:
@@ -66,11 +68,12 @@ def _designer_meta() -> dict:
 
 
 def _current_user(request: Request) -> dict:
-    """Signed-in, non-guest user: guests can't create or save persistent
-    ship designs (enforced here, not just hidden in the UI)."""
-    from starshot.v2.router import _registered_user
+    """Any signed-in user, including guests. Guests fly and build ships just
+    like registered captains; their designs are simply discarded when the
+    guest voyage ends (see guest logout). Boss designs stay registered-only."""
+    from starshot.v2.router import _current_user as any_signed_in_user
 
-    return _registered_user(request)
+    return any_signed_in_user(request)
 
 
 def _design_or_404(design_id: str, owner_id: int | None) -> dict:
@@ -128,19 +131,20 @@ def list_playable_ship_designs(request: Request) -> dict:
 def list_my_ship_designs(request: Request) -> dict:
     user = _current_user(request)
     from starshot.v2.store import get_v2_store
-    first_visit = get_v2_store().initialize_stardock(user["id"])
-    if first_visit and ship_designs.load_design("lightningbug", user["id"]) is None:
-        initial = ship_designs.load_design("lightningbug")
-        if initial is not None:
-            ship_designs.save_design(initial, user["id"])
+    from starshot.v2.service import ensure_starter_ship
+
+    store = get_v2_store()
+    ensure_starter_ship(store, user["id"])
     meta = _designer_meta()
     from starshot.v2.campaign import component_catalog, inventory_for_user
     meta["bonus_components"] = inventory_for_user(user["id"])
     meta["available_reward_components"] = component_catalog()
     from starshot.v2.admin import admin_usernames
     meta["is_campaign_admin"] = user["username"].lower() in admin_usernames()
-    meta["first_visit"] = first_visit
-    meta["initial_design_id"] = "lightningbug"
+    # The designer opens from the landing-page ship card into a specific
+    # design, so no first-visit auto-open is needed here anymore.
+    meta["first_visit"] = False
+    meta["initial_design_id"] = None
     return {"designs": ship_designs.list_designs(user["id"]), "meta": meta}
 
 
@@ -169,6 +173,9 @@ async def put_my_ship_design(request: Request) -> dict:
 
 @my_ship_designs_router.delete("/{design_id}")
 def delete_my_ship_design(design_id: str, request: Request) -> dict:
+    from starshot.v2.service import ensure_starter_ship, parse_ship_design_ref
+    from starshot.v2.store import get_v2_store
+
     user = _current_user(request)
     try:
         removed = ship_designs.delete_design(design_id, user["id"])
@@ -176,7 +183,26 @@ def delete_my_ship_design(design_id: str, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not removed:
         raise HTTPException(status_code=404, detail="No ship design with that id.")
-    return {"ok": True}
+    # Safety net: if the player just deleted their last ship, restore the default
+    # so they always have something to fly from the main screen.
+    remaining = ship_designs.list_designs(user["id"])
+    if not remaining or not any(d.get("valid") for d in remaining):
+        store = get_v2_store()
+        # Clear the stale selection so ensure_starter_ship will re-provision rather
+        # than returning the deleted design's ref.
+        store.set_selected_ship_ref(user["id"], "")
+        ref = ensure_starter_ship(store, user["id"])
+        owner_id, bare_id = parse_ship_design_ref(ref)
+        default_design = ship_designs.load_design(bare_id, owner_id)
+        return {
+            "ok": True,
+            "restored_default": True,
+            "default_ship": {
+                "name": default_design.get("name", "Your Ship") if default_design else "Your Ship",
+                "ref": ref,
+            },
+        }
+    return {"ok": True, "restored_default": False}
 
 
 @my_ship_designs_router.get("/{design_id}/export")
@@ -210,6 +236,106 @@ async def import_my_ship_design(request: Request) -> dict:
     except ship_designs.ShipDesignError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "design": saved, "problems": problems, "renamed": saved["id"] != base_id}
+
+
+# --------------------------------------------------------------------------
+# The player's persistent selected ship (shown on the landing page and flown
+# in every raid). Its ref is "user:<uid>:<id>" (owned), a bare global id, or
+# "" for the stock base ship.
+# --------------------------------------------------------------------------
+
+
+def _selected_ship_view(ref: str, user_id: int) -> dict:
+    """Resolve a stored ship ref to {ref, design_id, name, preview}. The base
+    ship is retired, so a missing/empty ref falls back to the admin default
+    starting ship rather than the stock hull."""
+    from starshot.v2.service import parse_ship_design_ref
+
+    if ref:
+        owner_id, bare_id = parse_ship_design_ref(ref)
+        design = ship_designs.load_design(bare_id, owner_id)
+        if design is not None:
+            configured = ship_designs.with_active_config(design, owner_id)
+            return {
+                "ref": ref,
+                "design_id": bare_id,
+                "owner_id": owner_id,
+                "name": design.get("name", bare_id),
+                "preview": compile_layout_spec(configured),
+            }
+    # Retired base ship or a stale selection: show the global default starter.
+    from starshot.v2.settings import default_starting_ship_design_id
+
+    default_id = default_starting_ship_design_id()
+    design = ship_designs.load_design(default_id)
+    if design is not None:
+        configured = ship_designs.with_active_config(design)
+        return {
+            "ref": default_id,
+            "design_id": default_id,
+            "name": design.get("name", default_id),
+            "preview": compile_layout_spec(configured),
+        }
+    return {"ref": "", "design_id": "", "name": "No ship", "preview": {"components": []}}
+
+
+def _owned_ship_options(user_id: int) -> list[dict]:
+    """Ships the landing-page dropdown offers: the captain's own battle-ready
+    designs, as {ref, name}. The base ship is retired — captains always fly a
+    real ship/deck."""
+    return [
+        {"ref": f"user:{user_id}:{entry['id']}", "name": entry["name"]}
+        for entry in ship_designs.list_designs(user_id)
+        if entry["valid"]
+    ]
+
+
+def _my_ship_payload(user: dict) -> dict:
+    from starshot.v2.store import get_v2_store
+    from starshot.v2.service import ensure_starter_ship
+
+    store = get_v2_store()
+    ref = ensure_starter_ship(store, user["id"])
+    selected = _selected_ship_view(ref, user["id"])
+    # Everyone (guests included) may build and fly ships; guest creations are
+    # simply discarded when the voyage ends.
+    return {"selected": selected, "options": _owned_ship_options(user["id"]), "can_edit": True, "is_guest": bool(user.get("is_guest"))}
+
+
+@my_ship_router.get("")
+def get_my_ship(request: Request) -> dict:
+    return _my_ship_payload(_current_user(request))
+
+
+class SelectShipRequest(BaseModel):
+    ship_design_id: str = Field(default="", max_length=140)
+
+
+@my_ship_router.put("")
+def put_my_ship(body: SelectShipRequest, request: Request) -> dict:
+    user = _current_user(request)
+    from starshot.v2.store import get_v2_store
+    from starshot.v2.service import _load_playable_ship_design, ensure_starter_ship, parse_ship_design_ref
+
+    # Provision the captain's starter library first so a selection always lands
+    # on a real ship.
+    ensure_starter_ship(get_v2_store(), user["id"])
+    ref = (body.ship_design_id or "").strip()
+    if not ref:
+        # The base ship is retired; a captain must fly a real ship/deck.
+        raise HTTPException(status_code=400, detail="Pick a ship — the base hull is retired.")
+    try:
+        owner_id, _bare = parse_ship_design_ref(ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if owner_id is not None and owner_id != user["id"]:
+        raise HTTPException(status_code=403, detail="That ship belongs to another captain.")
+    try:
+        _load_playable_ship_design(ref)  # must exist and be battle-ready
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    get_v2_store().set_selected_ship_ref(user["id"], ref)
+    return {"ok": True, **_my_ship_payload(user)}
 
 
 # --------------------------------------------------------------------------
