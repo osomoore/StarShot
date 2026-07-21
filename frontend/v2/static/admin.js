@@ -168,47 +168,165 @@
     return row;
   }
 
+  // ── campaign component library ──────────────────────────────────────────
+  const COMPONENTS_PER_PAGE = 20;
   let componentAwards = [];
+  let componentSelected = null; // selected component id (edited in the breakout above the list)
+  let componentPage = 0;
+
   async function loadComponentAwards() {
-    const host = document.getElementById("component-award-list");
+    const host = document.getElementById("component-library");
     if (!host) return;
     const data = await get("/admin/component-awards");
     componentAwards = data.components || [];
-    renderComponentAwards();
+    if (!componentAwards.some((entry) => entry.id === componentSelected)) {
+      componentSelected = componentAwards[0]?.id || null;
+    }
+    renderComponentLibrary();
+    renderComponentDetail();
   }
-  function renderComponentAwards() {
-    const host = document.getElementById("component-award-list");
+
+  // All searchable text for a component: its own name/description plus the
+  // card name and every face's text (side A/B basic + alternate lines).
+  function componentSearchText(entry) {
+    const card = entry.card || {};
+    return [
+      entry.name, entry.description, entry.card_name, card.name,
+      card.side_a_1, card.side_a_2, card.side_b_1, card.side_b_2,
+      ...(entry.starting_cards || []).map((compiled) => compiled.name),
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function componentFaceSummary(entry) {
+    const card = entry.card || {};
+    const sideA = [card.side_a_1, card.side_a_2].filter(Boolean).join(" · ");
+    const sideB = [card.side_b_1, card.side_b_2].filter(Boolean).join(" · ");
+    return [sideA, sideB].filter(Boolean).join("  /  ");
+  }
+
+  function filteredSortedComponents() {
+    const query = (document.getElementById("component-search")?.value || "").trim().toLowerCase();
+    const sort = document.getElementById("component-sort")?.value || "name";
+    let list = componentAwards.slice();
+    if (query) list = list.filter((entry) => componentSearchText(entry).includes(query));
+    const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+    const comparators = {
+      name: byName,
+      card: (a, b) => String(a.card_name || a.card?.name || "").localeCompare(String(b.card_name || b.card?.name || "")) || byName(a, b),
+      cost: (a, b) => (a.cost - b.cost) || byName(a, b),
+      type: (a, b) => String(a.component_type).localeCompare(String(b.component_type)) || byName(a, b),
+    };
+    list.sort(comparators[sort] || byName);
+    return list;
+  }
+
+  function renderComponentLibrary() {
+    const host = document.getElementById("component-library");
+    if (!host) return;
+    const list = filteredSortedComponents();
+    const pages = Math.max(1, Math.ceil(list.length / COMPONENTS_PER_PAGE));
+    componentPage = Math.min(Math.max(0, componentPage), pages - 1);
+    const start = componentPage * COMPONENTS_PER_PAGE;
+    const pageItems = list.slice(start, start + COMPONENTS_PER_PAGE);
     host.innerHTML = "";
-    componentAwards.forEach((entry, index) => {
-      const editor = document.createElement("div");
-      editor.className = "campaign-component-editor";
-      editor.innerHTML = `
-        <div class="campaign-component-meta">
-          <label>Component name<input data-component-field="name" value="${esc(entry.name)}" placeholder="Component name"></label>
-          <label>Description<input data-component-field="description" value="${esc(entry.description)}" placeholder="Reward popup and StarDock description"></label>
-          <label>Point cost<select data-component-field="cost"><option value="1" ${entry.cost === 1 ? "selected" : ""}>1 point</option><option value="2" ${entry.cost === 2 ? "selected" : ""}>2 points</option></select></label>
-          <label>Component type<select data-component-field="component_type"><option value="engine" ${entry.component_type === "engine" ? "selected" : ""}>Engine</option><option value="weapon" ${entry.component_type === "weapon" ? "selected" : ""}>Weapon</option></select></label>
-          <button class="btn crimson small" data-component-delete>Delete component</button>
+    if (!list.length) {
+      host.innerHTML = `<div class="component-empty">No components match your search.</div>`;
+    }
+    pageItems.forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "component-row" + (entry.id === componentSelected ? " selected" : "");
+      const faces = componentFaceSummary(entry);
+      row.innerHTML = `
+        <div class="component-row-main">
+          <span class="component-row-name">${esc(entry.name)}</span>
+          <span class="component-row-card">🃏 ${esc(entry.card_name || entry.card?.name || "—")}</span>
+          <span class="component-row-faces">${esc(faces)}</span>
         </div>
-        <div class="campaign-card-label">Starting-deck card</div>`;
-      const card = entry.card || (entry.card = {
-        name: entry.name || "New Reward Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 1",
+        <div class="component-row-tags">
+          <span class="component-tag tag-${esc(entry.component_type)}">${esc(entry.component_type)}</span>
+          <span class="component-tag tag-cost">${entry.cost} pt${entry.cost === 2 ? "s" : ""}</span>
+        </div>`;
+      row.addEventListener("click", () => {
+        componentSelected = entry.id;
+        renderComponentLibrary();
+        renderComponentDetail();
       });
-      editor.appendChild(cardEditorHead());
-      editor.appendChild(renderCardEditorRow(card));
-      editor.querySelectorAll("[data-component-field]").forEach((input) => input.addEventListener("change", () => {
-        entry[input.dataset.componentField] = input.dataset.componentField === "cost" ? Number(input.value) : input.value;
-      }));
-      editor.querySelector("[data-component-delete]").addEventListener("click", () => {
-        componentAwards.splice(index, 1);
-        renderComponentAwards();
-      });
-      host.appendChild(editor);
+      host.appendChild(row);
     });
+    const info = document.getElementById("component-page-info");
+    if (info) info.textContent = `Page ${componentPage + 1} / ${pages} · ${list.length} component${list.length === 1 ? "" : "s"}`;
+    const prev = document.getElementById("component-prev");
+    const next = document.getElementById("component-next");
+    if (prev) prev.disabled = componentPage <= 0;
+    if (next) next.disabled = componentPage >= pages - 1;
   }
+
+  function renderComponentPreview(entry) {
+    const host = document.getElementById("component-card-preview");
+    if (!host) return;
+    host.innerHTML = "";
+    const compiled = (entry.starting_cards || [])[0];
+    if (!compiled || !window.Cards) {
+      host.innerHTML = `<div class="component-empty">Save the library to preview the compiled card faces.</div>`;
+      return;
+    }
+    host.appendChild(window.Cards.cardEl(compiled));
+    if (compiled.desperate_face) {
+      host.appendChild(window.Cards.cardEl(compiled, { faceUsed: "desperate" }));
+    }
+  }
+
+  function renderComponentDetail() {
+    const host = document.getElementById("component-detail");
+    if (!host) return;
+    const entry = componentAwards.find((item) => item.id === componentSelected);
+    if (!entry) {
+      host.innerHTML = `<div class="component-empty">Select a component from the library below, or add a new one, to edit it here.</div>`;
+      return;
+    }
+    host.innerHTML = `
+      <div class="campaign-component-meta">
+        <label>Component name<input data-component-field="name" value="${esc(entry.name)}" placeholder="Component name"></label>
+        <label>Description<input data-component-field="description" value="${esc(entry.description || "")}" placeholder="Reward popup and StarDock description"></label>
+        <label>Point cost<select data-component-field="cost"><option value="1" ${entry.cost === 1 ? "selected" : ""}>1 point</option><option value="2" ${entry.cost === 2 ? "selected" : ""}>2 points</option></select></label>
+        <label>Component type<select data-component-field="component_type"><option value="engine" ${entry.component_type === "engine" ? "selected" : ""}>Engine</option><option value="weapon" ${entry.component_type === "weapon" ? "selected" : ""}>Weapon</option></select></label>
+        <button class="btn crimson small" data-component-delete>Delete</button>
+      </div>
+      <div class="component-detail-body">
+        <div class="component-detail-editor">
+          <div class="campaign-card-label">Starting-deck card</div>
+          <div id="component-card-editor"></div>
+        </div>
+        <div class="component-detail-preview">
+          <div class="campaign-card-label">Card faces</div>
+          <div id="component-card-preview" class="component-card-preview"></div>
+        </div>
+      </div>`;
+    const card = entry.card || (entry.card = {
+      name: entry.name || "New Reward Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 1",
+    });
+    const editor = host.querySelector("#component-card-editor");
+    editor.appendChild(cardEditorHead());
+    editor.appendChild(renderCardEditorRow(card));
+    host.querySelectorAll("[data-component-field]").forEach((input) => input.addEventListener("change", () => {
+      const field = input.dataset.componentField;
+      entry[field] = field === "cost" ? Number(input.value) : input.value;
+      if (field === "name" || field === "component_type" || field === "cost") renderComponentLibrary();
+    }));
+    host.querySelector("[data-component-delete]").addEventListener("click", () => {
+      const index = componentAwards.findIndex((item) => item.id === entry.id);
+      if (index >= 0) componentAwards.splice(index, 1);
+      componentSelected = componentAwards[0]?.id || null;
+      renderComponentLibrary();
+      renderComponentDetail();
+    });
+    renderComponentPreview(entry);
+  }
+
   document.getElementById("component-award-add")?.addEventListener("click", () => {
+    const id = `component_${Date.now()}`;
     componentAwards.push({
-      id: `component_${Date.now()}`,
+      id,
       name: "New Component",
       description: "",
       cost: 1,
@@ -216,7 +334,10 @@
       card: { name: "New Reward Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 1" },
       reward_rule: "random",
     });
-    renderComponentAwards();
+    componentSelected = id;
+    componentPage = 0;
+    renderComponentLibrary();
+    renderComponentDetail();
   });
   document.getElementById("component-award-save")?.addEventListener("click", async () => {
     try {
@@ -224,10 +345,18 @@
         components: componentAwards.map((entry) => ({ ...entry, card: cleanCards([entry.card || {}])[0] })),
       });
       componentAwards = data.components || [];
-      renderComponentAwards();
-      status("component-award-status", "✔ Campaign component list saved.", true);
+      if (!componentAwards.some((entry) => entry.id === componentSelected)) {
+        componentSelected = componentAwards[0]?.id || null;
+      }
+      renderComponentLibrary();
+      renderComponentDetail();
+      status("component-award-status", "✔ Campaign component library saved.", true);
     } catch (error) { status("component-award-status", error.message, false); }
   });
+  document.getElementById("component-search")?.addEventListener("input", () => { componentPage = 0; renderComponentLibrary(); });
+  document.getElementById("component-sort")?.addEventListener("change", () => { componentPage = 0; renderComponentLibrary(); });
+  document.getElementById("component-prev")?.addEventListener("click", () => { componentPage -= 1; renderComponentLibrary(); });
+  document.getElementById("component-next")?.addEventListener("click", () => { componentPage += 1; renderComponentLibrary(); });
   async function loadDeck() {
     const data = await get("/admin/deck");
     document.getElementById("deck-path").textContent = data.deck_path;

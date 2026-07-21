@@ -6,7 +6,7 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=23">
-<link rel="stylesheet" href="/v2/static/admin.css?v=22">
+<link rel="stylesheet" href="/v2/static/admin.css?v=23">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=12">
 <link rel="stylesheet" href="/v2/static/shipdesigner.css?v=5">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
@@ -185,12 +185,31 @@
       <div id="tab-shipdesign" class="admin-tabpage hidden"></div>
 
       <div id="tab-components" class="admin-tabpage hidden">
-        <h2 class="panel-title">Campaign Component Awards</h2>
-        <p class="admin-note">Define permanent StarDock components and their matching starting-deck cards. The card row is the same editor used by the normal Deck Editor: each side's type, face text, alternate text, and orientation choices are parsed through the same keyword/mod system. The initial list is copied from the active base deck. Point costs are 1 or 2.</p>
-        <div id="component-award-list" class="card-table"></div>
-        <button class="btn ghost small" id="component-award-add">＋ Add component</button>
-        <button class="btn gold" id="component-award-save">💾 Save component list</button>
+        <h2 class="panel-title">Campaign Component Library</h2>
+        <p class="admin-note">The master library of ship components and their matching starting-deck cards. Pick a component below to edit it in the breakout editor above the list. The card row is the same editor used by the normal Deck Editor: each side's type, face text, alternate text, and orientation choices run through the same keyword/mod system. Each component has a 1- or 2-point cost. New players start with one copy of every component/card in the deck the admin marks as the starting deck; the master library is also the pool future rewards draw from.</p>
+
+        <!-- Breakout editor for the selected component -->
+        <div id="component-detail" class="component-detail"></div>
+
+        <div class="component-toolbar">
+          <input id="component-search" type="search" placeholder="Search component / card name or face text…" autocomplete="off">
+          <select id="component-sort" title="Sort the library">
+            <option value="name">Sort: Component name</option>
+            <option value="card">Sort: Card name</option>
+            <option value="cost">Sort: Point cost</option>
+            <option value="type">Sort: Component type</option>
+          </select>
+          <button class="btn ghost small" id="component-award-add">＋ New component</button>
+          <button class="btn gold small" id="component-award-save">💾 Save library</button>
+        </div>
         <div id="component-award-status" class="admin-status"></div>
+
+        <div id="component-library" class="component-library"></div>
+        <div class="component-pager">
+          <button class="btn ghost small" id="component-prev">‹ Prev</button>
+          <span id="component-page-info" class="component-page-info"></span>
+          <button class="btn ghost small" id="component-next">Next ›</button>
+        </div>
       </div>
 
       <!-- accounts -->
@@ -348,7 +367,8 @@
 
 <script src="/v2/static/api.js?v=8"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=35"></script>
+<script src="/v2/static/cards.js?v=9"></script>
+<script src="/v2/static/admin.js?v=36"></script>
 <script src="/v2/static/bossdesigner.js?v=26"></script>
 <script src="/v2/static/shipdesigner.js?v=6"></script>
 </body>
