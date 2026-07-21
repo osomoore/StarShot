@@ -464,6 +464,7 @@ def _load_playable_ship_design(design_id: str | None) -> dict | None:
     design = ship_designs.load_design(bare_id, owner_id)
     if design is None:
         raise ValueError(f"Ship design '{design_id}' no longer exists.")
+    design = ship_designs.with_active_config(design, owner_id)
     problems = ship_designs.validate_design(design)
     if problems:
         raise ValueError(
@@ -480,7 +481,7 @@ def _player_ship_designs_for_match(match: dict) -> dict | None:
         design = _load_playable_ship_design(seat.get("ship_design_id"))
         if design is not None:
             # bake the current admin StarDock config into the compiled spec
-            designs[seat["player_id"]] = ship_designs.with_active_config(design)
+            designs[seat["player_id"]] = design
     return designs or None
 
 
@@ -570,6 +571,14 @@ def _record_completion(store: V2Store, match: dict, state: GameState) -> None:
             score=score,
             ship_loss=bool(player and player.ship.destroyed),
         )
+    try:
+        from starshot.v2.campaign import award_for_completed_match
+
+        award_for_completed_match(store, match, state)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Campaign reward failed for match %s", match.get("id"))
 
 
 def leaderboard_category_for_match(match: dict) -> str:

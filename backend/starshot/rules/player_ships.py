@@ -54,6 +54,20 @@ REQUIRED_LIFE_SUPPORTS = 2
 DECK_SIZE = 10
 BASE_TILE_TOTAL = 15
 
+# Every captain starts StarDock with this finite common-parts palette. Earned
+# campaign components are a separate inventory and may replace any of the ten
+# engine/cannon slots, but common parts cannot exceed these quantities.
+BASE_PALETTE_LIMITS = {
+    "core": 1,
+    "life_support": 2,
+    "bone_room": 1,
+    "docking_bay": 1,
+    "double_cannon": 2,
+    "cannon": 3,
+    "double_engine": 3,
+    "engine": 2,
+}
+
 BASE_SHIELDS = 2
 BASE_DRAW = 5
 UPGRADE_EXTRA_POINTS = 2
@@ -76,6 +90,7 @@ DEFAULT_STARDOCK_CONFIG = {
 
 # Deck-defining tile types and their Core Component point costs / cards.
 CORE_TILE_COSTS = {"engine": 1, "double_engine": 2, "cannon": 1, "double_cannon": 2}
+BONUS_TILE_TYPE = "bonus_component"
 DECK_CARD_FOR_TILE = {
     "engine": "move_1",
     "double_engine": "move_2",
@@ -94,6 +109,7 @@ PLAYER_TILE_TYPES = (
     "life_support",
     "core",
     "structure",
+    BONUS_TILE_TYPE,
 )
 
 # Pre-StarDock-overhaul tile types: still normalized so old saved designs can
@@ -204,7 +220,12 @@ def primary_lane_tile_count(design: dict) -> int:
 
 
 def core_points_spent(design: dict) -> int:
-    return sum(CORE_TILE_COSTS.get(tile["type"], 0) for tile in design.get("tiles", []))
+    bonuses = design.get("bonus_components") or {}
+    return sum(
+        int((bonuses.get(tile.get("reward_id")) or {}).get("cost", 0))
+        if tile["type"] == BONUS_TILE_TYPE else CORE_TILE_COSTS.get(tile["type"], 0)
+        for tile in design.get("tiles", [])
+    )
 
 
 def core_points_budget(design: dict) -> int:
@@ -223,7 +244,30 @@ def deck_counts(design: dict) -> dict[str, int]:
 
 
 def deck_component_count(design: dict) -> int:
-    return sum(1 for tile in design.get("tiles", []) if tile["type"] in CORE_TILE_COSTS)
+    return sum(1 for tile in design.get("tiles", []) if tile["type"] in CORE_TILE_COSTS or tile["type"] == BONUS_TILE_TYPE)
+
+
+def bonus_card_ids(design: dict) -> list[str]:
+    bonuses = design.get("bonus_components") or {}
+    return [
+        str(bonuses[tile["reward_id"]]["card_id"])
+        for tile in design.get("tiles", [])
+        if tile.get("type") == BONUS_TILE_TYPE and tile.get("reward_id") in bonuses
+    ]
+
+
+def bonus_cards(design: dict) -> list[dict]:
+    """Compiled campaign cards contributed by placed reward components."""
+    bonuses = design.get("bonus_components") or {}
+    cards: list[dict] = []
+    for tile in design.get("tiles", []):
+        if tile.get("type") != BONUS_TILE_TYPE:
+            continue
+        bonus = bonuses.get(tile.get("reward_id")) or {}
+        starting_cards = bonus.get("starting_cards")
+        if isinstance(starting_cards, list):
+            cards.extend(card for card in starting_cards if isinstance(card, dict))
+    return cards
 
 
 # ── lanes ───────────────────────────────────────────────────────────────────
@@ -393,13 +437,14 @@ def component_entries(design: dict) -> list[dict]:
     for tile in _sorted_tiles(design):
         tile_type = tile["type"]
         counts[tile_type] = counts.get(tile_type, 0) + 1
-        base_name = _COMPONENT_NAMES.get(tile_type, tile_type.replace("_", " ").title())
+        bonus = (design.get("bonus_components") or {}).get(tile.get("reward_id"), {})
+        base_name = bonus.get("name") or _COMPONENT_NAMES.get(tile_type, tile_type.replace("_", " ").title())
         name = base_name if totals[tile_type] == 1 else f"{base_name} {counts[tile_type]}"
         entries.append(
             {
                 "id": f"{tile_type}_{counts[tile_type]}",
                 "name": name,
-                "type": _COMPONENT_TYPE_FOR_TILE.get(tile_type, tile_type),
+                "type": bonus.get("component_type") or _COMPONENT_TYPE_FOR_TILE.get(tile_type, tile_type),
                 "q": tile["q"],
                 "r": tile["r"],
             }
@@ -426,4 +471,6 @@ def compile_layout_spec(design: dict) -> dict:
         "defense_bonus": config["upgrade_defense_bonus"] if upgrade == "defense" else 0,
         "upgrade": upgrade,
         "deck": deck_counts(design),
+        "bonus_card_ids": bonus_card_ids(design),
+        "bonus_cards": bonus_cards(design),
     }

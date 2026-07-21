@@ -18,6 +18,7 @@
   let replayOrders = null;    // your submitted stacks for the round being replayed
   let replayOrdersByRound = null;
   let endgameShown = false;
+  let campaignReward = null;
   let draft = null;
   let sealedSlots = null;   // snapshot of my slots at the moment I sealed orders, for preview while waiting
   let sealedRound = null;
@@ -356,7 +357,7 @@
     grab();
     applyMobileMode();
     gameId = id;
-    view = null; match = null; lastVersion = -1; endgameShown = false;
+    view = null; match = null; lastVersion = -1; endgameShown = false; campaignReward = null;
     duelTutorialChaining = false;
     draft = emptyDraft();
     armedSlot = null;
@@ -406,6 +407,7 @@
     match = payload.match;
     you = payload.you;
     lastVersion = payload.version;
+    if (payload.campaign_reward) campaignReward = payload.campaign_reward;
     if (match) {
       const names = {};
       const titles = {};
@@ -4146,6 +4148,10 @@
     const reason = view.result && (goalReasons[view.result.reason] || RESULT_REASONS[view.result.reason])
       ? (goalReasons[view.result.reason] || RESULT_REASONS[view.result.reason])
       : (view.result && view.result.reason) || "";
+    const rewardComponent = campaignReward && campaignReward.component;
+    const rewardLead = campaignReward?.source_kind === "wreckage"
+      ? "From the wreckage of your foe, you scavenge"
+      : "In recognition of your dominance, the Pirate Guild Rewards you";
     overlay.innerHTML = "";
     overlay.classList.remove("hidden");
     const box = document.createElement("div");
@@ -4156,6 +4162,11 @@
         ${view.result && view.result.is_tie ? " (a tie, settled over grog)" : ""}<br>
         <b>How it ended:</b> ${esc(reason)} · ${view.round_number > 6 ? 6 : view.round_number} round${view.round_number > 1 ? "s" : ""} fought
         ${forfeits.length ? `<br>🏳 ${esc(forfeits.join("; "))}` : ""}</div>
+      ${rewardComponent ? `<div class="feedback-spot campaign-reward">
+        <h3>${esc(rewardLead)}: ${esc(rewardComponent.name)}: ${esc(rewardComponent.description)}</h3>
+        <p>You gained a new component and its matching starting-deck card. Head to StarDock and work on your own ship design.</p>
+        <button class="btn gold" id="btn-endgame-stardock">Head to StarDock</button>
+      </div>` : ""}
       <div class="eg-grid">
         ${rows.map((row, index) => {
           const s = stats[row.playerId];
@@ -4204,6 +4215,12 @@
       overlay.classList.add("hidden");
       leave();
       Lobby.enter();
+    });
+    document.getElementById("btn-endgame-stardock")?.addEventListener("click", () => {
+      overlay.classList.add("hidden");
+      leave();
+      Lobby.enter();
+      setTimeout(() => window.ShipDesigner?.openPlayerDesigner(), 0);
     });
     document.getElementById("btn-endgame-help").addEventListener("click", () => {
       if (view.star_breach) window.Lobby?.showStarBreachTutorial();

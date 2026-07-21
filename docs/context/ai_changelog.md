@@ -2,6 +2,40 @@
 
 Newest entries first. Each AI-agent update should add date/time, a short summary title, build id, agent, and a short summary.
 
+## 2026-07-20 05:07 -05:00
+
+- Title: Finite StarDock palette
+- Build ID: `a640beb`
+- AI agent: Codex
+- Summary:
+  - Made the common StarDock palette finite: 1 Core, 2 Life Supports, 1 Bone Room, 1 Docking Bay, 2 Double Cannons, 3 Cannons, 3 Double Engines, and 2 Engines.
+  - Added live unplaced-count badges, exhausted-part handling, count restoration when parts are removed/replaced, and server-side validation against imported or hand-edited over-limit designs.
+  - Updated LightningBug, Vanguard, the StarDock tutorial, and the reference tests to use the new 10-card component mix; bumped the player and admin StarDock asset versions.
+  - Verified 50 focused StarDock/campaign tests, backend compilation, and JavaScript syntax. The full 391-test run retains the same pre-existing 5 active-deck fixture failures and 1 shared leaderboard-state error.
+
+## 2026-07-20 05:00 -05:00
+
+- Title: Reward card editor parity
+- Build ID: `a640beb`
+- AI agent: Codex
+- Summary:
+  - Replaced the Campaign Components card dropdown with the same reusable card-entry row used by the normal Deck Editor, including copies, both face types, both text/orientation lines, and the shared keyword/mod parser.
+  - Seeded the reward catalog with one independently editable card definition for every physical card in the admin-selected active base deck and added automatic migration for the earlier dropdown-based entries.
+  - Persisted compiled reward cards in designed-ship layouts so custom faces resolve in normal and StarBreach matches without depending on a later active-deck change.
+  - Added coverage for active-base-deck seeding, face/orientation compilation, custom-card deck/player lookup, and legacy catalog migration; 56 focused campaign, StarDock, and deck-data tests pass. The full 389-test run retains the pre-existing 5 deck-fixture failures and 1 shared leaderboard-state error.
+
+## 2026-07-20 04:34 -05:00
+
+- Title: Campaign component foundation
+- Build ID: `a640beb`
+- AI agent: Codex
+- Summary:
+  - Added persistent per-account campaign component inventories and idempotent random rewards for VP winners and captains who destroy opposing ships, including the Pirate Guild/wreckage battle-report messaging and a direct StarDock prompt.
+  - Added a Campaign Components admin editor seeded from the active starting deck, plus the requested admin-only StarDock component-award dropdown.
+  - Extended StarDock with an earned-component palette, point costs, matching starting-deck cards, ownership validation, and account-data export/deletion support.
+  - Added the admin-authored ship to bundled permanent content as the canonical battle-ready `LightningBug`; first StarDock visits receive and open a personal copy alongside an updated restrictions/tutorial popup.
+  - Added campaign reward tests for VP wins, wreckage qualification, uniqueness, and idempotency; validated the starter ship and JavaScript syntax.
+
 ## 2026-07-19 16:34 -05:00
 
 - Title: Feedback and raid UI fixes
@@ -11,8 +45,9 @@ Newest entries first. Each AI-agent update should add date/time, a short summary
   - Gave desktop lobby match rows a dedicated action column so Review, Give Orders, and icon buttons keep enough horizontal space while raid details wrap in the flexible text column.
   - Fixed the mobile StarBreach replay pause rollout so the Pause checkbox has an explicit visible column when the banner expands.
   - Reworked bug-report screenshots to remove only the Feedback popup from the cloned UI and submit the serialized DOM snapshot directly as `data:image/svg+xml;base64,...`, avoiding canvas taint/export failures seen on desktop.
-  - Allowed SVG screenshot data through the feedback API, made admin downloads use `.svg`, and added API coverage that SVG screenshots are preserved for seated bug reports.
-  - Bumped `pirate.css` to v68, `lobby.js` to v48, and `admin.js` to v31.
+  - Allowed SVG screenshot data through the feedback API, made admin downloads use `.svg`, and rendered SVG screenshots in a sandboxed admin iframe instead of an `<img>` preview.
+  - Added API coverage that SVG screenshots are preserved for seated bug reports.
+  - Bumped `pirate.css` to v68, `lobby.js` to v48, `admin.css` to v21, and `admin.js` to v32.
   - Open bug: desktop SVG bug-report screenshots now work, but mobile SVG screenshots can render with mixed-up layout/content; leaving that known issue for a future pass.
   - Verified with `python -m unittest tests.test_v2_api.FeedbackTests`, `node --check frontend/v2/static/lobby.js`, `node --check frontend/v2/static/admin.js`, and `git diff --check -- backend/starshot/v2/router.py docs/context/ai_changelog.md frontend/v2/admin.html frontend/v2/index.html frontend/v2/static/admin.js frontend/v2/static/lobby.js tests/test_v2_api.py`.
 

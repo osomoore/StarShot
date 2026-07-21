@@ -299,6 +299,29 @@ def _expand_card(
     return cards
 
 
+def expand_card_definition(
+    data: dict[str, Any],
+    *,
+    is_base: bool = True,
+    source: str = "card definition",
+) -> list[Card]:
+    """Compile one Deck Editor card entry with the normal card parser.
+
+    Content editors outside a deck set (notably campaign component rewards)
+    use this entry point so their faces, alternate text, orientations, and
+    custom keywords have exactly the same semantics as Deck Editor cards.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(f"{source} must be an object.")
+    return _expand_card(
+        data,
+        is_base=is_base,
+        copy_id_style="suffix_when_multiple",
+        generated_id_prefix="",
+        source=source,
+    )
+
+
 def _side_text(data: dict[str, Any], source: str) -> dict[str, Any] | None:
     side_keys = [key for key in data if re.fullmatch(r"side_[ab](_type|_\d+)", key)]
     if not side_keys:

@@ -38,6 +38,10 @@
       deck_size: 10,
       base_shields: 2,
       base_draw: 5,
+      base_palette_limits: {
+        core: 1, life_support: 2, bone_room: 1, docking_bay: 1,
+        double_cannon: 2, cannon: 3, double_engine: 3, engine: 2,
+      },
       upgrades: ["shield", "draw", "defense", "aim", "points"],
       upgrade_extra_points: 2,
       max_tiles: 15,
@@ -47,6 +51,8 @@
       upgrade_defense_bonus: 1,
       upgrade_aim_bonus: 1,
       player_design_limit: 10,
+      bonus_components: [],
+      available_reward_components: [],
     };
 
     const TILE_COSTS = { engine: 1, double_engine: 2, cannon: 1, double_cannon: 2 };
@@ -59,10 +65,10 @@
       { type: "life_support", label: "Life Support", icon: "❀" },
       { type: "bone_room", label: "Bone Room", icon: "☠" },
       { type: "docking_bay", label: "Docking Bay", icon: "⚓" },
-      { type: "engine", label: "Engine", icon: "🔥" },
-      { type: "double_engine", label: "Dbl Engine", icon: "🚀" },
-      { type: "cannon", label: "Cannon", icon: "☄" },
       { type: "double_cannon", label: "Dbl Cannon", icon: "💥" },
+      { type: "cannon", label: "Cannon", icon: "☄" },
+      { type: "double_engine", label: "Dbl Engine", icon: "🚀" },
+      { type: "engine", label: "Engine", icon: "🔥" },
       { type: "structure", label: "Structure", icon: "🧱", onlyExpanded: true },
       { type: "erase", label: "Eraser", icon: "✕" },
     ];
@@ -175,6 +181,13 @@
 
     const tileAt = (q, r) => design.tiles.find((t) => t.q === q && t.r === r) || null;
     const countType = (type) => design.tiles.filter((t) => t.type === type).length;
+    const paletteLimit = (type) => type === "structure"
+      ? Math.max(0, META.max_tiles - META.base_tile_total)
+      : (META.base_palette_limits || {})[type];
+    const paletteRemaining = (type) => {
+      const limit = paletteLimit(type);
+      return Number.isFinite(limit) ? Math.max(0, limit - countType(type)) : null;
+    };
     const coreTile = () => (countType("core") === 1 ? design.tiles.find((t) => t.type === "core") : null);
 
     function onPrimaryLane(q, r) {
@@ -185,10 +198,13 @@
     }
 
     const primaryLaneTiles = () => design.tiles.filter((t) => onPrimaryLane(t.q, t.r)).length;
-    const corePointsSpent = () => design.tiles.reduce((sum, t) => sum + (TILE_COSTS[t.type] || 0), 0);
+    const bonusById = (id) => (META.bonus_components || []).find((entry) => entry.id === id) || null;
+    const tileCost = (tile) => tile.type === "bonus_component"
+      ? (bonusById(tile.reward_id)?.cost || 0) : (TILE_COSTS[tile.type] || 0);
+    const corePointsSpent = () => design.tiles.reduce((sum, t) => sum + tileCost(t), 0);
     const corePointsBudget = () =>
       META.core_points + (design.upgrade === "points" ? META.upgrade_extra_points : 0);
-    const deckComponentCount = () => design.tiles.filter((t) => TILE_COSTS[t.type]).length;
+    const deckComponentCount = () => design.tiles.filter((t) => TILE_COSTS[t.type] || t.type === "bonus_component").length;
 
     function deckCounts() {
       const counts = { engine: 0, double_engine: 0, cannon: 0, double_cannon: 0 };
@@ -490,7 +506,7 @@
         { ok: countType("docking_bay") === 1, text: "1 Docking Bay" },
         {
           ok: deckComponentCount() === META.deck_size,
-          text: `${META.deck_size} Engine/Cannon components (${deckComponentCount()}/${META.deck_size})`,
+          text: `${META.deck_size} deck components (${deckComponentCount()}/${META.deck_size})`,
         },
         {
           ok: corePointsSpent() <= corePointsBudget(),
@@ -591,6 +607,13 @@
             Then place the <b>6 secondary damage lanes</b> and pick <b>1 special upgrade</b>.
             Battle-ready ships appear in the lobby's <b>Your Ship</b> picker.</div>
           <div class="sd-lib">${rows}</div>
+          ${!isAdmin && META.is_campaign_admin ? `
+            <div class="sd-bonus-palette">
+              <h3 class="panel-sub">Admin campaign tools</h3>
+              <select id="sd-admin-award-select">${(META.available_reward_components || []).map((entry) =>
+                `<option value="${esc(entry.id)}">${esc(entry.name)}</option>`).join("")}</select>
+              <button class="btn gold small" id="sd-admin-award">Award a new component</button>
+            </div>` : ""}
           ${playerRows}
           <div id="sd-status" class="admin-status"></div>
         </div>`;
@@ -607,6 +630,19 @@
         renderEditor();
       });
       el("sd-import").addEventListener("click", () => el("sd-import-file").click());
+      el("sd-admin-award")?.addEventListener("click", async () => {
+        try {
+          const response = await fetch("/api/v2/campaign/admin-award", {
+            method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ component_id: el("sd-admin-award-select").value }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "Award failed");
+          META.bonus_components = payload.components || [];
+          renderLibrary();
+          setStatus(payload.added ? "Component added to your bonus palette." : "You already own that component.", true);
+        } catch (err) { setStatus(err.message, false); }
+      });
       el("sd-import-file").addEventListener("change", async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -686,6 +722,7 @@
               <div id="sd-deck" class="sd-deck"></div>
               <div id="sd-edit-controls">
                 <div class="sd-tools" id="sd-tools"></div>
+                <div class="sd-bonus-palette" id="sd-bonus-tools"></div>
                 <div id="sd-tool-note" class="sd-tool-note"></div>
                 <div id="sd-lanes-panel" class="sd-lanes-panel"></div>
                 <div id="sd-upgrade" class="sd-upgrade"></div>
@@ -797,12 +834,20 @@
     function renderTools() {
       const host = el("sd-tools");
       const tools = TILE_TOOLS.filter((entry) => !entry.onlyExpanded || META.max_tiles > META.base_tile_total);
-      host.innerHTML = tools.map((entry) => `
-        <button class="sd-tool ${tool === entry.type && laneRoll == null ? "active" : ""}" data-tool="${entry.type}"
+      host.innerHTML = `<div class="sd-palette-title">Base components</div>` + tools.map((entry) => {
+        const remaining = paletteRemaining(entry.type);
+        return `
+        <button class="sd-tool ${tool === entry.type && laneRoll == null ? "active" : ""} ${remaining === 0 ? "exhausted" : ""}" data-tool="${entry.type}"
           style="${TILE_FILL[entry.type] ? `--tool-color:${TILE_FILL[entry.type]}` : ""}">
-          <span class="sd-tool-icon">${entry.icon}</span>${entry.label}
-        </button>`).join("");
+          <span class="sd-tool-icon">${entry.icon}</span><span class="sd-tool-label">${entry.label}</span>
+          ${remaining == null ? "" : `<span class="sd-tool-remaining" title="Unplaced components remaining">${remaining}</span>`}
+        </button>`;
+      }).join("");
       host.querySelectorAll(".sd-tool").forEach((button) => button.addEventListener("click", () => {
+        if (paletteRemaining(button.dataset.tool) === 0 && button.dataset.tool !== "core") {
+          setStatus("That base component is fully placed. Remove one from the ship to return it to the palette.", false);
+          return;
+        }
         tool = button.dataset.tool;
         laneRoll = null;
         lanePick = null;
@@ -810,9 +855,30 @@
         renderLanePanel();
         drawBoard();
       }));
+      const bonusHost = el("sd-bonus-tools");
+      if (bonusHost) {
+        const bonuses = META.bonus_components || [];
+        bonusHost.innerHTML = `<div class="sd-lanes-title">Campaign reward components</div>` +
+          (bonuses.length ? bonuses.map((entry) => `
+            <button class="sd-tool ${tool === "bonus:" + entry.id && laneRoll == null ? "active" : ""}"
+              data-bonus-tool="${esc(entry.id)}" style="--tool-color:${entry.component_type === "weapon" ? "#d66b8f" : "#62bba1"}">
+              <span class="sd-tool-icon">${entry.component_type === "weapon" ? "☄" : "🔥"}</span>${esc(entry.name)} (${entry.cost})
+            </button>`).join("") : '<div class="sd-tool-note">Win battles or destroy an opposing ship to unlock components here.</div>');
+        bonusHost.querySelectorAll("[data-bonus-tool]").forEach((button) => button.addEventListener("click", () => {
+          tool = "bonus:" + button.dataset.bonusTool;
+          laneRoll = null;
+          lanePick = null;
+          renderTools();
+          renderLanePanel();
+          drawBoard();
+        }));
+      }
       el("sd-tool-note").textContent = laneRoll != null
         ? `Placing lane ${laneRoll}: click a hex, then pick the shot direction.`
-        : (TILE_NOTES[tool] || "");
+        : tool.startsWith("bonus:")
+          ? ((bonusById(tool.slice(6))?.description || "Campaign reward component") +
+            ` Costs ${bonusById(tool.slice(6))?.cost || "?"} Core point(s) and adds its matching card.`)
+          : (TILE_NOTES[tool] || "");
     }
 
     function renderLanePanel() {
@@ -919,10 +985,14 @@
         ["engine", counts.engine], ["double_engine", counts.double_engine],
         ["cannon", counts.cannon], ["double_cannon", counts.double_cannon],
       ].filter(([, n]) => n > 0);
+      for (const tile of design.tiles.filter((entry) => entry.type === "bonus_component")) {
+        const bonus = bonusById(tile.reward_id);
+        if (bonus) cards.push(["bonus:" + bonus.id, 1]);
+      }
       el("sd-deck").innerHTML = `
         <div class="sd-lanes-title">Starting deck preview (${deckComponentCount()}/${META.deck_size} cards)</div>
         ${cards.length
-          ? cards.map(([type, n]) => `<div class="sd-deck-row">${n} × ${DECK_CARD_NAMES[type]}</div>`).join("")
+          ? cards.map(([type, n]) => `<div class="sd-deck-row">${n} × ${type.startsWith("bonus:") ? esc(bonusById(type.slice(6))?.card_name || bonusById(type.slice(6))?.name || type) : DECK_CARD_NAMES[type]}</div>`).join("")
           : '<div class="sd-deck-row sd-empty-deck">Place Engines and Cannons to build your deck.</div>'}`;
       el("sd-checklist").innerHTML = checklist().map((item) =>
         `<div class="sd-check ${item.ok ? "ok" : ""}">${item.ok ? "✔" : "○"} ${esc(item.text)}</div>`).join("");
@@ -987,7 +1057,9 @@
       for (const [q, r] of cells) {
         const [x, y] = xy(q, r);
         const tile = tileAt(q, r);
-        const fill = tile ? (TILE_FILL[tile.type] || "#888") : "rgba(150,160,190,0.10)";
+        const fill = tile ? (tile.type === "bonus_component"
+          ? (bonusById(tile.reward_id)?.component_type === "weapon" ? "#d66b8f" : "#62bba1")
+          : (TILE_FILL[tile.type] || "#888")) : "rgba(150,160,190,0.10)";
         const axis = tile && onPrimaryLane(q, r);
         body += `<polygon class="sd-cell" data-q="${q}" data-r="${r}"
             points="${hexPoints(x, y, SIZE - 1.6)}" fill="${fill}"
@@ -1074,15 +1146,22 @@
 
     function paintCell(q, r) {
       const existing = tileAt(q, r);
+      const bonusId = tool.startsWith("bonus:") ? tool.slice(6) : null;
+      const selectedType = bonusId ? "bonus_component" : tool;
       if (tool === "erase") {
         if (existing) {
           design.tiles = design.tiles.filter((t) => t !== existing);
           markDirty();
         }
-      } else if (existing && existing.type === tool) {
+      } else if (existing && existing.type === selectedType && (!bonusId || existing.reward_id === bonusId)) {
         design.tiles = design.tiles.filter((t) => t !== existing); // toggle off
         markDirty();
       } else {
+        const remaining = bonusId ? null : paletteRemaining(selectedType);
+        if (remaining === 0 && selectedType !== "core") {
+          setStatus(`No unplaced ${TILE_TOOLS.find((entry) => entry.type === selectedType)?.label || selectedType} components remain in the base palette.`, false);
+          return;
+        }
         if (tool === "core" && countType("core") >= 1 && (!existing || existing.type !== "core")) {
           // moving the core: remove the old one
           design.tiles = design.tiles.filter((t) => t.type !== "core");
@@ -1092,9 +1171,12 @@
           return;
         }
         if (existing) design.tiles = design.tiles.filter((t) => t !== existing);
-        design.tiles.push({ q, r, type: tool });
+        design.tiles.push(bonusId
+          ? { q, r, type: selectedType, reward_id: bonusId }
+          : { q, r, type: selectedType });
         markDirty();
       }
+      renderTools();
       renderMeters();
       drawBoard();
     }
@@ -1124,6 +1206,7 @@
     }
 
     function tileLabel(tile) {
+      if (tile.type === "bonus_component") return bonusById(tile.reward_id)?.name || tile.reward_id;
       const meta = TILE_TOOLS.find((entry) => entry.type === tile.type);
       return meta?.label || tile.type.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
     }
@@ -1425,6 +1508,13 @@
       try {
         await refreshList();
         renderLibrary();
+        if (!isAdmin && META.first_visit && designs.some((entry) => entry.id === META.initial_design_id)) {
+          const data = await call("/" + encodeURIComponent(META.initial_design_id));
+          design = data.design;
+          design.lanes = design.lanes || {};
+          dirty = false;
+          renderEditor(data.problems);
+        }
         booted = true;
       } catch (err) {
         root().innerHTML = `<div class="sd-wrap"><div id="sd-status" class="admin-status err">${esc(err.message)}</div></div>`;
@@ -1469,7 +1559,7 @@
     maybeShowHowto();
   }
 
-  const LS_HOWTO = "ss_shipdesigner_howto_seen2";
+  const LS_HOWTO = "ss_shipdesigner_howto_seen4";
   function showHowto() {
     const howto = document.createElement("div");
     howto.className = "overlay bd-howto-overlay";
@@ -1478,16 +1568,19 @@
         <h3>🚀 StarDock <span class="badge-alpha">ALPHA</span> — how it works</h3>
         <p class="tutorial-alpha-note">StarDock is still in Alpha — rules and balance may shift as it's tested. Bug reports and feedback are very welcome.</p>
         <div class="tutorial-steps">
+          <div><b>Starter ship.</b> Your first visit loads a personal copy of <b>LightningBug</b>. Save it as-is, reshape it, or use it as the starting point for another design.</div>
           <div><b>1.</b> Place <b>15 contiguous tiles</b>: 1 Core, 2 Life Supports, 1 Bone Room, 1 Docking Bay,
             and exactly <b>10 Engine/Cannon components</b>.</div>
           <div><b>2.</b> Those 10 components are your <b>starting deck</b>, bought with <b>15 Core Component points</b>:
             Engine = Move 1 (1 pt), Double Engine = Move 2 (2 pts), Cannon = Aim +1 (1 pt), Double Cannon = Aim +2 (2 pts).</div>
+          <div><b>Base palette.</b> Common parts are finite: 2 Double Cannons, 3 Cannons, 3 Double Engines, and 2 Engines. The number on each palette button shows how many remain unplaced.</div>
           <div><b>3.</b> The 6 gold <b>primary damage lanes</b> follow the Core — at most 10 components may sit on them.
             The 6 blue <b>secondary lanes</b> must each sever at least 2 components from the Core if shot fully through:
             use <b>🎲 Auto-place lanes</b> to cycle legal arrangements (mirrored on symmetric ships), or tick
             <b>Advanced</b> to place them by hand.</div>
           <div><b>4.</b> Pick <b>1 special upgrade</b>: +1 shield, +1 card draw, flat Defense, flat Aim, or +2 Core points.</div>
           <div><b>5.</b> Save a battle-ready design, then choose it as <b>Your Ship</b> when creating or joining a raid.</div>
+          <div><b>Campaign components.</b> Winning on VP or destroying an opposing ship can unlock a component and matching card. Earned parts appear in their own palette and may be used in any ship you design.</div>
         </div>
         <button class="btn gold picker-cancel" id="sd-howto-ok">Got it</button>
       </div>`;

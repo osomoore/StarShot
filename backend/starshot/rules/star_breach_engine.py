@@ -17,7 +17,7 @@ from starshot.rules.engine import (
     _ship_in_facing_cone_120,
 )
 from starshot.rules.vaults import VAULT_RADIUS, ship_inside_vault
-from starshot.rules.decks import card_by_id
+from starshot.rules.decks import card_for_player
 from starshot.rules.models import ActionStack, Card, CardFamily, FleetCraftState, GameConfig, GamePhase, GameResult, GameState, OrderCardSelection, PlayerState, SealMode, ShipState, StarBreachState
 from starshot.rules import star_breach as sb_data
 from starshot.rules import star_breach_spec as sb_spec
@@ -417,7 +417,7 @@ def _star_breach_overdrive_exempt(state: GameState, player: PlayerState, stack: 
     if state.star_breach is None or not stack.cards:
         return False
     families = {
-        _selected_card_family(card_by_id(selection.card_id), selection)
+        _selected_card_family(card_for_player(player, selection.card_id), selection)
         for selection in stack.cards
     }
     if "fighting_ace" in player.roles and families == {CardFamily.ATTACK}:
@@ -1453,7 +1453,7 @@ def _resolve_star_breach_attacker(
         attacker.ship.facing = u_turn(attacker.ship.facing)
     volleys = [attack_cards]
     if _overdrive_copies_action(stack):
-        copy_cards = _attack_cards_for_stack(stack, include_desperate=_overdrive_desperation_enabled())
+        copy_cards = _attack_cards_for_stack(attacker, stack, include_desperate=_overdrive_desperation_enabled())
         if copy_cards:
             volleys.append(copy_cards)
     for volley_index, cards in enumerate(volleys):

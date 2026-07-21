@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from starshot.rules.deck_data import active_catalog
 from starshot.rules.models import Card, CardFamily
+from starshot.rules.serialization import card_from_dict
 
 
 # Extra copies of a base card in a designed-ship deck get ids like
@@ -55,6 +56,18 @@ def card_by_id(card_id: str) -> Card:
     return _lookup(card_id, active_catalog().card_map)
 
 
+def card_for_player(player, card_id: str) -> Card:
+    """Resolve an active-deck card or a custom card persisted in a ship layout."""
+    try:
+        return card_by_id(card_id)
+    except KeyError:
+        layout = getattr(getattr(player, "ship", None), "layout", None) or {}
+        for data in layout.get("bonus_cards", ()):
+            if isinstance(data, dict) and data.get("id") == card_id:
+                return card_from_dict(data)
+        raise
+
+
 def _base_card_kind(card: Card) -> str | None:
     """Which StarDock deck slot a base card fills, if any."""
     if card.is_hybrid or card.desperate_face is not None or card.no_basic_face:
@@ -66,11 +79,13 @@ def _base_card_kind(card: Card) -> str | None:
     return None
 
 
-def create_designed_deck(counts: dict) -> list[Card]:
+def create_designed_deck(counts: dict, bonus_cards: list | tuple = ()) -> list[Card]:
     """The starting deck for a StarDock-designed ship: `counts` maps
     "move_1"/"move_2"/"aim_1"/"aim_2" to how many copies the placed Engine /
     Double Engine / Cannon / Double Cannon components grant. Catalog copies
-    are used first; extra copies clone the first prototype with a __s suffix."""
+    are used first; extra copies clone the first prototype with a __s suffix.
+    `bonus_cards` contains compiled campaign card definitions contributed by
+    reward components (legacy active-deck card ids are also accepted)."""
     pools: dict[str, list[Card]] = {"move_1": [], "move_2": [], "aim_1": [], "aim_2": []}
     for card in active_catalog().base_cards:
         kind = _base_card_kind(card)
@@ -86,4 +101,14 @@ def create_designed_deck(counts: dict) -> list[Card]:
                 deck.append(pool[index])
             else:
                 deck.append(replace(prototype, id=f"{prototype.id}{_COPY_SEPARATOR}{index + 1}"))
+    used_ids = {card.id for card in deck}
+    for requested in bonus_cards:
+        prototype = card_from_dict(requested) if isinstance(requested, dict) else base_card_by_id(str(requested))
+        card = prototype
+        copy_number = 1
+        while card.id in used_ids:
+            copy_number += 1
+            card = replace(prototype, id=f"{prototype.id}{_COPY_SEPARATOR}{copy_number}")
+        deck.append(card)
+        used_ids.add(card.id)
     return deck

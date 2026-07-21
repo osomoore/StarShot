@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from starshot.rules.player_ships import (
     BASE_DRAW,
+    BASE_PALETTE_LIMITS,
     BASE_SHIELDS,
     BASE_TILE_TOTAL,
     DECK_SIZE,
@@ -48,6 +49,7 @@ def _designer_meta() -> dict:
         "deck_size": DECK_SIZE,
         "base_shields": BASE_SHIELDS,
         "base_draw": BASE_DRAW,
+        "base_palette_limits": dict(BASE_PALETTE_LIMITS),
         "upgrades": list(SHIP_UPGRADES),
         "upgrade_extra_points": UPGRADE_EXTRA_POINTS,
         "primary_lane_rolls": list(PRIMARY_LANE_ROLLS),
@@ -81,8 +83,8 @@ def _design_or_404(design_id: str, owner_id: int | None) -> dict:
     return design
 
 
-def _design_payload(design: dict) -> dict:
-    configured = ship_designs.with_active_config(design)
+def _design_payload(design: dict, owner_id: int | None = None) -> dict:
+    configured = ship_designs.with_active_config(design, owner_id)
     return {
         "design": design,
         "problems": ship_designs.validate_design(configured),
@@ -125,13 +127,27 @@ def list_playable_ship_designs(request: Request) -> dict:
 @my_ship_designs_router.get("")
 def list_my_ship_designs(request: Request) -> dict:
     user = _current_user(request)
-    return {"designs": ship_designs.list_designs(user["id"]), "meta": _designer_meta()}
+    from starshot.v2.store import get_v2_store
+    first_visit = get_v2_store().initialize_stardock(user["id"])
+    if first_visit and ship_designs.load_design("lightningbug", user["id"]) is None:
+        initial = ship_designs.load_design("lightningbug")
+        if initial is not None:
+            ship_designs.save_design(initial, user["id"])
+    meta = _designer_meta()
+    from starshot.v2.campaign import component_catalog, inventory_for_user
+    meta["bonus_components"] = inventory_for_user(user["id"])
+    meta["available_reward_components"] = component_catalog()
+    from starshot.v2.admin import admin_usernames
+    meta["is_campaign_admin"] = user["username"].lower() in admin_usernames()
+    meta["first_visit"] = first_visit
+    meta["initial_design_id"] = "lightningbug"
+    return {"designs": ship_designs.list_designs(user["id"]), "meta": meta}
 
 
 @my_ship_designs_router.get("/{design_id}")
 def get_my_ship_design(design_id: str, request: Request) -> dict:
     user = _current_user(request)
-    return _design_payload(_design_or_404(design_id, user["id"]))
+    return _design_payload(_design_or_404(design_id, user["id"]), user["id"])
 
 
 @my_ship_designs_router.put("")

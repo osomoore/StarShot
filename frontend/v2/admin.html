@@ -6,9 +6,9 @@
 <title>StarShot — Captain's Quarters</title>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/v2/static/pirate.css?v=23">
-<link rel="stylesheet" href="/v2/static/admin.css?v=20">
+<link rel="stylesheet" href="/v2/static/admin.css?v=22">
 <link rel="stylesheet" href="/v2/static/bossdesigner.css?v=12">
-<link rel="stylesheet" href="/v2/static/shipdesigner.css?v=2">
+<link rel="stylesheet" href="/v2/static/shipdesigner.css?v=4">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
 </head>
 <body>
@@ -44,6 +44,7 @@
       <button class="btn ghost admin-tab" data-tab="battle">⚔ AI Battles</button>
       <button class="btn ghost admin-tab" data-tab="bossdesign">☄ Boss Designer</button>
       <button class="btn ghost admin-tab" data-tab="shipdesign">🚀 Ship Designs</button>
+      <button class="btn ghost admin-tab" data-tab="components">Campaign Components</button>
       <button class="btn ghost admin-tab" data-tab="accounts">👥 Accounts</button>
       <button class="btn ghost admin-tab" data-tab="feedback">Feedback and Bugs</button>
       <button class="btn ghost admin-tab" data-tab="changelog">AI Change Log</button>
@@ -182,6 +183,15 @@
 
       <!-- player ship designs (markup built by shipdesigner.js on first open) -->
       <div id="tab-shipdesign" class="admin-tabpage hidden"></div>
+
+      <div id="tab-components" class="admin-tabpage hidden">
+        <h2 class="panel-title">Campaign Component Awards</h2>
+        <p class="admin-note">Define permanent StarDock components and their matching starting-deck cards. The card row is the same editor used by the normal Deck Editor: each side's type, face text, alternate text, and orientation choices are parsed through the same keyword/mod system. The initial list is copied from the active base deck. Point costs are 1 or 2.</p>
+        <div id="component-award-list" class="card-table"></div>
+        <button class="btn ghost small" id="component-award-add">＋ Add component</button>
+        <button class="btn gold" id="component-award-save">💾 Save component list</button>
+        <div id="component-award-status" class="admin-status"></div>
+      </div>
 
       <!-- accounts -->
       <div id="tab-accounts" class="admin-tabpage hidden">
@@ -332,8 +342,8 @@
 
 <script src="/v2/static/api.js?v=8"></script>
 <script src="/v2/static/starfield.js?v=6"></script>
-<script src="/v2/static/admin.js?v=31"></script>
+<script src="/v2/static/admin.js?v=34"></script>
 <script src="/v2/static/bossdesigner.js?v=26"></script>
-<script src="/v2/static/shipdesigner.js?v=3"></script>
+<script src="/v2/static/shipdesigner.js?v=5"></script>
 </body>
 </html>

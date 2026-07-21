@@ -11,6 +11,7 @@ from starshot.rules.decks import card_by_id, create_designed_deck
 from starshot.rules.engine import _apply_unshielded_damage, create_initial_state, resolve_next_step, submit_orders
 from starshot.rules.models import ActionStack, GameConfig, OrderCardSelection, OrdersSubmission, SealMode
 from starshot.rules.player_ships import (
+    BASE_PALETTE_LIMITS,
     SECONDARY_LANE_ROLLS,
     compile_layout_spec,
     core_points_budget,
@@ -30,8 +31,7 @@ from starshot.v2 import ship_designs
 
 
 def vanguard_design() -> dict:
-    """A battle-ready 15-tile ship: the classic 10-card deck (3 Move 1,
-    4 Move 2, 2 Aim +1, 1 Aim +2 = 15 core points) plus a shield upgrade."""
+    """A battle-ready 15-tile ship using the complete finite base palette."""
     return {
         "id": "vanguard",
         "name": "Vanguard",
@@ -45,10 +45,10 @@ def vanguard_design() -> dict:
             {"q": 0, "r": -2, "type": "double_cannon"},
             {"q": 0, "r": 2, "type": "engine"},
             {"q": -1, "r": 0, "type": "engine"},
-            {"q": 1, "r": 0, "type": "engine"},
+            {"q": 1, "r": 0, "type": "cannon"},
             {"q": 1, "r": -2, "type": "cannon"},
             {"q": 2, "r": -1, "type": "cannon"},
-            {"q": -1, "r": -1, "type": "double_engine"},
+            {"q": -1, "r": -1, "type": "double_cannon"},
             {"q": -2, "r": 1, "type": "double_engine"},
             {"q": -1, "r": 2, "type": "double_engine"},
             {"q": 1, "r": 1, "type": "double_engine"},
@@ -140,12 +140,24 @@ class LaneMathTests(unittest.TestCase):
 
 
 class PointsAndDeckTests(unittest.TestCase):
+    def test_base_palette_has_the_fixed_common_component_inventory(self):
+        self.assertEqual(BASE_PALETTE_LIMITS, {
+            "core": 1,
+            "life_support": 2,
+            "bone_room": 1,
+            "docking_bay": 1,
+            "double_cannon": 2,
+            "cannon": 3,
+            "double_engine": 3,
+            "engine": 2,
+        })
+
     def test_vanguard_spends_exactly_fifteen(self):
         design = ship_designs.normalize_design(vanguard_design())
         self.assertEqual(core_points_spent(design), 15)
         self.assertEqual(core_points_budget(design), 15)
         self.assertEqual(
-            deck_counts(design), {"move_1": 3, "move_2": 4, "aim_1": 2, "aim_2": 1}
+            deck_counts(design), {"move_1": 2, "move_2": 3, "aim_1": 3, "aim_2": 2}
         )
         breakdown = points_breakdown(design)
         self.assertEqual(breakdown["deck_components"], 10)
@@ -226,14 +238,23 @@ class ValidationTests(unittest.TestCase):
         problems = self._problems(mutate)  # 18 points > 15
         self.assertTrue(any("Core Component points" in problem for problem in problems))
 
+    def test_base_palette_component_quantities_cannot_be_exceeded(self):
+        def mutate(raw):
+            next(tile for tile in raw["tiles"] if tile["type"] == "cannon")["type"] = "double_engine"
+        problems = self._problems(mutate)
+        self.assertTrue(any("base palette only contains 3 Double Engine" in problem for problem in problems))
+
     def test_points_upgrade_absorbs_two_extra(self):
         raw = vanguard_design()
-        for tile in raw["tiles"]:
-            if tile["type"] == "cannon":
-                tile["type"] = "double_cannon"
-                break  # 16 points
+        tile = next(tile for tile in raw["tiles"] if tile["type"] == "cannon")
+        tile["type"] = "bonus_component"
+        tile["reward_id"] = "two_point_reward"
         raw["upgrade"] = "points"
-        problems = ship_designs.validate_design(ship_designs.normalize_design(raw))
+        design = ship_designs.normalize_design(raw)
+        design["bonus_components"] = {
+            "two_point_reward": {"id": "two_point_reward", "cost": 2, "component_type": "weapon"},
+        }
+        problems = ship_designs.validate_design(design)
         self.assertEqual(problems, [])
 
     def test_disconnected_hull_flagged(self):
@@ -420,10 +441,10 @@ class CustomShipInPlayTests(unittest.TestCase):
         cards = red.hand + red.deck
         moves = [card for card in cards if card.family.value == "move"]
         attacks = [card for card in cards if card.family.value == "attack"]
-        self.assertEqual(len(moves), 7)  # 3 Move 1 + 4 Move 2
-        self.assertEqual(len(attacks), 3)  # 2 Aim +1 + 1 Aim +2
-        self.assertEqual(sorted(card.value for card in moves), [1, 1, 1, 2, 2, 2, 2])
-        self.assertEqual(sorted(card.value for card in attacks), [1, 1, 2])
+        self.assertEqual(len(moves), 5)  # 2 Move 1 + 3 Move 2
+        self.assertEqual(len(attacks), 5)  # 3 Aim +1 + 2 Aim +2
+        self.assertEqual(sorted(card.value for card in moves), [1, 1, 2, 2, 2])
+        self.assertEqual(sorted(card.value for card in attacks), [1, 1, 1, 2, 2])
 
     def test_damage_lanes_follow_custom_layout(self):
         state = self._state_with_designs(red_design=vanguard_design())
@@ -493,7 +514,7 @@ class CustomShipInPlayTests(unittest.TestCase):
         self.assertEqual(layout.defense_bonus, 0)
         self.assertEqual(layout.intact_count_of_type("life_support", set()), 2)
         self.assertIsNotNone(layout.bridge_id)
-        self.assertEqual(spec["deck"], {"move_1": 3, "move_2": 4, "aim_1": 2, "aim_2": 1})
+        self.assertEqual(spec["deck"], {"move_1": 2, "move_2": 3, "aim_1": 3, "aim_2": 2})
 
     def test_configured_upgrade_bonus_bakes_into_spec(self):
         design = ship_designs.normalize_design(_with_upgrade("defense"))

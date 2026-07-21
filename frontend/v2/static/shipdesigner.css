@@ -63,6 +63,10 @@
 .sd-check.ok { color: #8aff9d; opacity: 0.9; }
 
 .sd-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.sd-palette-title {
+  color: #ffd75e; font-size: 11px; font-weight: 700; grid-column: 1 / -1;
+  letter-spacing: .07em; margin: 2px 2px 1px; text-transform: uppercase;
+}
 .sd-tool {
   display: flex; align-items: center; gap: 7px; padding: 6px 8px;
   background: rgba(20, 26, 48, 0.8); color: #e8e0cc;
@@ -70,11 +74,20 @@
   font-family: "Space Grotesk", sans-serif; font-size: 12.5px; text-align: left;
 }
 .sd-tool:hover { border-color: #5ec8ff; }
+.sd-tool.exhausted { cursor: not-allowed; opacity: .52; }
+.sd-tool.exhausted[data-tool="core"] { cursor: pointer; }
 .sd-tool.active {
   border-color: var(--tool-color, #ffd75e);
   box-shadow: 0 0 0 1px var(--tool-color, #ffd75e) inset;
 }
 .sd-tool-icon { font-size: 16px; }
+.sd-tool-label { min-width: 0; }
+.sd-tool-remaining {
+  align-items: center; background: rgba(4, 8, 18, .75); border: 1px solid #52607f;
+  border-radius: 999px; color: #fff0ad; display: inline-flex; font-size: 11px;
+  font-weight: 700; height: 20px; justify-content: center; margin-left: auto; min-width: 20px;
+  padding: 0 5px;
+}
 .sd-tool-note { font-size: 12px; opacity: 0.8; min-height: 30px; }
 
 .sd-lane-toggle { font-size: 13px; display: flex; gap: 6px; align-items: center; }
@@ -181,6 +194,12 @@
 }
 
 .sd-problems { font-size: 12.5px; color: #ffb08a; display: flex; flex-direction: column; gap: 2px; }
+
+.sd-bonus-palette {
+  margin: 10px 0; padding: 10px; border: 1px solid rgba(94, 200, 255, .38);
+  border-radius: 8px; background: rgba(38, 91, 110, .16);
+}
+.sd-bonus-palette .sd-tool { margin: 3px; }
 
 .sd-board-wrap {
   background: radial-gradient(circle at 50% 40%, rgba(40, 52, 90, 0.55), rgba(8, 12, 26, 0.9));

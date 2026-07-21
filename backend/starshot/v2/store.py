@@ -198,6 +198,26 @@ _MIGRATIONS = (
         earned_at TEXT NOT NULL,
         PRIMARY KEY (user_id, badge_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS campaign_components (
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        component_id TEXT NOT NULL,
+        earned_at TEXT NOT NULL,
+        source_match_id TEXT,
+        source_kind TEXT NOT NULL DEFAULT 'admin',
+        PRIMARY KEY (user_id, component_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS campaign_awards (
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        match_id TEXT NOT NULL,
+        component_id TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        earned_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, match_id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS campaign_stardock (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        initialized_at TEXT NOT NULL
+    )""",
 )
 
 # External sign-in providers and the users column holding each one's subject.
@@ -551,6 +571,9 @@ class V2Store:
             conn.execute("DELETE FROM queue WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM presence WHERE user_id = ?", (user_id,))
             conn.execute("DELETE FROM leaderboard_results WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM campaign_components WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM campaign_awards WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM campaign_stardock WHERE user_id = ?", (user_id,))
             conn.execute(
                 "DELETE FROM challenges WHERE from_user_id = ? OR to_user_id = ?",
                 (user_id, user_id),
@@ -802,6 +825,57 @@ class V2Store:
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO badges (user_id, badge_id, earned_at) VALUES (?, ?, ?)",
                 (user_id, badge_id, _now()),
+            )
+            return cursor.rowcount > 0
+
+    def award_campaign_component(
+        self, user_id: int, component_id: str, *, match_id: str | None = None,
+        source_kind: str = "admin",
+    ) -> bool:
+        """Add one permanent component. Returns False when already owned."""
+        with self._connect(immediate=True) as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO campaign_components "
+                "(user_id, component_id, earned_at, source_match_id, source_kind) VALUES (?, ?, ?, ?, ?)",
+                (user_id, component_id, _now(), match_id, source_kind),
+            )
+            return cursor.rowcount > 0
+
+    def campaign_component_ids(self, user_id: int) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT component_id FROM campaign_components WHERE user_id = ? ORDER BY earned_at, component_id",
+                (user_id,),
+            ).fetchall()
+        return [str(row["component_id"]) for row in rows]
+
+    def record_campaign_award(
+        self, user_id: int, match_id: str, component_id: str, source_kind: str,
+    ) -> bool:
+        """Record the match popup once. The inventory insert is deliberately
+        separate so callers can choose an unowned item before this guard."""
+        with self._connect(immediate=True) as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO campaign_awards "
+                "(user_id, match_id, component_id, source_kind, earned_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, match_id, component_id, source_kind, _now()),
+            )
+            return cursor.rowcount > 0
+
+    def campaign_award_for_match(self, user_id: int, match_id: str) -> dict | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM campaign_awards WHERE user_id = ? AND match_id = ?",
+                (user_id, match_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def initialize_stardock(self, user_id: int) -> bool:
+        """Return True exactly once for an account's first StarDock visit."""
+        with self._connect(immediate=True) as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO campaign_stardock (user_id, initialized_at) VALUES (?, ?)",
+                (user_id, _now()),
             )
             return cursor.rowcount > 0
 

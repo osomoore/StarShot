@@ -98,6 +98,11 @@ app.include_router(ship_designs_public_router)
 app.include_router(my_ship_designs_router)
 app.include_router(player_ship_library_admin_router)
 
+from starshot.v2.campaign import campaign_admin_router, campaign_router  # noqa: E402
+
+app.include_router(campaign_router)
+app.include_router(campaign_admin_router)
+
 if (V2_FRONTEND_DIR / "static").exists():
     app.mount("/v2/static", StaticFiles(directory=V2_FRONTEND_DIR / "static"), name="v2static")
 

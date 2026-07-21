@@ -95,7 +95,7 @@
       document.getElementById("admin-user").textContent = "⚙ " + me.user.username;
       document.getElementById("admin-locked").classList.add("hidden");
       document.getElementById("admin-main").classList.remove("hidden");
-      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadAccounts(), loadFeedback(), loadChangelog()]);
+      await Promise.all([loadDeck(), loadKeywords(), loadSettings(), loadBattleHistory(), loadAccounts(), loadFeedback(), loadChangelog(), loadComponentAwards()]);
     } catch (err) {
       showLocked("Sign in as the admiral to enter.");
     }
@@ -132,6 +132,102 @@
   let deckSets = [];
   const CARD_FIELDS = ["name", "copies", "side_a_type", "side_a_1", "side_a_2", "side_b_type", "side_b_1", "side_b_2"];
 
+  function cardEditorHead() {
+    const head = document.createElement("div");
+    head.className = "card-head";
+    head.innerHTML = "<span>Name</span><span>Copies</span><span>A type</span><span>Side A text</span><span>Side A alt</span><span>B type</span><span>Side B text</span><span>Side B alt</span><span></span>";
+    return head;
+  }
+
+  function renderCardEditorRow(card, onDelete) {
+    const row = document.createElement("div");
+    row.className = "card-row";
+    const typeSelect = (field) => {
+      const value = card[field] || "";
+      return `<select data-field="${field}">
+        <option value="" ${value === "" ? "selected" : ""}>—</option>
+        <option ${value === "Basic" ? "selected" : ""}>Basic</option>
+        <option ${value === "Desperate" ? "selected" : ""}>Desperate</option></select>`;
+    };
+    const input = (field, type) =>
+      `<input data-field="${field}" type="${type || "text"}" value="${esc(card[field] ?? "")}" ${type === "number" ? 'min="1" max="20"' : ""}>`;
+    row.innerHTML = [
+      input("name"), input("copies", "number"), typeSelect("side_a_type"), input("side_a_1"), input("side_a_2"),
+      typeSelect("side_b_type"), input("side_b_1"), input("side_b_2"),
+      `<span class="row-del" title="Remove card">✕</span>`,
+    ].join("");
+    row.querySelectorAll("[data-field]").forEach((node) => {
+      node.addEventListener("change", () => {
+        const field = node.dataset.field;
+        card[field] = field === "copies" ? parseInt(node.value, 10) || 1 : node.value;
+      });
+    });
+    const remove = row.querySelector(".row-del");
+    if (onDelete) remove.addEventListener("click", onDelete);
+    else remove.classList.add("hidden");
+    return row;
+  }
+
+  let componentAwards = [];
+  async function loadComponentAwards() {
+    const host = document.getElementById("component-award-list");
+    if (!host) return;
+    const data = await get("/admin/component-awards");
+    componentAwards = data.components || [];
+    renderComponentAwards();
+  }
+  function renderComponentAwards() {
+    const host = document.getElementById("component-award-list");
+    host.innerHTML = "";
+    componentAwards.forEach((entry, index) => {
+      const editor = document.createElement("div");
+      editor.className = "campaign-component-editor";
+      editor.innerHTML = `
+        <div class="campaign-component-meta">
+          <label>Component name<input data-component-field="name" value="${esc(entry.name)}" placeholder="Component name"></label>
+          <label>Description<input data-component-field="description" value="${esc(entry.description)}" placeholder="Reward popup and StarDock description"></label>
+          <label>Point cost<select data-component-field="cost"><option value="1" ${entry.cost === 1 ? "selected" : ""}>1 point</option><option value="2" ${entry.cost === 2 ? "selected" : ""}>2 points</option></select></label>
+          <label>Component type<select data-component-field="component_type"><option value="engine" ${entry.component_type === "engine" ? "selected" : ""}>Engine</option><option value="weapon" ${entry.component_type === "weapon" ? "selected" : ""}>Weapon</option></select></label>
+          <button class="btn crimson small" data-component-delete>Delete component</button>
+        </div>
+        <div class="campaign-card-label">Starting-deck card</div>`;
+      const card = entry.card || (entry.card = {
+        name: entry.name || "New Reward Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 1",
+      });
+      editor.appendChild(cardEditorHead());
+      editor.appendChild(renderCardEditorRow(card));
+      editor.querySelectorAll("[data-component-field]").forEach((input) => input.addEventListener("change", () => {
+        entry[input.dataset.componentField] = input.dataset.componentField === "cost" ? Number(input.value) : input.value;
+      }));
+      editor.querySelector("[data-component-delete]").addEventListener("click", () => {
+        componentAwards.splice(index, 1);
+        renderComponentAwards();
+      });
+      host.appendChild(editor);
+    });
+  }
+  document.getElementById("component-award-add")?.addEventListener("click", () => {
+    componentAwards.push({
+      id: `component_${Date.now()}`,
+      name: "New Component",
+      description: "",
+      cost: 1,
+      component_type: "engine",
+      card: { name: "New Reward Card", copies: 1, side_a_type: "Basic", side_a_1: "Move 1" },
+      reward_rule: "random",
+    });
+    renderComponentAwards();
+  });
+  document.getElementById("component-award-save")?.addEventListener("click", async () => {
+    try {
+      const data = await put("/admin/component-awards", {
+        components: componentAwards.map((entry) => ({ ...entry, card: cleanCards([entry.card || {}])[0] })),
+      });
+      componentAwards = data.components || [];
+      renderComponentAwards();
+      status("component-award-status", "✔ Campaign component list saved.", true);
+    } catch (error) { status("component-award-status", error.message, false); }
+  });
   async function loadDeck() {
     const data = await get("/admin/deck");
     document.getElementById("deck-path").textContent = data.deck_path;
@@ -210,38 +306,12 @@
     const container = document.getElementById(which === "base" ? "base-cards" : "desp-cards");
     const cards = deckState[which].cards;
     container.innerHTML = "";
-    const head = document.createElement("div");
-    head.className = "card-head";
-    head.innerHTML = "<span>Name</span><span>Copies</span><span>A type</span><span>Side A text</span><span>Side A alt</span><span>B type</span><span>Side B text</span><span>Side B alt</span><span></span>";
-    container.appendChild(head);
+    container.appendChild(cardEditorHead());
     cards.forEach((card, index) => {
-      const row = document.createElement("div");
-      row.className = "card-row";
-      const typeSelect = (field) => {
-        const value = card[field] || "";
-        return `<select data-field="${field}">
-          <option value="" ${value === "" ? "selected" : ""}>—</option>
-          <option ${value === "Basic" ? "selected" : ""}>Basic</option>
-          <option ${value === "Desperate" ? "selected" : ""}>Desperate</option></select>`;
-      };
-      const input = (field, type) =>
-        `<input data-field="${field}" type="${type || "text"}" value="${String(card[field] ?? "").replace(/"/g, "&quot;")}" ${type === "number" ? 'min="1" max="20"' : ""}>`;
-      row.innerHTML = [
-        input("name"), input("copies", "number"), typeSelect("side_a_type"), input("side_a_1"), input("side_a_2"),
-        typeSelect("side_b_type"), input("side_b_1"), input("side_b_2"),
-        `<span class="row-del" title="Remove card">✕</span>`,
-      ].join("");
-      row.querySelectorAll("[data-field]").forEach((node) => {
-        node.addEventListener("change", () => {
-          const field = node.dataset.field;
-          card[field] = field === "copies" ? parseInt(node.value, 10) || 1 : node.value;
-        });
-      });
-      row.querySelector(".row-del").addEventListener("click", () => {
+      container.appendChild(renderCardEditorRow(card, () => {
         cards.splice(index, 1);
         renderCards(which);
-      });
-      container.appendChild(row);
+      }));
     });
     const total = cards.reduce((sum, card) => sum + (parseInt(card.copies, 10) || 1), 0);
     document.getElementById(which === "base" ? "base-count" : "desp-count").textContent =
@@ -790,14 +860,17 @@
     const url = esc(entry.screenshot_data_url);
     const ext = screenshotExtension(entry.screenshot_data_url);
     const name = esc(`starshot-bug-${entry.id || "screenshot"}.${ext}`);
+    const preview = ext === "svg"
+      ? `<iframe class="feedback-screenshot feedback-screenshot-frame" src="${url}" title="Bug report app screenshot" sandbox=""></iframe>`
+      : `<a href="${url}" target="_blank" rel="noopener" title="Open screenshot full size">
+        <img class="feedback-screenshot" src="${url}" alt="Bug report board screenshot">
+      </a>`;
     return `<h4>Board Screenshot</h4>
       <div class="feedback-screenshot-actions">
         <a class="btn ghost small" href="${url}" target="_blank" rel="noopener">Open full size</a>
         <a class="btn ghost small" href="${url}" download="${name}">Download ${esc(ext.toUpperCase())}</a>
       </div>
-      <a href="${url}" target="_blank" rel="noopener" title="Open screenshot full size">
-        <img class="feedback-screenshot" src="${url}" alt="Bug report board screenshot">
-      </a>`;
+      ${preview}`;
   }
   const feedbackText = (entry) => [
     entry.liked,

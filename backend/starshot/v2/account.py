@@ -165,6 +165,8 @@ def export_account_data(request: Request) -> Response:
         }
         for entry in store.feedback_for_user(user_id)
     ]
+    from starshot.v2.campaign import inventory_for_user
+
     data = {
         "export_format": "starshot-account-data/1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -195,6 +197,7 @@ def export_account_data(request: Request) -> Response:
         },
         "leaderboard_records": store.leaderboard_results_for_user(user_id),
         "stardock_ships": full_designs(ship_designs),
+        "campaign_components": inventory_for_user(user_id, store),
         "starbreach_bosses": full_designs(boss_designs),
         "match_history": match_history,
         "feedback": feedback,

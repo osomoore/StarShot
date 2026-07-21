@@ -1,7 +1,7 @@
 {
   "id": "vanguard",
   "name": "Vanguard",
-  "description": "The shipwright's reference hull: the classic 10-card deck (3 Move 1, 4 Move 2, 2 Aim +1, 1 Aim +2) with an extra shield charge.",
+  "description": "The shipwright's reference hull, using the complete finite base component palette with an extra shield charge.",
   "tiles": [
     { "q": 0, "r": 0, "type": "core" },
     { "q": 0, "r": -1, "type": "bone_room" },
@@ -11,10 +11,10 @@
     { "q": 0, "r": -2, "type": "double_cannon" },
     { "q": 0, "r": 2, "type": "engine" },
     { "q": -1, "r": 0, "type": "engine" },
-    { "q": 1, "r": 0, "type": "engine" },
+    { "q": 1, "r": 0, "type": "cannon" },
     { "q": 1, "r": -2, "type": "cannon" },
     { "q": 2, "r": -1, "type": "cannon" },
-    { "q": -1, "r": -1, "type": "double_engine" },
+    { "q": -1, "r": -1, "type": "double_cannon" },
     { "q": -2, "r": 1, "type": "double_engine" },
     { "q": -1, "r": 2, "type": "double_engine" },
     { "q": 1, "r": 1, "type": "double_engine" }

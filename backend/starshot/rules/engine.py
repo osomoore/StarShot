@@ -36,7 +36,7 @@ from starshot.rules.card_effects import (
     selected_card_family as _effect_selected_card_family,
 )
 from starshot.rules.decks import (
-    card_by_id,
+    card_for_player,
     create_base_deck,
     create_designed_deck,
 )
@@ -133,7 +133,10 @@ def create_initial_state(config: GameConfig) -> GameState:
         player.ship.layout = spec
         player.ship.shields = int(spec.get("max_shields", player.ship.shields))
         if spec.get("deck"):
-            player.deck = create_designed_deck(spec["deck"])
+            player.deck = create_designed_deck(
+                spec["deck"],
+                spec.get("bonus_cards") or spec.get("bonus_card_ids") or (),
+            )
     if config.seed is None:
         for player in players.values():
             setup_rng.shuffle(player.deck)
@@ -637,7 +640,7 @@ def _resolve_stack_movement(
     passes = 2 if _overdrive_copies_cards(stack) and not overdrive_copy else 1
     for _ in range(passes):
         for selection in stack.cards:
-            card = card_by_id(selection.card_id)
+            card = card_for_player(player, selection.card_id)
             effect = _card_effect(card, selection, stack.seal_mode)
             if overdrive_copy and effect.is_desperate_face and not _overdrive_desperation_enabled():
                 continue
@@ -787,7 +790,7 @@ def _resolve_stack_engineering(
     repairs: list[dict] = []
     reconfigures: list[dict] = []
     for selection in stack.cards:
-        card = card_by_id(selection.card_id)
+        card = card_for_player(player, selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
         if effect.repair_components:
             count = _engineering_component_count(effect.repair_components, stack)
@@ -923,7 +926,7 @@ def _move_resolved_stack_cards(state: GameState, player: PlayerState, action_num
     overheated: list[str] = []
     returned_to_desperation_deck: list[str] = []
     for selection in stack.cards:
-        card = card_by_id(selection.card_id)
+        card = card_for_player(player, selection.card_id)
         if _is_desperate_face(selection) or card.no_basic_face:
             return_desperation_card(state.desperation_deck, card)
             returned_to_desperation_deck.append(card.id)
@@ -966,7 +969,7 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         if stack is None:
             continue
 
-        attack_cards = _attack_cards_for_stack(stack)
+        attack_cards = _attack_cards_for_stack(attacker, stack)
         if not attack_cards:
             continue
 
@@ -997,6 +1000,7 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
             resolved_any = True
         if _overdrive_copies_action(stack):
             overdrive_attack_cards = _attack_cards_for_stack(
+                attacker,
                 stack,
                 include_desperate=_overdrive_desperation_enabled(),
             )
@@ -1027,9 +1031,9 @@ def _resolve_combat(state: GameState, action_number: int, revealed_stacks: dict[
         )
 
 
-def _target_player_id_for_attack(stack: ActionStack) -> str | None:
+def _target_player_id_for_attack(player: PlayerState, stack: ActionStack) -> str | None:
     for selection in stack.cards:
-        card = card_by_id(selection.card_id)
+        card = card_for_player(player, selection.card_id)
         effect = _card_effect(card, selection, stack.seal_mode)
         if effect.family == CardFamily.ATTACK and effect.requires_target:
             return selection.target_player_id
@@ -1060,7 +1064,7 @@ def _target_player_ids_for_attack(
                 and _ship_in_facing_cone_120(attacker.ship, player.ship)
             )
         ]
-    target_id = _target_player_id_for_attack(stack)
+    target_id = _target_player_id_for_attack(attacker, stack)
     if target_id:
         return [target_id]
     forward_target_id = _first_enemy_forward_target_id(state, attacker)
@@ -1215,12 +1219,17 @@ def _resolve_attack_volley(
     state.event_log.append(event)
 
 
-def _attack_cards_for_stack(stack: ActionStack, *, include_desperate: bool = True) -> list[tuple[Card, OrderCardSelection]]:
+def _attack_cards_for_stack(
+    player: PlayerState,
+    stack: ActionStack,
+    *,
+    include_desperate: bool = True,
+) -> list[tuple[Card, OrderCardSelection]]:
     attack_cards: list[tuple[Card, OrderCardSelection]] = []
     passes = 2 if _overdrive_copies_cards(stack) else 1
     for _ in range(passes):
         for selection in stack.cards:
-            card = card_by_id(selection.card_id)
+            card = card_for_player(player, selection.card_id)
             effect = _card_effect(card, selection, stack.seal_mode)
             if not include_desperate and effect.is_desperate_face:
                 continue

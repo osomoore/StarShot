@@ -33,6 +33,7 @@ from starshot.rules.serialization import state_from_dict, state_to_dict
 from starshot.v2.game_log import build_debug_log
 from starshot.v2.store import get_v2_store
 from starshot.v2.views import game_view
+from starshot.v2.campaign import match_award_payload
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
 
@@ -1170,7 +1171,7 @@ def _match_and_seat(request: Request, game_id: str) -> tuple[dict, dict, dict | 
 
 @router.get("/games/{game_id}/view")
 def view_game(game_id: str, request: Request, since: int = -1) -> dict:
-    _, match, seat = _match_and_seat(request, game_id)
+    user, match, seat = _match_and_seat(request, game_id)
     store = get_v2_store()
     try:
         state_dict = serialized_state(store, game_id)
@@ -1190,6 +1191,7 @@ def view_game(game_id: str, request: Request, since: int = -1) -> dict:
         "match": build_match_meta(get_v2_store().get_match(match["id"]), state),
         "you": viewer_player_id,
         "state": view,
+        "campaign_reward": match_award_payload(store, user["id"], match["id"]) if seat else None,
     }
 
 
@@ -1216,10 +1218,10 @@ class CaptainChoiceRequest(BaseModel):
 
 @router.post("/games/{game_id}/captain")
 def choose_captain_endpoint(game_id: str, body: CaptainChoiceRequest, request: Request) -> dict:
-    _, match, seat = _match_and_seat(request, game_id)
+    user, match, seat = _match_and_seat(request, game_id)
     if seat is None:
         raise HTTPException(status_code=403, detail="Spectators don't choose captains.")
-    _check_maintenance(_)
+    _check_maintenance(user)
     store = get_v2_store()
     try:
         raw = store.load_game(game_id)
@@ -1247,10 +1249,10 @@ def choose_captain_endpoint(game_id: str, body: CaptainChoiceRequest, request: R
 
 @router.post("/games/{game_id}/orders")
 def submit_orders_endpoint(game_id: str, body: OrdersRequest, request: Request) -> dict:
-    _, match, seat = _match_and_seat(request, game_id)
+    user, match, seat = _match_and_seat(request, game_id)
     if seat is None:
         raise HTTPException(status_code=403, detail="Spectators don't give orders.")
-    _check_maintenance(_)
+    _check_maintenance(user)
     store = get_v2_store()
     try:
         state = submit_player_orders(store, match, seat["player_id"], body.orders)
@@ -1265,4 +1267,5 @@ def submit_orders_endpoint(game_id: str, body: OrdersRequest, request: Request) 
         "match": build_match_meta(store.get_match(match["id"]), state),
         "you": seat["player_id"],
         "state": view,
+        "campaign_reward": match_award_payload(store, user["id"], match["id"]),
     }

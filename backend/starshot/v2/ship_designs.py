@@ -42,6 +42,8 @@ from pathlib import Path
 from starshot.rules.player_ships import (
     AXIAL_DIRECTIONS,
     BASE_TILE_TOTAL,
+    BASE_PALETTE_LIMITS,
+    BONUS_TILE_TYPE,
     CORE_TILE_COSTS,
     DECK_SIZE,
     LEGACY_TILE_TYPES,
@@ -85,10 +87,17 @@ def active_stardock_config() -> dict:
         return stardock_config()
 
 
-def with_active_config(design: dict) -> dict:
+def with_active_config(design: dict, owner_id: int | None = None) -> dict:
     """A copy of `design` carrying the current admin config, ready for
     validation/compilation. The config never persists with the design."""
-    return {**design, "config": active_stardock_config()}
+    from starshot.v2.campaign import component_catalog, inventory_for_user
+
+    components = component_catalog() if owner_id is None else inventory_for_user(owner_id)
+    return {
+        **design,
+        "config": active_stardock_config(),
+        "bonus_components": {entry["id"]: entry for entry in components},
+    }
 
 # Player-owned designs are capped so the library stays browsable.
 PLAYER_DESIGN_LIMIT = 10
@@ -143,7 +152,13 @@ def _normalize_tile(raw, index: int) -> dict:
     tile_type = raw.get("type")
     if tile_type not in TILE_TYPES and tile_type not in LEGACY_TILE_TYPES:
         raise ShipDesignError(f"{label}.type must be one of {', '.join(TILE_TYPES)}.")
-    return {"q": q, "r": r, "type": tile_type}
+    tile = {"q": q, "r": r, "type": tile_type}
+    if tile_type == BONUS_TILE_TYPE:
+        reward_id = str(raw.get("reward_id") or "").strip()
+        if not reward_id:
+            raise ShipDesignError(f"{label}.reward_id is required for a bonus component.")
+        tile["reward_id"] = reward_id[:80]
+    return tile
 
 
 def _normalize_lanes(raw) -> dict:
@@ -278,6 +293,20 @@ def validate_design(design: dict, config: dict | None = None) -> list[str]:
     counts: dict[str, int] = {}
     for tile in tiles:
         counts[tile["type"]] = counts.get(tile["type"], 0) + 1
+
+    bonus_catalog = design.get("bonus_components") or {}
+    bonus_ids = [tile.get("reward_id") for tile in tiles if tile["type"] == BONUS_TILE_TYPE]
+    if len(bonus_ids) != len(set(bonus_ids)):
+        problems.append("Each earned bonus component may be placed at most once on a ship.")
+    for reward_id in bonus_ids:
+        if reward_id not in bonus_catalog:
+            problems.append(f"Bonus component '{reward_id}' is not in this captain's inventory.")
+
+    for tile_type, limit in BASE_PALETTE_LIMITS.items():
+        placed = counts.get(tile_type, 0)
+        if placed > limit:
+            label = tile_type.replace("_", " ").title()
+            problems.append(f"The base palette only contains {limit} {label} component(s) (it has {placed}).")
 
     legacy = sorted(set(counts) & set(LEGACY_TILE_TYPES))
     if legacy:
@@ -513,8 +542,9 @@ def list_designs(owner_id: int | None = None) -> list[dict]:
         upgrade = None
         try:
             design = normalize_design(data)
-            valid = is_design_valid(design)
-            points = points_breakdown(design)["core_points_spent"]
+            configured = with_active_config(design, owner_id)
+            valid = is_design_valid(configured)
+            points = points_breakdown(configured)["core_points_spent"]
             upgrade = design.get("upgrade")
         except ShipDesignError:
             valid = False
@@ -575,7 +605,7 @@ def save_design(raw: dict, owner_id: int | None = None) -> tuple[dict, list[str]
     _design_path(design["id"], owner_id).write_text(
         json.dumps(design, indent=2), encoding="utf-8"
     )
-    return design, validate_design(design)
+    return design, validate_design(with_active_config(design, owner_id))
 
 
 def delete_design(design_id: str, owner_id: int | None = None) -> bool:
