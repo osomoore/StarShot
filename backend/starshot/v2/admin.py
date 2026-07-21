@@ -1128,6 +1128,21 @@ def admin_delete_account(user_id: int, body: AdminDeleteConfirmation, request: R
     return {"ok": True, "deleted": True, "accounts": store.list_accounts()}
 
 
+@admin_router.post("/cleanup/expired-guests")
+def cleanup_expired_guests_endpoint(request: Request) -> dict:
+    """Remove all guest accounts whose sessions have expired. Guests are
+    temporary; their content is deleted along with the account."""
+    from starshot.v2.account import cleanup_expired_guests
+
+    admin = _admin_user(request)
+    count = cleanup_expired_guests()
+    store = get_v2_store()
+    # Audit: record that cleanup was performed. Use admin id for both since
+    # this is a system maintenance action, not targeting a specific user.
+    store.record_admin_audit(admin["id"], admin["id"], "cleanup_expired_guests")
+    return {"ok": True, "cleaned_up": count}
+
+
 @admin_router.delete("/illegal-names/{name}")
 def remove_illegal_name(name: str, request: Request) -> dict:
     _admin_user(request)

@@ -451,6 +451,20 @@ class V2Store:
             cursor = conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             return int(cursor.rowcount or 0)
 
+    def get_expired_guest_ids(self) -> list[int]:
+        """Return user IDs of guests with expired sessions. Guests only exist
+        as long as their session is active; if the session has expired, the
+        guest has disconnected and should be purged."""
+        now = _now()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT DISTINCT u.id FROM users u
+                   INNER JOIN sessions s ON u.id = s.user_id
+                   WHERE u.is_guest = 1 AND s.expires_at < ?""",
+                (now,),
+            ).fetchall()
+            return [row["id"] for row in rows]
+
     def update_password(self, user_id: int, pass_hash: str) -> None:
         with self._connect() as conn:
             conn.execute("UPDATE users SET pass_hash = ? WHERE id = ?", (pass_hash, user_id))

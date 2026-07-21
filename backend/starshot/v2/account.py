@@ -57,6 +57,17 @@ def purge_account(user_id: int) -> None:
     store.delete_account(user_id)
 
 
+def cleanup_expired_guests() -> int:
+    """Remove expired guest accounts and all their content (ships, bosses, etc).
+    Guests are temporary sessions; when the session expires, the guest account
+    and everything they created should be deleted. Returns the count of guests purged."""
+    store = get_v2_store()
+    expired_ids = store.get_expired_guest_ids()
+    for user_id in expired_ids:
+        purge_account(user_id)
+    return len(expired_ids)
+
+
 @account_router.get("")
 def account_overview(request: Request) -> dict:
     user = _registered_user(request)

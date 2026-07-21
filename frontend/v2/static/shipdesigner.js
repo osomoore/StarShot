@@ -103,7 +103,13 @@
     // ── state ────────────────────────────────────────────────────────────
     let booted = false;
     let designs = [];
-    let playerDesigns = []; // admin only: everyone's designs
+    let playerDesigns = []; // admin only: current page of everyone's designs
+    let playerSearch = "";
+    let playerPage = 1;
+    let playerTotal = 0;
+    let playerTotalPages = 1;
+    let selectedPlayerDesigns = new Set(); // "ownerId:designId" keys, admin only
+    let playerSearchDebounce = null;
     let design = null;
     let dirty = false;
     let tool = "core";
@@ -545,11 +551,23 @@
       const data = await call("");
       designs = data.designs || [];
       if (data.meta) META = { ...META, ...data.meta };
-      if (isAdmin) {
-        try {
-          const mine = await fetch("/api/v2/admin/player-ship-designs", { credentials: "same-origin" });
-          playerDesigns = mine.ok ? (await mine.json()).designs || [] : [];
-        } catch (err) { playerDesigns = []; }
+      if (isAdmin) await refreshPlayerDesigns();
+    }
+
+    async function refreshPlayerDesigns() {
+      try {
+        const params = new URLSearchParams({ page: String(playerPage) });
+        if (playerSearch) params.set("search", playerSearch);
+        const mine = await fetch(`/api/v2/admin/player-ship-designs?${params}`, { credentials: "same-origin" });
+        const payload = mine.ok ? await mine.json() : {};
+        playerDesigns = payload.designs || [];
+        playerTotal = payload.total || 0;
+        playerTotalPages = payload.total_pages || 1;
+        playerPage = payload.page || 1;
+      } catch (err) {
+        playerDesigns = [];
+        playerTotal = 0;
+        playerTotalPages = 1;
       }
     }
 
@@ -572,11 +590,25 @@
           </div>
         </div>`).join("") || '<div class="sd-empty">No ship designs yet — name one and press ＋ New design.</div>';
 
+      const playerKey = (entry) => `${entry.owner_id}:${entry.id}`;
+      const allOnPageSelected = playerDesigns.length > 0 && playerDesigns.every((entry) => selectedPlayerDesigns.has(playerKey(entry)));
       const playerRows = !isAdmin ? "" : `
         <h3 class="panel-sub">Player-made ships (all captains)</h3>
+        <div class="sd-lib-toolbar">
+          <input id="sd-player-search" type="text" placeholder="Search ship or owner name…" value="${esc(playerSearch)}">
+          <span class="sd-lib-meta">${playerTotal} design${playerTotal === 1 ? "" : "s"}</span>
+          <button id="sd-player-delete-selected" class="btn ghost small sd-danger" ${selectedPlayerDesigns.size ? "" : "disabled"}>
+            🗑 Delete selected (${selectedPlayerDesigns.size})
+          </button>
+        </div>
         <div class="sd-lib">
+          ${playerDesigns.length ? `
+            <div class="sd-lib-row sd-lib-row-head">
+              <label class="sd-lib-select"><input type="checkbox" id="sd-player-select-all" ${allOnPageSelected ? "checked" : ""}> Select all on page</label>
+            </div>` : ""}
           ${playerDesigns.map((entry) => `
             <div class="sd-lib-row">
+              <label class="sd-lib-select"><input type="checkbox" class="sd-player-select" data-key="${esc(playerKey(entry))}" ${selectedPlayerDesigns.has(playerKey(entry)) ? "checked" : ""}></label>
               <div class="sd-lib-name"><b>${esc(entry.name)}</b>
                 <span class="sd-lib-meta">by ${esc(entry.owner_name)} · ${entry.points == null ? "?" : entry.points} Core pts
                   ${entry.valid ? '<span class="sd-ok">battle-ready</span>' : '<span class="sd-bad">incomplete</span>'}
@@ -586,7 +618,12 @@
                 <button class="btn ghost small" data-clone-owner="${entry.owner_id}" data-clone-id="${esc(entry.id)}">⤴ Clone to global</button>
                 <button class="btn ghost small sd-danger" data-pdelete-owner="${entry.owner_id}" data-pdelete-id="${esc(entry.id)}">🗑</button>
               </div>
-            </div>`).join("") || '<div class="sd-empty">No player designs yet.</div>'}
+            </div>`).join("") || '<div class="sd-empty">No player designs found.</div>'}
+        </div>
+        <div class="sd-lib-pager">
+          <button id="sd-player-prev" class="btn ghost small" ${playerPage <= 1 ? "disabled" : ""}>← Prev</button>
+          <span class="sd-lib-meta">Page ${playerTotalPages ? playerPage : 0} of ${playerTotalPages}</span>
+          <button id="sd-player-next" class="btn ghost small" ${playerPage >= playerTotalPages ? "disabled" : ""}>Next →</button>
         </div>`;
 
       root().innerHTML = `
@@ -697,11 +734,69 @@
             `/api/v2/admin/player-ship-designs/${button.dataset.pdeleteOwner}/${encodeURIComponent(button.dataset.pdeleteId)}`,
             { method: "DELETE", credentials: "same-origin" });
           if (!response.ok) throw new Error((await response.json()).detail || "Delete failed");
-          await refreshList();
+          selectedPlayerDesigns.delete(`${button.dataset.pdeleteOwner}:${button.dataset.pdeleteId}`);
+          await refreshPlayerDesigns();
           renderLibrary();
           setStatus("Player design removed.", true);
         } catch (err) { setStatus(err.message, false); }
       }));
+      if (isAdmin) {
+        el("sd-player-search")?.addEventListener("input", (event) => {
+          const value = event.target.value;
+          clearTimeout(playerSearchDebounce);
+          playerSearchDebounce = setTimeout(async () => {
+            playerSearch = value;
+            playerPage = 1;
+            await refreshPlayerDesigns();
+            renderLibrary();
+          }, 300);
+        });
+        el("sd-player-prev")?.addEventListener("click", async () => {
+          if (playerPage <= 1) return;
+          playerPage -= 1;
+          await refreshPlayerDesigns();
+          renderLibrary();
+        });
+        el("sd-player-next")?.addEventListener("click", async () => {
+          if (playerPage >= playerTotalPages) return;
+          playerPage += 1;
+          await refreshPlayerDesigns();
+          renderLibrary();
+        });
+        el("sd-player-select-all")?.addEventListener("change", (event) => {
+          for (const entry of playerDesigns) {
+            const key = `${entry.owner_id}:${entry.id}`;
+            if (event.target.checked) selectedPlayerDesigns.add(key);
+            else selectedPlayerDesigns.delete(key);
+          }
+          renderLibrary();
+        });
+        root().querySelectorAll(".sd-player-select").forEach((checkbox) => checkbox.addEventListener("change", (event) => {
+          if (event.target.checked) selectedPlayerDesigns.add(checkbox.dataset.key);
+          else selectedPlayerDesigns.delete(checkbox.dataset.key);
+          renderLibrary();
+        }));
+        el("sd-player-delete-selected")?.addEventListener("click", async () => {
+          if (!selectedPlayerDesigns.size) return;
+          if (!window.confirm(`Delete ${selectedPlayerDesigns.size} selected ship design(s)? This cannot be undone.`)) return;
+          const items = Array.from(selectedPlayerDesigns, (key) => {
+            const [ownerId, designId] = key.split(":");
+            return { owner_id: Number(ownerId), design_id: designId };
+          });
+          try {
+            const response = await fetch("/api/v2/admin/player-ship-designs/bulk-delete", {
+              method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ items }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.detail || "Bulk delete failed");
+            selectedPlayerDesigns.clear();
+            await refreshPlayerDesigns();
+            renderLibrary();
+            setStatus(`Deleted ${payload.deleted} design(s).`, true);
+          } catch (err) { setStatus(err.message, false); }
+        });
+      }
     }
 
     // ── editor view ──────────────────────────────────────────────────────

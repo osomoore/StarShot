@@ -17,6 +17,12 @@ from starshot.v2 import security as v2_security
 from starshot.v2.router import router as v2_router
 
 app = FastAPI(title="StarShot")
+
+
+@app.on_event("startup")
+async def cleanup_expired_guests():
+    from starshot.v2.account import cleanup_expired_guests
+    cleanup_expired_guests()
 ROOT = Path(__file__).resolve().parents[3]
 V2_FRONTEND_DIR = ROOT / "frontend" / "v2"
 RESOURCES_DIR = ROOT / "resources"

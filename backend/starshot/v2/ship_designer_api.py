@@ -401,8 +401,13 @@ def export_ship_design(design_id: str, request: Request) -> Response:
 # --------------------------------------------------------------------------
 
 
+PLAYER_LIBRARY_PAGE_SIZE = 20
+
+
 @player_ship_library_admin_router.get("")
-def list_player_ship_designs(request: Request) -> dict:
+def list_player_ship_designs(request: Request, search: str = "", page: int = 1) -> dict:
+    """Every player-owned ship design, searchable by ship or owner name and
+    paged (the library can span hundreds of designs across every captain)."""
     _admin_user(request)
     from starshot.v2.store import get_v2_store
 
@@ -413,7 +418,50 @@ def list_player_ship_designs(request: Request) -> dict:
         owner_name = owner["username"] if owner else f"user #{owner_id}"
         for entry in ship_designs.list_designs(owner_id):
             entries.append({**entry, "owner_id": owner_id, "owner_name": owner_name})
-    return {"designs": entries}
+
+    query = search.strip().lower()
+    if query:
+        entries = [
+            entry
+            for entry in entries
+            if query in entry["name"].lower() or query in entry["owner_name"].lower()
+        ]
+
+    total = len(entries)
+    page_size = PLAYER_LIBRARY_PAGE_SIZE
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = min(max(1, page), total_pages)
+    start = (page - 1) * page_size
+    return {
+        "designs": entries[start : start + page_size],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+
+class BulkDeleteItem(BaseModel):
+    owner_id: int
+    design_id: str = Field(max_length=140)
+
+
+class BulkDeletePlayerDesignsRequest(BaseModel):
+    items: list[BulkDeleteItem] = Field(min_length=1, max_length=500)
+
+
+@player_ship_library_admin_router.post("/bulk-delete")
+def bulk_delete_player_ship_designs(body: BulkDeletePlayerDesignsRequest, request: Request) -> dict:
+    """Remove many player designs at once (moderation / library cleanup)."""
+    _admin_user(request)
+    deleted = 0
+    for item in body.items:
+        try:
+            if ship_designs.delete_design(item.design_id, item.owner_id):
+                deleted += 1
+        except ship_designs.ShipDesignError:
+            continue
+    return {"ok": True, "deleted": deleted}
 
 
 @player_ship_library_admin_router.get("/{owner_id}/{design_id}")
